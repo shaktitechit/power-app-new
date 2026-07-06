@@ -1,0 +1,576 @@
+import mongoose from "mongoose";
+import { modelsRegistry } from "../../../data/modelRegistry.js";
+const { TransformerAuditRecord, Transformer } = modelsRegistry;
+
+import {
+  buildActivityMessage,
+  createRecentActivity,
+  getAccessibleUtilityAccountIds,
+  isAdmin,
+  resolveAccessibleFacility,
+  resolveAccessibleUtilityAccount,
+  uploadAuditDocuments,
+  resolveAuditorId,
+  applyAuditorIdFromBody,
+} from "../../shared/electrical-audit.helpers.js";
+
+import { applyIsCompletedFromBody } from "../../../helpers/parseRequestBoolean.js";
+import { assertAuditRecordMutable } from "../../../helpers/auditRecordCompletenessGuard.js";
+
+
+
+// 📂 Upload transformer audit documents
+;
+
+// 🔍 Check transformer belongs to given utility and facility
+const validateTransformerRelation = async (
+  transformerId,
+  utilityAccountId,
+  facilityId,
+) => {
+  const transformer = await Transformer.findById(transformerId);
+
+  if (!transformer) return null;
+
+  if (
+    transformer.utility_account_id.toString() !== utilityAccountId.toString()
+  ) {
+    return false;
+  }
+
+  if (transformer.facility_id.toString() !== facilityId.toString()) {
+    return false;
+  }
+
+  return transformer;
+};
+
+//
+// 🚀 CREATE TRANSFORMER AUDIT RECORD
+//
+
+export const createTransformerAuditRecordService = async ({ user, body, files, reqQuery, id, params }) => {
+  const {
+    transformer_id,
+    utility_account_id,
+    facility_id,
+    total_losses_kW,
+    average_load_kVA,
+    percent_loading,
+    max_load_kVA,
+    load_factor_percent,
+    operating_hours_per_year,
+    annual_energy_supplied_kWh,
+    annual_energy_losses_kWh,
+    per_unit_cost_rs,
+    cost_of_losses_rs,
+    power_factor_LT,
+    harmonics_THD_percent,
+    neutral_earth_resistance_ohms,
+    body_to_earth_resistance_ohms,
+    silica_gel_cobalt_type,
+    silica_gel_non_cobalt_type,
+    oil_level,
+    line_voltage_Vr,
+    line_voltage_Vy,
+    line_voltage_Vb,
+    phase_voltage_Vr_n,
+    phase_voltage_Vy_n,
+    phase_voltage_Vb_n,
+    line_current_Ir,
+    line_current_Iy,
+    line_current_Ib,
+    audit_date,
+    auditor_id,
+  } = body;
+
+  if (!transformer_id || !utility_account_id || !facility_id) {
+    // res.status(400);
+    throw new Error(
+      "transformer_id, utility_account_id and facility_id are required",
+    );
+  }
+
+  const utility = await resolveAccessibleUtilityAccount(
+    user,
+    utility_account_id,
+  );
+
+  if (!utility) {
+    { const error = new Error("Access denied"); error.statusCode = 403; throw error; }
+  }
+
+  if (utility.facility_id.toString() !== facility_id.toString()) {
+    { const error = new Error("utility_account_id does not belong to the given facility"); error.statusCode = 400; throw error; }
+  }
+
+  const transformer = await validateTransformerRelation(
+    transformer_id,
+    utility_account_id,
+    facility_id,
+  );
+
+  if (!transformer) {
+    { const error = new Error("Transformer not found"); error.statusCode = 404; throw error; }
+  }
+
+  if (transformer === false) {
+    // res.status(400);
+    throw new Error(
+      "transformer_id does not belong to the given utility account/facility",
+    );
+  }
+
+  const transformerAuditRecordId = new mongoose.Types.ObjectId();
+
+  let captions = [];
+  if (body?.captions) {
+    try {
+      captions =
+        typeof body.captions === "string"
+          ? JSON.parse(body.captions)
+          : body.captions;
+    } catch {
+      captions = [];
+    }
+  }
+
+  const uploadedDocuments = await uploadAuditDocuments(
+    files || [],
+    "transformer-audits",
+    transformerAuditRecordId,
+  );
+
+  uploadedDocuments.forEach((doc, index) => {
+    const caption = captions[index];
+    if (typeof caption === "string" && caption.trim()) {
+      doc.caption = caption.trim();
+    }
+  });
+
+  const transformerAuditRecord = await TransformerAuditRecord.create({
+    _id: transformerAuditRecordId,
+    transformer_id,
+    utility_account_id,
+    facility_id,
+    total_losses_kW,
+    average_load_kVA,
+    percent_loading,
+    max_load_kVA,
+    load_factor_percent,
+    operating_hours_per_year,
+    annual_energy_supplied_kWh,
+    annual_energy_losses_kWh,
+    per_unit_cost_rs,
+    cost_of_losses_rs,
+    power_factor_LT,
+    harmonics_THD_percent,
+    neutral_earth_resistance_ohms,
+    body_to_earth_resistance_ohms,
+    silica_gel_cobalt_type,
+    silica_gel_non_cobalt_type,
+    oil_level,
+    line_voltage_Vr,
+    line_voltage_Vy,
+    line_voltage_Vb,
+    phase_voltage_Vr_n,
+    phase_voltage_Vy_n,
+    phase_voltage_Vb_n,
+    line_current_Ir,
+    line_current_Iy,
+    line_current_Ib,
+    audit_date,
+    auditor_id: resolveAuditorId(user, body),
+    documents: uploadedDocuments,
+  });
+
+  await createRecentActivity({
+    actor: user,
+    action: "created",
+    entity_type: "transformer_audit",
+    entity_id: transformerAuditRecord._id,
+    entity_name: transformer.transformer_tag || "Transformer Audit",
+    facility_id: transformerAuditRecord.facility_id,
+    utility_account_id: transformerAuditRecord.utility_account_id,
+    message: buildActivityMessage({
+      actorName: user?.name || "User",
+      action: "created",
+      entityLabel: "transformer audit",
+      entityName: transformer.transformer_tag || "",
+    }),
+    meta: {
+      transformer_tag: transformer.transformer_tag || "",
+      total_losses_kW: transformerAuditRecord.total_losses_kW,
+      average_load_kVA: transformerAuditRecord.average_load_kVA,
+      percent_loading: transformerAuditRecord.percent_loading,
+    },
+  });
+
+  return {
+    success: true,
+    message: "Transformer audit record created successfully",
+    data: transformerAuditRecord,
+  };
+};
+
+export const getTransformerAuditRecordsService = async ({ user, body, files, reqQuery, id, params }) => {
+  const { facility_id, utility_account_id, transformer_id } = reqQuery;
+
+  const query = {};
+
+  if (facility_id) query.facility_id = facility_id;
+  if (utility_account_id) query.utility_account_id = utility_account_id;
+  if (transformer_id) query.transformer_id = transformer_id;
+
+  let transformerAuditRecords;
+
+  const allowedIds = await getAccessibleUtilityAccountIds(user);
+
+  if (allowedIds === null) {
+    if (utility_account_id) query.utility_account_id = utility_account_id;
+  } else {
+    if (utility_account_id) {
+      const isAllowed = allowedIds.some(
+        (id) => id.toString() === utility_account_id.toString(),
+      );
+      if (!isAllowed) return { success: true, count: 0, data: [] };
+      query.utility_account_id = utility_account_id;
+    } else {
+      query.utility_account_id = { $in: allowedIds };
+    }
+  }
+
+  transformerAuditRecords = await TransformerAuditRecord.find(query)
+    .populate("facility_id", "name city")
+    .populate(
+      "utility_account_id",
+      "utility_account_id account_number utility_type",
+    )
+    .populate("transformer_id", "transformer_tag rated_capacity_kVA")
+    .populate("auditor_id", "name email")
+    .sort({ created_at: -1 });
+
+  return {
+    success: true,
+    count: transformerAuditRecords.length,
+    data: transformerAuditRecords,
+  };
+};
+
+export const getTransformerAuditRecordByIdService = async ({ user, body, files, reqQuery, id, params }) => {
+  const transformerAuditRecord = await TransformerAuditRecord.findById(
+    id,
+  )
+    .populate("facility_id", "name city address")
+    .populate(
+      "utility_account_id",
+      "utility_account_id account_number utility_type",
+    )
+    .populate("transformer_id", "transformer_tag rated_capacity_kVA")
+    .populate("auditor_id", "name email");
+
+  if (!transformerAuditRecord) {
+    { const error = new Error("Transformer audit record not found"); error.statusCode = 404; throw error; }
+  }
+
+  const utility = await resolveAccessibleUtilityAccount(
+    user,
+    transformerAuditRecord.utility_account_id._id,
+  );
+
+  if (!utility) {
+    { const error = new Error("Access denied"); error.statusCode = 403; throw error; }
+  }
+
+  return {
+    success: true,
+    data: transformerAuditRecord,
+  };
+};
+
+export const updateTransformerAuditRecordService = async ({ user, body, files, reqQuery, id, params }) => {
+  const transformerAuditRecord = await TransformerAuditRecord.findById(
+    id,
+  );
+
+  if (!transformerAuditRecord) {
+    { const error = new Error("Transformer audit record not found"); error.statusCode = 404; throw error; }
+  }
+
+  const utility = await resolveAccessibleUtilityAccount(
+    user,
+    transformerAuditRecord.utility_account_id,
+  );
+
+  if (!utility) {
+    { const error = new Error("Access denied"); error.statusCode = 403; throw error; }
+  }
+
+  assertAuditRecordMutable({
+    record: transformerAuditRecord,
+    user,
+    body,
+    operation: "update",
+  });
+
+  const targetUtilityId =
+    body.utility_account_id || transformerAuditRecord.utility_account_id;
+  const targetFacilityId =
+    body.facility_id || transformerAuditRecord.facility_id;
+  const targetTransformerId =
+    body.transformer_id || transformerAuditRecord.transformer_id;
+
+  if (body.utility_account_id) {
+    const newUtility = await resolveAccessibleUtilityAccount(
+      user,
+      body.utility_account_id,
+    );
+
+    if (!newUtility) {
+      { const error = new Error("Access denied for new utility account"); error.statusCode = 403; throw error; }
+    }
+
+    if (newUtility.facility_id.toString() !== targetFacilityId.toString()) {
+      // res.status(400);
+      throw new Error(
+        "utility_account_id does not belong to the given facility",
+      );
+    }
+  }
+
+  const transformer = await validateTransformerRelation(
+    targetTransformerId,
+    targetUtilityId,
+    targetFacilityId,
+  );
+
+  if (!transformer) {
+    { const error = new Error("Transformer not found"); error.statusCode = 404; throw error; }
+  }
+
+  if (transformer === false) {
+    // res.status(400);
+    throw new Error(
+      "transformer_id does not belong to the given utility account/facility",
+    );
+  }
+
+  const { existing_documents, captions: captionsRaw, ...restBody } = body || {};
+  const updatedFields = Object.keys(restBody);
+
+  if (existing_documents) {
+    try {
+      const parsedDocs =
+        typeof existing_documents === "string"
+          ? JSON.parse(existing_documents)
+          : existing_documents;
+      transformerAuditRecord.documents = parsedDocs;
+      updatedFields.push("documents");
+    } catch (e) {
+      console.error("Failed to parse existing_documents:", e);
+    }
+  }
+
+  let captions = [];
+  if (captionsRaw) {
+    try {
+      captions =
+        typeof captionsRaw === "string"
+          ? JSON.parse(captionsRaw)
+          : captionsRaw;
+    } catch {
+      captions = [];
+    }
+  }
+
+  const uploadedDocuments = await uploadAuditDocuments(
+    files || [],
+    "transformer-audits",
+    transformerAuditRecord._id,
+  );
+
+  uploadedDocuments.forEach((doc, index) => {
+    const caption = captions[index];
+    if (typeof caption === "string" && caption.trim()) {
+      doc.caption = caption.trim();
+    }
+  });
+
+  Object.keys(restBody).forEach((key) => {
+    transformerAuditRecord[key] = restBody[key] ?? transformerAuditRecord[key];
+  });
+
+  if (uploadedDocuments.length > 0) {
+    transformerAuditRecord.documents = [
+      ...(transformerAuditRecord.documents || []),
+      ...uploadedDocuments,
+    ];
+    updatedFields.push("documents");
+  }
+
+  applyIsCompletedFromBody(transformerAuditRecord, body);
+  applyAuditorIdFromBody(transformerAuditRecord, user, body);
+  const updatedTransformerAuditRecord = await transformerAuditRecord.save();
+
+  await createRecentActivity({
+    actor: user,
+    action: "updated",
+    entity_type: "transformer_audit",
+    entity_id: updatedTransformerAuditRecord._id,
+    entity_name: transformer.transformer_tag || "Transformer Audit",
+    facility_id: updatedTransformerAuditRecord.facility_id,
+    utility_account_id: updatedTransformerAuditRecord.utility_account_id,
+    message: buildActivityMessage({
+      actorName: user?.name || "User",
+      action: "updated",
+      entityLabel: "transformer audit",
+      entityName: transformer.transformer_tag || "",
+    }),
+    meta: {
+      updated_fields: [...new Set(updatedFields)],
+      transformer_tag: transformer.transformer_tag || "",
+      total_losses_kW: updatedTransformerAuditRecord.total_losses_kW,
+      average_load_kVA: updatedTransformerAuditRecord.average_load_kVA,
+      percent_loading: updatedTransformerAuditRecord.percent_loading,
+    },
+  });
+
+  return {
+    success: true,
+    message: "Transformer audit record updated successfully",
+    data: updatedTransformerAuditRecord,
+  };
+};
+
+export const deleteTransformerAuditRecordService = async ({ user, body, files, reqQuery, id, params }) => {
+  const transformerAuditRecord = await TransformerAuditRecord.findById(
+    id,
+  );
+
+  if (!transformerAuditRecord) {
+    { const error = new Error("Transformer audit record not found"); error.statusCode = 404; throw error; }
+  }
+
+  const utility = await resolveAccessibleUtilityAccount(
+    user,
+    transformerAuditRecord.utility_account_id,
+  );
+
+  if (!utility) {
+    { const error = new Error("Access denied"); error.statusCode = 403; throw error; }
+
+  assertAuditRecordMutable({
+    record: transformerAuditRecord,
+    user,
+    operation: "delete",
+  });
+  }
+
+  const transformer = await Transformer.findById(
+    transformerAuditRecord.transformer_id,
+  );
+
+  const entityName = transformer?.transformer_tag || "Transformer Audit";
+  const facilityId = transformerAuditRecord.facility_id;
+  const utilityId = transformerAuditRecord.utility_account_id;
+  const totalLosses = transformerAuditRecord.total_losses_kW;
+  const averageLoad = transformerAuditRecord.average_load_kVA;
+  const percentLoading = transformerAuditRecord.percent_loading;
+
+  await transformerAuditRecord.softDelete();
+
+  await createRecentActivity({
+    actor: user,
+    action: "deleted",
+    entity_type: "transformer_audit",
+    entity_id: transformerAuditRecord._id,
+    entity_name: entityName,
+    facility_id: facilityId,
+    utility_account_id: utilityId,
+    message: buildActivityMessage({
+      actorName: user?.name || "User",
+      action: "deleted",
+      entityLabel: "transformer audit",
+      entityName,
+    }),
+    meta: {
+      total_losses_kW: totalLosses,
+      average_load_kVA: averageLoad,
+      percent_loading: percentLoading,
+    },
+  });
+
+  return {
+    success: true,
+    message: "Transformer audit record deleted successfully",
+  };
+};
+
+export const uploadTransformerAuditRecordDocumentsService = async ({
+  user,
+  id,
+  files,
+  body,
+}) => {
+  const auditRecord = await TransformerAuditRecord.findById(id);
+
+  if (!auditRecord) {
+    const error = new Error("Transformer audit record not found");
+    error.statusCode = 404;
+    throw error;
+  }
+
+  const utility = await resolveAccessibleUtilityAccount(
+    user,
+    auditRecord.utility_account_id,
+  );
+
+  if (!utility) {
+    const error = new Error("Access denied");
+    error.statusCode = 403;
+    throw error;
+  }
+
+  assertAuditRecordMutable({
+    record: transformerAuditRecord,
+    user,
+    body,
+    operation: "upload",
+  });
+
+  let captions = [];
+  if (body?.captions) {
+    try {
+      captions =
+        typeof body.captions === "string"
+          ? JSON.parse(body.captions)
+          : body.captions;
+    } catch {
+      captions = [];
+    }
+  }
+
+  const uploadedDocuments = await uploadAuditDocuments(
+    files || [],
+    "transformer-audits",
+    auditRecord._id,
+  );
+
+  uploadedDocuments.forEach((doc, index) => {
+    const caption = captions[index];
+    if (typeof caption === "string" && caption.trim()) {
+      doc.caption = caption.trim();
+    }
+  });
+
+  if (uploadedDocuments.length > 0) {
+    auditRecord.documents = [...(auditRecord.documents || []), ...uploadedDocuments];
+    await auditRecord.save();
+  }
+
+  return {
+    success: true,
+    message: "Documents uploaded successfully",
+    data: auditRecord,
+  };
+};

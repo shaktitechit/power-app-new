@@ -1,0 +1,100 @@
+import documentSchema from "../document.js";
+import mongoose from "mongoose";
+
+import { softDeletePlugin } from "../plugins/softDelete.js";
+import { registerAuditWorkflowHooks } from "../../modules/utility-workflow/utilityWorkflowHook.js";
+
+const dgSetSchema = new mongoose.Schema(
+  {
+    facility_id: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Facility",
+      required: true,
+    },
+
+    utility_account_id: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "UtilityAccount",
+      required: true,
+    },
+
+    dg_number: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+
+    make_model: {
+      type: String,
+      trim: true,
+    },
+
+    year_of_installation: {
+      type: Number,
+      min: 1900,
+      max: new Date().getFullYear(),
+    },
+
+    rated_capacity_kVA: {
+      type: Number,
+      min: 0,
+    },
+
+    rated_active_power_kW: {
+      type: Number,
+      min: 0,
+    },
+
+    rated_voltage_V: {
+      type: Number,
+      min: 0,
+    },
+
+    rated_speed_RPM: {
+      type: Number,
+      min: 0,
+    },
+
+    fuel_type: {
+      type: String,
+      enum: ["diesel", "gas", "dual"],
+      default: "diesel",
+    },
+    // 🔍 Audit metadata (recommended)
+    audit_date: {
+      type: Date,
+      default: Date.now,
+    },
+
+    auditor_id: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+    },
+
+    // 📂 Documents (manuals, invoices, images, maintenance reports)
+    documents: [documentSchema],
+  },
+  {
+    timestamps: {
+      createdAt: "created_at",
+      updatedAt: "updated_at",
+    },
+  },
+);
+
+dgSetSchema.plugin(softDeletePlugin);
+registerAuditWorkflowHooks(dgSetSchema, { sheetKey: "dg", hasCompletenessField: false });
+
+// 🔒 Prevent duplicate DG number within same utility account (among non-deleted rows)
+dgSetSchema.index(
+  { utility_account_id: 1, dg_number: 1 },
+  { unique: true, partialFilterExpression: { deleted_at: null } },
+);
+
+// 🔍 Indexes
+dgSetSchema.index({ facility_id: 1 });
+dgSetSchema.index({ utility_account_id: 1 });
+
+const DGSet = mongoose.model("DGSet", dgSetSchema);
+
+export default DGSet;

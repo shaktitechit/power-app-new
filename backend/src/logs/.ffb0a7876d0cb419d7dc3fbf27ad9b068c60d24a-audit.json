@@ -1,0 +1,35 @@
+{
+    "keep": {
+        "days": true,
+        "amount": 14
+    },
+    "auditLog": "/Users/macbook/Desktop/power-app-main/backend/src/logs/.ffb0a7876d0cb419d7dc3fbf27ad9b068c60d24a-audit.json",
+    "files": [
+        {
+            "date": 1782106131037,
+            "name": "/Users/macbook/Desktop/power-app-main/backend/src/logs/application-2026-06-22.log",
+            "hash": "a0b8b7b7f3164f399d496eede4ad6c40a42b94b0a07fee18553339acb7d44249"
+        },
+        {
+            "date": 1782555495417,
+            "name": "/Users/macbook/Desktop/power-app-main/backend/src/logs/application-2026-06-27.log",
+            "hash": "28bd0927f9d2880e792c78a52dfa3eb55c9d4c7e832dcff136776ce5b4b453cb"
+        },
+        {
+            "date": 1782901709302,
+            "name": "/Users/macbook/Desktop/power-app-main/backend/src/logs/application-2026-07-01.log",
+            "hash": "7f781805ebf8199893b89f7199ea0fc333c003db0cb2c2ae862744310dc9d838"
+        },
+        {
+            "date": 1782977543319,
+            "name": "/Users/macbook/Desktop/power-app-main/backend/src/logs/application-2026-07-02.log",
+            "hash": "4715981d47886bbce6213b225933bc09e5aed7100ef7cdbf7d3dd5ccf42d7720"
+        },
+        {
+            "date": 1783061734564,
+            "name": "/Users/macbook/Desktop/power-app-main/backend/src/logs/application-2026-07-03.log",
+            "hash": "36247b2f0dd2caf0eb4f60411ae01f68775622c76b5ee653f05e7e0ddce57a93"
+        }
+    ],
+    "hashType": "sha256"
+}

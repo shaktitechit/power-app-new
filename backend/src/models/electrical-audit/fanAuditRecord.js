@@ -1,0 +1,130 @@
+import documentSchema from "../document.js";
+import mongoose from "mongoose";
+
+import { softDeletePlugin } from "../plugins/softDelete.js";
+import { registerAuditWorkflowHooks } from "../../modules/utility-workflow/utilityWorkflowHook.js";
+
+const fanAuditRecordSchema = new mongoose.Schema(
+  {
+    facility_id: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Facility",
+      required: true,
+    },
+
+    utility_account_id: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "UtilityAccount",
+      required: true,
+    },
+
+    building_block: {
+      type: String,
+      trim: true,
+    },
+
+    area_location: {
+      type: String,
+      trim: true,
+    },
+
+    fan_type: {
+      type: String,
+      enum: ["ceiling", "exhaust", "pedestal", "wall", "industrial", "other"],
+    },
+
+    make_model: {
+      type: String,
+      trim: true,
+    },
+
+    rated_power_W: {
+      type: Number,
+      min: 0,
+    },
+
+    measured_power_W: {
+      type: Number,
+      min: 0,
+    },
+
+    quantity_nos: {
+      type: Number,
+      min: 0,
+    },
+
+    speed_control_type: {
+      type: String,
+      enum: ["regulator", "electronic", "vfd", "none"],
+    },
+
+    operating_hours_per_day: {
+      type: Number,
+      min: 0,
+    },
+
+    operating_days_per_year: {
+      type: Number,
+      min: 0,
+    },
+
+    loading_factor_percent: {
+      type: Number,
+      min: 0,
+      max: 100,
+    },
+
+    connected_load_kW: {
+      type: Number,
+      min: 0,
+    },
+
+    annual_energy_consumption_kWh: {
+      type: Number,
+      min: 0,
+    },
+
+    condition: {
+      type: String,
+      enum: ["good", "old", "inefficient"],
+    },
+
+    remarks: {
+      type: String,
+      trim: true,
+    },
+
+    audit_date: {
+      type: Date,
+      default: Date.now,
+    },
+
+    auditor_id: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+    },
+
+    documents: [documentSchema],
+  },
+  {
+    timestamps: {
+      createdAt: "created_at",
+      updatedAt: "updated_at",
+    },
+  },
+);
+
+fanAuditRecordSchema.plugin(softDeletePlugin);
+registerAuditWorkflowHooks(fanAuditRecordSchema, { sheetKey: "fan" });
+
+// Compound index for the most common query filter
+fanAuditRecordSchema.index({ utility_account_id: 1, facility_id: 1 });
+fanAuditRecordSchema.index({ facility_id: 1 });
+fanAuditRecordSchema.index({ utility_account_id: 1 });
+fanAuditRecordSchema.index({ created_at: -1 });
+
+const FanAuditRecord =
+  mongoose.models.FanAuditRecord ||
+  mongoose.model("FanAuditRecord", fanAuditRecordSchema);
+
+export default FanAuditRecord;

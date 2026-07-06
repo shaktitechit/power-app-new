@@ -1,0 +1,52 @@
+"use client";
+
+import { DashboardLayout } from "@/components/portal/layout/dashboard-layout";
+import { ElectricalEnergyUtilityWorkspace } from "./electrical-energy-utility-workspace";
+import { UtilityAccountNotFoundState } from "../shared/utility-account-not-found-state";
+import { useElectricalEnergyUtilityAccountWorkspace } from "./use-electrical-energy-utility-account-workspace";
+import type { Facility } from "@/store/slices/facilityApiSlice";
+import type { UtilityAccount } from "@/store/slices/electrical-audit/utilityApiSlice";
+
+interface ScreenProps {
+  isFullscreen: boolean;
+  onFullscreenToggle: () => void;
+}
+
+export function ElectricalEnergyUtilityAccountScreen({
+  isFullscreen,
+  onFullscreenToggle,
+}: ScreenProps) {
+  const model = useElectricalEnergyUtilityAccountWorkspace();
+
+  if (model.utilityAccountLoading || model.facilityLoading) {
+    return (
+      <DashboardLayout title="Loading Connection..." isFullscreen={isFullscreen}>
+        <div className="flex items-center justify-center py-12">
+          <p className="text-muted-foreground">Loading...</p>
+        </div>
+      </DashboardLayout>
+    );
+  }
+
+  const facility = model.facility as Facility | undefined;
+  const utilityAccount = model.utilityAccount as UtilityAccount | undefined;
+
+  if (!facility || !utilityAccount) {
+    return (
+      <UtilityAccountNotFoundState
+        auditTypeSlug={model.auditTypeSlug}
+        effectiveFacilityId={model.effectiveFacilityId}
+      />
+    );
+  }
+
+  return (
+    <ElectricalEnergyUtilityWorkspace
+      model={model}
+      facility={facility}
+      utilityAccount={utilityAccount}
+      isFullscreen={isFullscreen}
+      onFullscreenToggle={onFullscreenToggle}
+    />
+  );
+}

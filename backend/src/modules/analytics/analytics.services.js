@@ -1,0 +1,452 @@
+import { modelsRegistry } from "../../data/modelRegistry.js";
+const { Facility, FacilityAuditor, UtilityAccount, SolarPlant, DGSet, Transformer, Pump } = modelsRegistry;
+
+
+
+
+
+
+
+import {
+  isFacilityAuditClosed,
+  isUtilityAuditCompleted,
+} from "../../helpers/auditState.js";
+import { isAdmin } from "../../services/authorization/index.js";
+
+// ─── Private helpers ──────────────────────────────────────────────────────────
+
+const toNumber = (value) => {
+  const n = Number(value);
+  return Number.isNaN(n) ? 0 : n;
+};
+
+const startOfMonth = (date) => new Date(date.getFullYear(), date.getMonth(), 1);
+
+const endOfMonth = (date) =>
+  new Date(date.getFullYear(), date.getMonth() + 1, 1);
+
+const getLastNMonths = (count = 6) => {
+  const months = [];
+  const now = new Date();
+  for (let i = count - 1; i >= 0; i--) {
+    months.push(new Date(now.getFullYear(), now.getMonth() - i, 1));
+  }
+  return months;
+};
+
+const monthLabel = (date) =>
+  date.toLocaleString("en-US", { month: "short" });
+
+const resolveCreatedAt = (doc) =>
+  doc?.createdAt || doc?.created_at || doc?.updatedAt || doc?.updated_at || null;
+
+const isWithinRange = (value, start, end) => {
+  if (!value) return false;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return false;
+  return date >= start && date < end;
+};
+
+// ─── Exported service helpers ─────────────────────────────────────────────────
+
+/**
+ * Return the list of facility IDs accessible to the given user.
+ * Admin / super_admin → all facilities.
+ * Manager → assigned facilities only.
+ * Auditor → owned + assigned facilities.
+ */
+export const getAccessibleFacilityIds = async (user) => {
+  if (!user?._id) return [];
+
+  if (user?.role === "super_admin") {
+    const facilities = await Facility.find({}, "_id").lean();
+    return facilities.map((f) => String(f._id));
+  }
+
+  if (user?.role === "manager") {
+    const assigned = await FacilityAuditor.find(
+      { user_id: user._id },
+      "facility_id",
+    ).lean();
+    return [...new Set(assigned.map((a) => String(a.facility_id)))];
+  }
+
+  const [owned, assigned] = await Promise.all([
+    Facility.find({ owner_user_id: user._id }, "_id").lean(),
+    FacilityAuditor.find({ user_id: user._id }, "facility_id").lean(),
+  ]);
+
+  return [
+    ...new Set([
+      ...owned.map((f) => String(f._id)),
+      ...assigned.map((a) => String(a.facility_id)),
+    ]),
+  ];
+};
+
+export const getComparisonStats = (items = [], referenceDate = new Date()) => {
+  const currentMonthStart = startOfMonth(referenceDate);
+  const nextMonthStart = endOfMonth(referenceDate);
+  const previousMonthStart = new Date(
+    currentMonthStart.getFullYear(),
+    currentMonthStart.getMonth() - 1,
+    1,
+  );
+  const previousMonthEnd = currentMonthStart;
+
+  let currentTotal = 0;
+  let lastMonthTotal = 0;
+
+  for (const item of items) {
+    const createdAt = resolveCreatedAt(item);
+    if (isWithinRange(createdAt, currentMonthStart, nextMonthStart)) {
+      currentTotal += 1;
+    } else if (isWithinRange(createdAt, previousMonthStart, previousMonthEnd)) {
+      lastMonthTotal += 1;
+    }
+  }
+
+  const difference = currentTotal - lastMonthTotal;
+  let percentage = 0;
+  if (lastMonthTotal === 0) {
+    percentage = currentTotal > 0 ? 100 : 0;
+  } else {
+    percentage = (difference / lastMonthTotal) * 100;
+  }
+
+  let trend = "no_change";
+  if (difference > 0) trend = "increase";
+  if (difference < 0) trend = "decrease";
+
+  return {
+    total: items.length,
+    lastMonthTotal,
+    difference,
+    percentage: Number(Math.abs(percentage).toFixed(2)),
+    trend,
+  };
+};
+
+export const buildTimeSeriesData = (datasets = [], months = 6) => {
+  const buckets = getLastNMonths(months).map((d) => ({
+    date: monthLabel(d),
+    audits: 0,
+    key: `${d.getFullYear()}-${d.getMonth()}`,
+  }));
+
+  for (const dataset of datasets) {
+    for (const item of dataset) {
+      const rawDate = resolveCreatedAt(item);
+      if (!rawDate) continue;
+
+      const d = new Date(rawDate);
+      if (Number.isNaN(d.getTime())) continue;
+
+      const key = `${d.getFullYear()}-${d.getMonth()}`;
+      const bucket = buckets.find((b) => b.key === key);
+      if (bucket) bucket.audits += 1;
+    }
+  }
+
+  return buckets.map(({ key, ...rest }) => rest);
+};
+
+export const buildCapacityByCity = ({
+  facilities = [],
+  utilityAccounts = [],
+  solarPlants = [],
+  dgSets = [],
+  transformers = [],
+  pumps = [],
+}) => {
+  const facilityMap = new Map(facilities.map((f) => [String(f._id), f]));
+  const utilityToFacilityMap = new Map(
+    utilityAccounts.map((u) => [String(u._id), String(u.facility_id)]),
+  );
+
+  const cityTotals = new Map();
+
+  const addCapacity = (facilityId, value) => {
+    const facility = facilityMap.get(String(facilityId));
+    const city = facility?.city?.trim() || "Unknown";
+    cityTotals.set(city, (cityTotals.get(city) || 0) + toNumber(value));
+  };
+
+  for (const dg of dgSets) {
+    const facilityId =
+      utilityToFacilityMap.get(String(dg.utility_account_id)) ||
+      String(dg.facility_id || "");
+    addCapacity(facilityId, dg.rated_capacity_kVA);
+  }
+
+  for (const solar of solarPlants) {
+    const facilityId =
+      utilityToFacilityMap.get(String(solar.utility_account_id)) ||
+      String(solar.facility_id || "");
+    addCapacity(facilityId, solar.rating_kWp);
+  }
+
+  for (const transformer of transformers) {
+    const facilityId =
+      utilityToFacilityMap.get(String(transformer.utility_account_id)) ||
+      String(transformer.facility_id || "");
+    addCapacity(facilityId, transformer.rated_capacity_kVA);
+  }
+
+  for (const pump of pumps) {
+    const facilityId =
+      utilityToFacilityMap.get(String(pump.utility_account_id)) ||
+      String(pump.facility_id || "");
+    addCapacity(facilityId, pump.rated_power_kW_or_HP);
+  }
+
+  return [...cityTotals.entries()]
+    .map(([city, capacity]) => ({ city, capacity: Math.round(capacity) }))
+    .sort((a, b) => b.capacity - a.capacity);
+};
+
+export const buildEnergySourceDistribution = ({
+  utilityAccounts = [],
+  solarPlants = [],
+  dgSets = [],
+}) => {
+  const getKva = (val, unit) => {
+    if (val === undefined || val === null || val === "") return 0;
+    const valueNum = Number(val);
+    if (Number.isNaN(valueNum)) return 0;
+    if (unit === "kW") return valueNum / 0.9;
+    if (unit === "BHP") return (valueNum * 0.746) / 0.9;
+    return valueNum;
+  };
+
+  const gridCapacity = utilityAccounts.reduce((sum, u) => {
+    const val =
+      u.sanctioned_demand_value !== undefined &&
+      u.sanctioned_demand_value !== null
+        ? u.sanctioned_demand_value
+        : u.sanctioned_demand_kVA;
+    const unit = u.sanctioned_demand_unit || "kVA";
+    return sum + getKva(val, unit);
+  }, 0);
+
+  const dgCapacity = dgSets.reduce(
+    (sum, dg) => sum + toNumber(dg.rated_capacity_kVA),
+    0,
+  );
+
+  const solarCapacity = solarPlants.reduce(
+    (sum, s) => sum + toNumber(s.rating_kWp),
+    0,
+  );
+
+  return [
+    { name: "Grid", value: Math.round(gridCapacity) },
+    { name: "DG", value: Math.round(dgCapacity) },
+    { name: "Solar", value: Math.round(solarCapacity) },
+  ];
+};
+
+export const deriveAuditStatus = ({ facilities = [], utilityAccounts = [] }) => {
+  const utilityByFacility = new Map();
+  for (const u of utilityAccounts) {
+    const fid = String(u.facility_id);
+    utilityByFacility.set(fid, (utilityByFacility.get(fid) || 0) + 1);
+  }
+
+  let completed = 0;
+  let inProgress = 0;
+  let pending = 0;
+
+  for (const facility of facilities) {
+    const facilityId = String(facility._id);
+    const utilityCount = utilityByFacility.get(facilityId) || 0;
+    const isClosed = isFacilityAuditClosed(facility);
+    const facilityUtilities = utilityAccounts.filter(
+      (u) => String(u.facility_id) === facilityId,
+    );
+    const allUtilitiesAuditSubmitted =
+      facilityUtilities.length > 0 &&
+      facilityUtilities.every((u) => isUtilityAuditCompleted(u));
+
+    if (isClosed) {
+      completed += 1;
+    } else if (utilityCount > 0 && allUtilitiesAuditSubmitted) {
+      inProgress += 1;
+    } else {
+      pending += 1;
+    }
+  }
+
+  return {
+    completed,
+    inProgress,
+    pending,
+    chart: [
+      { name: "Completed", value: completed },
+      { name: "In Progress", value: inProgress },
+      { name: "Pending", value: pending },
+    ],
+  };
+};
+
+// ─── Empty response shape (used when user has no accessible facilities) ───────
+
+const EMPTY_RESPONSE = {
+  analytics: {
+    totalFacilities: 0,
+    completedAudits: 0,
+    pendingAudits: 0,
+    utilityAuditsCompleted: 0,
+    utilityAuditsPending: 0,
+    closedFacilities: 0,
+    openFacilities: 0,
+    totalCapacity: 0,
+    totalConnections: 0,
+    dgCapacity: 0,
+    solarCapacity: 0,
+    totalDGSystems: 0,
+    totalSolarSystems: 0,
+    totalTransformers: 0,
+    totalPumps: 0,
+  },
+  stats: {
+    facilities: { total: 0, lastMonthTotal: 0, difference: 0, percentage: 0, trend: "no_change" },
+    utilityAccounts: { total: 0, lastMonthTotal: 0, difference: 0, percentage: 0, trend: "no_change" },
+    solarPlants: { total: 0, lastMonthTotal: 0, difference: 0, percentage: 0, trend: "no_change" },
+    dgSets: { total: 0, lastMonthTotal: 0, difference: 0, percentage: 0, trend: "no_change" },
+    transformers: { total: 0, lastMonthTotal: 0, difference: 0, percentage: 0, trend: "no_change" },
+    pumps: { total: 0, lastMonthTotal: 0, difference: 0, percentage: 0, trend: "no_change" },
+  },
+  statusData: [],
+  energySourceData: [],
+  capacityByCity: [],
+  timeSeriesData: [],
+};
+
+// ─── Main service ─────────────────────────────────────────────────────────────
+
+export const getAnalyticsService = async ({ user }) => {
+  const accessibleFacilityIds = await getAccessibleFacilityIds(user);
+
+  if (!accessibleFacilityIds.length) {
+    return EMPTY_RESPONSE;
+  }
+
+  const facilityQuery = { _id: { $in: accessibleFacilityIds } };
+
+  const [facilities, utilityAccounts, solarPlants, dgSets, transformers, pumps] =
+    await Promise.all([
+      Facility.find(
+        facilityQuery,
+        "name city status facility_type audit_closure createdAt updatedAt created_at updated_at",
+      ).lean(),
+
+      UtilityAccount.find(
+        { facility_id: { $in: accessibleFacilityIds } },
+        "facility_id account_number sanctioned_demand_value sanctioned_demand_unit sanctioned_demand_kVA audit_step_submissions createdAt updatedAt created_at updated_at",
+      ).lean(),
+
+      SolarPlant.find(
+        { facility_id: { $in: accessibleFacilityIds } },
+        "facility_id utility_account_id rating_kWp createdAt updatedAt created_at updated_at",
+      ).lean(),
+
+      DGSet.find(
+        { facility_id: { $in: accessibleFacilityIds } },
+        "facility_id utility_account_id rated_capacity_kVA createdAt updatedAt created_at updated_at",
+      ).lean(),
+
+      Transformer.find(
+        { facility_id: { $in: accessibleFacilityIds } },
+        "facility_id utility_account_id rated_capacity_kVA createdAt updatedAt created_at updated_at",
+      ).lean(),
+
+      Pump.find(
+        { facility_id: { $in: accessibleFacilityIds } },
+        "facility_id utility_account_id rated_power_kW_or_HP createdAt updatedAt created_at updated_at",
+      ).lean(),
+    ]);
+
+  const auditStatus = deriveAuditStatus({ facilities, utilityAccounts });
+  const utilityAuditsCompleted = utilityAccounts.filter((u) =>
+    isUtilityAuditCompleted(u),
+  ).length;
+  const utilityAuditsPending = Math.max(
+    utilityAccounts.length - utilityAuditsCompleted,
+    0,
+  );
+  const closedFacilities = facilities.filter((f) =>
+    isFacilityAuditClosed(f),
+  ).length;
+  const openFacilities = Math.max(facilities.length - closedFacilities, 0);
+
+  const energySourceData = buildEnergySourceDistribution({
+    utilityAccounts,
+    solarPlants,
+    dgSets,
+  });
+
+  const capacityByCity = buildCapacityByCity({
+    facilities,
+    utilityAccounts,
+    solarPlants,
+    dgSets,
+    transformers,
+    pumps,
+  });
+
+  const totalGridCapacity = energySourceData.find((x) => x.name === "Grid")?.value || 0;
+  const totalDGCapacity = energySourceData.find((x) => x.name === "DG")?.value || 0;
+  const totalSolarCapacity = energySourceData.find((x) => x.name === "Solar")?.value || 0;
+
+  const transformerCapacity = transformers.reduce(
+    (sum, t) => sum + toNumber(t.rated_capacity_kVA),
+    0,
+  );
+  const pumpCapacity = pumps.reduce(
+    (sum, p) => sum + toNumber(p.rated_power_kW_or_HP),
+    0,
+  );
+
+  const totalCapacity =
+    totalGridCapacity +
+    totalDGCapacity +
+    totalSolarCapacity +
+    Math.round(transformerCapacity) +
+    Math.round(pumpCapacity);
+
+  return {
+    analytics: {
+      totalFacilities: facilities.length,
+      completedAudits: auditStatus.completed,
+      pendingAudits: auditStatus.pending,
+      utilityAuditsCompleted,
+      utilityAuditsPending,
+      closedFacilities,
+      openFacilities,
+      totalCapacity,
+      totalConnections: utilityAccounts.length,
+      dgCapacity: totalDGCapacity,
+      solarCapacity: totalSolarCapacity,
+      totalDGSystems: dgSets.length,
+      totalSolarSystems: solarPlants.length,
+      totalTransformers: transformers.length,
+      totalPumps: pumps.length,
+    },
+    stats: {
+      facilities: getComparisonStats(facilities),
+      utilityAccounts: getComparisonStats(utilityAccounts),
+      solarPlants: getComparisonStats(solarPlants),
+      dgSets: getComparisonStats(dgSets),
+      transformers: getComparisonStats(transformers),
+      pumps: getComparisonStats(pumps),
+    },
+    statusData: auditStatus.chart,
+    energySourceData,
+    capacityByCity,
+    timeSeriesData: buildTimeSeriesData(
+      [facilities, utilityAccounts, solarPlants, dgSets, transformers, pumps],
+      6,
+    ),
+  };
+};

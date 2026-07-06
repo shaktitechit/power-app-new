@@ -1,0 +1,45 @@
+{
+    "keep": {
+        "days": true,
+        "amount": 14
+    },
+    "auditLog": "C:\\Users\\Dell\\Desktop\\power-app\\power-app\\backend\\logs\\.4233b2cf972672c93422b4a8ff03ba2742bdafff-audit.json",
+    "files": [
+        {
+            "date": 1778737203991,
+            "name": "C:\\Users\\Dell\\Desktop\\power-app\\power-app\\backend\\logs\\slow-api-2026-05-14.log",
+            "hash": "f355761f728b000277a77c5c7901b8d2ec4ddf95e13c24188e33515b2b82c59d"
+        },
+        {
+            "date": 1778833541299,
+            "name": "C:\\Users\\Dell\\Desktop\\power-app\\power-app\\backend\\logs\\slow-api-2026-05-15.log",
+            "hash": "c0cc4d53d2bf5a353784ca04550d9908e1c159fe092a61e4f110094273f9e528"
+        },
+        {
+            "date": 1779079751265,
+            "name": "C:\\Users\\Dell\\Desktop\\power-app\\power-app\\backend\\logs\\slow-api-2026-05-18.log",
+            "hash": "692fde9478131b7e45df04f4db288f59fa42088eee3f21d0b07fd09baf4b4d31"
+        },
+        {
+            "date": 1779425152719,
+            "name": "C:\\Users\\Dell\\Desktop\\power-app\\power-app\\backend\\logs\\slow-api-2026-05-22.log",
+            "hash": "aae7572f4f035c4e4bdf371f8b1bd27beffa6bcfe7de82eb317fdad8a0fd362c"
+        },
+        {
+            "date": 1779690898109,
+            "name": "C:\\Users\\Dell\\Desktop\\power-app\\power-app\\backend\\logs\\slow-api-2026-05-25.log",
+            "hash": "c6b92a95dc3bca97f1912b5b8da8ede3d7176db7f0d23d3d4a5b80fef1f86893"
+        },
+        {
+            "date": 1779734031817,
+            "name": "C:\\Users\\Dell\\Desktop\\power-app\\power-app\\backend\\logs\\slow-api-2026-05-26.log",
+            "hash": "9a3cd2100232a1c4c61582a6c881e12434c1d488b4d5bb0c5d1161cab5959d67"
+        },
+        {
+            "date": 1779857700166,
+            "name": "C:\\Users\\Dell\\Desktop\\power-app\\power-app\\backend\\logs\\slow-api-2026-05-27.log",
+            "hash": "e5d0f14c3addad4a0b7d966dabefd6f204962b283b035c0b781e691137f903a7"
+        }
+    ],
+    "hashType": "sha256"
+}

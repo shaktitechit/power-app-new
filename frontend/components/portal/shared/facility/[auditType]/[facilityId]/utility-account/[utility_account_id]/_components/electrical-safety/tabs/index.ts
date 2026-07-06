@@ -1,0 +1,17 @@
+export { TransformersTab } from "./transformers-tab";
+export { MeteringRoomTab } from "./metering-room-tab";
+export { PanelRoomTab } from "./panel-room-tab";
+export { LightDbTab } from "./light-db-tab";
+export { DgSetTab } from "./dg-set-tab";
+export { EarthingSystemTab } from "./earthing-system-tab";
+export { UpsBatteryTab } from "./ups-battery-tab";
+export { GeneralSafetyTab } from "./general-safety-tab";
+export { WiringInspectionTab } from "./wiring-inspection-tab";
+export { LoadAnalysisTab } from "./load-analysis-tab";
+export { LeakInspectionTab } from "./leak-inspection-tab";
+export { ThermographyTab } from "./thermography-tab";
+export { ElevatorSafetyTab } from "./elevator-safety-tab";
+export { PacVentilationTab } from "./pac-ventilation-tab";
+export { PumpCompressorTab } from "./pump-compressor-tab";
+export { AdditionalItemsTab } from "./additional-items-tab";
+export { DocumentsReviewTab } from "./documents-review-tab";

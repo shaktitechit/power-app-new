@@ -1,0 +1,77 @@
+import mongoose from "mongoose";
+
+import { softDeletePlugin } from "../plugins/softDelete.js";
+import safetyAuditChecklistItemSchema from "./safetyAuditChecklistItem.js";
+import safetyAuditDocumentSchema from "./safetyAuditDocuments.js";
+
+import { registerAuditWorkflowHooks } from "../../modules/utility-workflow/utilityWorkflowHook.js";
+
+const safetyPumpCompressorAuditSchema = new mongoose.Schema(
+  {
+    facility_id: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Facility",
+      required: true,
+    },
+
+    utility_account_id: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "UtilityAccount",
+      required: true,
+    },
+
+    equipment_name: String,
+
+    equipment_type: {
+      type: String,
+      enum: ["pump", "compressor", "motor", "other"],
+      default: "pump",
+    },
+
+    location: String,
+
+    audit_date: {
+      type: Date,
+      default: Date.now,
+    },
+
+    auditor_id: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+    },
+
+    items: [safetyAuditChecklistItemSchema],
+
+    documents: [safetyAuditDocumentSchema],
+
+    status: {
+      type: String,
+      enum: ["draft", "completed", "approved"],
+      default: "draft",
+    },
+  },
+  {
+    timestamps: {
+      createdAt: "created_at",
+      updatedAt: "updated_at",
+    },
+  }
+);
+
+safetyPumpCompressorAuditSchema.plugin(softDeletePlugin);
+
+safetyPumpCompressorAuditSchema.index({
+  facility_id: 1,
+  utility_account_id: 1,
+  audit_date: -1,
+});
+
+
+registerAuditWorkflowHooks(safetyPumpCompressorAuditSchema, {
+  sheetKey: "pump-compressor",
+});
+
+export default mongoose.model(
+  "SafetyPumpCompressorAudit",
+  safetyPumpCompressorAuditSchema
+);

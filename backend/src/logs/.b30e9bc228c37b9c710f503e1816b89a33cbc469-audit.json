@@ -1,0 +1,15 @@
+{
+    "keep": {
+        "days": true,
+        "amount": 14
+    },
+    "auditLog": "/Users/macbook/Desktop/power-app-main/backend/logs/.b30e9bc228c37b9c710f503e1816b89a33cbc469-audit.json",
+    "files": [
+        {
+            "date": 1781939760824,
+            "name": "/Users/macbook/Desktop/power-app-main/backend/logs/application-2026-06-20.log",
+            "hash": "c0397ef3e89c8a6355bfdb062095c8386ff3f692e27430072328de59905cf741"
+        }
+    ],
+    "hashType": "sha256"
+}

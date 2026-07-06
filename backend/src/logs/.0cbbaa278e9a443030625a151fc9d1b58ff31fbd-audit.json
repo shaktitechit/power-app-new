@@ -1,0 +1,45 @@
+{
+    "keep": {
+        "days": true,
+        "amount": 14
+    },
+    "auditLog": "C:\\Users\\Dell\\Desktop\\power-app\\power-app\\backend\\logs\\.0cbbaa278e9a443030625a151fc9d1b58ff31fbd-audit.json",
+    "files": [
+        {
+            "date": 1778737203946,
+            "name": "C:\\Users\\Dell\\Desktop\\power-app\\power-app\\backend\\logs\\application-2026-05-14.log",
+            "hash": "ec94e112145cee87793d43378641b193b6495c214857e6c920ba49e9d8f62e37"
+        },
+        {
+            "date": 1778833541275,
+            "name": "C:\\Users\\Dell\\Desktop\\power-app\\power-app\\backend\\logs\\application-2026-05-15.log",
+            "hash": "28fafb3cd55f36ce90dbc4cc946967cb1371642e4c605e3c5944b1b11f5acdfa"
+        },
+        {
+            "date": 1779079751206,
+            "name": "C:\\Users\\Dell\\Desktop\\power-app\\power-app\\backend\\logs\\application-2026-05-18.log",
+            "hash": "ba07f0c566004f2bed5f0cb1a298eb59f1343050979bceeab4502235d922f939"
+        },
+        {
+            "date": 1779425152694,
+            "name": "C:\\Users\\Dell\\Desktop\\power-app\\power-app\\backend\\logs\\application-2026-05-22.log",
+            "hash": "6609d7304eeb5e05203502ea9a9b9b95f541f5277293e69493e9add07e1d3d86"
+        },
+        {
+            "date": 1779690898082,
+            "name": "C:\\Users\\Dell\\Desktop\\power-app\\power-app\\backend\\logs\\application-2026-05-25.log",
+            "hash": "b0b8054e865dd4be24d5ed7345468b7aad3660565f86c71dbe59f81d493daa7b"
+        },
+        {
+            "date": 1779734031775,
+            "name": "C:\\Users\\Dell\\Desktop\\power-app\\power-app\\backend\\logs\\application-2026-05-26.log",
+            "hash": "c7eb8853756d6767ef9ee5abb94dde60ccf987aa4fd760138fd715b5a8c54415"
+        },
+        {
+            "date": 1779857699976,
+            "name": "C:\\Users\\Dell\\Desktop\\power-app\\power-app\\backend\\logs\\application-2026-05-27.log",
+            "hash": "62673ae4972c98ae47de7c5b7af905c53f1d8ce62f25e76fc832a6248c2db499"
+        }
+    ],
+    "hashType": "sha256"
+}

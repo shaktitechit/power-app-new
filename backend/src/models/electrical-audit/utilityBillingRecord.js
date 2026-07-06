@@ -1,0 +1,146 @@
+import documentSchema from "../document.js";
+import mongoose from "mongoose";
+
+import { softDeletePlugin } from "../plugins/softDelete.js";
+import { registerAuditWorkflowHooks } from "../../modules/utility-workflow/utilityWorkflowHook.js";
+
+const utilityBillingRecordSchema = new mongoose.Schema(
+  {
+    utility_account_id: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "UtilityAccount",
+      required: true,
+    },
+
+    billing_period_start: {
+      type: Date,
+      required: true,
+    },
+
+    billing_period_end: {
+      type: Date,
+      required: true,
+    },
+
+    billing_days: {
+      type: Number,
+      min: 0,
+    },
+
+    bill_no: {
+      type: String,
+      trim: true,
+    },
+
+    mdi_kVA: {
+      type: Number,
+      min: 0,
+    },
+
+    units_kWh: {
+      type: Number,
+      min: 0,
+    },
+
+    units_kVAh: {
+      type: Number,
+      min: 0,
+    },
+
+    pf: {
+      type: Number,
+      min: 0,
+      max: 1,
+    },
+
+    fixed_charges_rs: {
+      type: Number,
+      min: 0,
+    },
+
+    demand_charges_rs: {
+      type: Number,
+      min: 0,
+    },
+
+    energy_charges_rs: {
+      type: Number,
+      min: 0,
+    },
+
+    taxes_and_rent_rs: {
+      type: Number,
+    },
+
+    other_charges_rs: {
+      type: Number,
+    },
+
+    other_charges_remark: {
+      type: String,
+      trim: true,
+    },
+
+    penalty_rs: {
+      type: Number,
+      min: 0,
+    },
+
+    rebate_subsidy_rs: {
+      type: Number,
+      min: 0,
+    },
+
+    monthly_electricity_bill_rs: {
+      type: Number,
+    },
+
+    unit_consumption_per_day_kVAh: {
+      type: Number,
+      min: 0,
+    },
+
+    average_per_unit_cost_rs: {
+      type: Number,
+    },
+    // 🔍 Audit metadata (recommended)
+    audit_date: {
+      type: Date,
+      default: Date.now,
+    },
+
+    auditor_id: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+    },
+
+    // 📂 Documents (actual bill PDFs, meter photos, etc.)
+    documents: [documentSchema],
+  },
+  {
+    timestamps: {
+      createdAt: "created_at",
+      updatedAt: "updated_at",
+    },
+  },
+);
+
+utilityBillingRecordSchema.plugin(softDeletePlugin);
+registerAuditWorkflowHooks(utilityBillingRecordSchema, { sheetKey: "billing" });
+
+// 🔒 Prevent duplicate billing record for same period (among non-deleted rows)
+utilityBillingRecordSchema.index(
+  { utility_account_id: 1, billing_period_start: 1, billing_period_end: 1 },
+  { unique: true, partialFilterExpression: { deleted_at: null } },
+);
+
+// 🔍 Indexes
+utilityBillingRecordSchema.index({ utility_account_id: 1 });
+utilityBillingRecordSchema.index({ billing_period_start: -1 });
+
+const UtilityBillingRecord = mongoose.model(
+  "UtilityBillingRecord",
+  utilityBillingRecordSchema,
+);
+
+export default UtilityBillingRecord;

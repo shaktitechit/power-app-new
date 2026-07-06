@@ -1,0 +1,110 @@
+import documentSchema from "../document.js";
+import mongoose from "mongoose";
+
+import { softDeletePlugin } from "../plugins/softDelete.js";
+import { registerAuditWorkflowHooks } from "../../modules/utility-workflow/utilityWorkflowHook.js";
+
+const transformerSchema = new mongoose.Schema(
+  {
+    facility_id: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Facility",
+      required: true,
+    },
+
+    utility_account_id: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "UtilityAccount",
+      required: true,
+    },
+
+    transformer_tag: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+
+    rated_capacity_kVA: {
+      type: Number,
+      min: 0,
+    },
+
+    type_of_cooling: {
+      type: String,
+      enum: ["ONAN", "ONAF", "OFWF", "ODAF", "dry"],
+    },
+
+    rated_HV_kV: {
+      type: Number,
+      min: 0,
+    },
+
+    rated_LV_V: {
+      type: Number,
+      min: 0,
+    },
+
+    rated_HV_current_A: {
+      type: Number,
+      min: 0,
+    },
+
+    rated_LV_current_A: {
+      type: Number,
+      min: 0,
+    },
+
+    no_load_loss_kW: {
+      type: Number,
+      min: 0,
+    },
+
+    full_load_loss_kW: {
+      type: Number,
+      min: 0,
+    },
+
+    nameplate_efficiency_percent: {
+      type: Number,
+      min: 0,
+      max: 100,
+    },
+
+    // 🔍 Audit metadata (recommended)
+    audit_date: {
+      type: Date,
+      default: Date.now,
+    },
+
+    auditor_id: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+    },
+
+    // 📂 Documents (test reports, nameplate images, drawings, etc.)
+    documents: [documentSchema],
+  },
+  {
+    timestamps: {
+      createdAt: "created_at",
+      updatedAt: "updated_at",
+    },
+  },
+);
+
+transformerSchema.plugin(softDeletePlugin);
+registerAuditWorkflowHooks(transformerSchema, { sheetKey: "transformer", hasCompletenessField: false });
+
+// 🔒 Prevent duplicate transformer tag per utility account (among non-deleted rows)
+transformerSchema.index(
+  { utility_account_id: 1, transformer_tag: 1 },
+  { unique: true, partialFilterExpression: { deleted_at: null } },
+);
+
+// 🔍 Indexes
+transformerSchema.index({ facility_id: 1 });
+transformerSchema.index({ utility_account_id: 1 });
+
+const Transformer = mongoose.model("Transformer", transformerSchema);
+
+export default Transformer;

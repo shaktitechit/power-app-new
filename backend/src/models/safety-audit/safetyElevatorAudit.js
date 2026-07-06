@@ -1,0 +1,70 @@
+import mongoose from "mongoose";
+
+import { softDeletePlugin } from "../plugins/softDelete.js";
+import safetyAuditChecklistItemSchema from "./safetyAuditChecklistItem.js";
+import safetyAuditDocumentSchema from "./safetyAuditDocuments.js";
+
+import { registerAuditWorkflowHooks } from "../../modules/utility-workflow/utilityWorkflowHook.js";
+
+const safetyElevatorAuditSchema = new mongoose.Schema(
+  {
+    facility_id: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Facility",
+      required: true,
+    },
+
+    utility_account_id: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "UtilityAccount",
+      required: true,
+    },
+
+    elevator_name: String,
+    location: String,
+
+    audit_date: {
+      type: Date,
+      default: Date.now,
+    },
+
+    auditor_id: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+    },
+
+    items: [safetyAuditChecklistItemSchema],
+
+    documents: [safetyAuditDocumentSchema],
+
+    status: {
+      type: String,
+      enum: ["draft", "completed", "approved"],
+      default: "draft",
+    },
+  },
+  {
+    timestamps: {
+      createdAt: "created_at",
+      updatedAt: "updated_at",
+    },
+  }
+);
+
+safetyElevatorAuditSchema.plugin(softDeletePlugin);
+
+safetyElevatorAuditSchema.index({
+  facility_id: 1,
+  utility_account_id: 1,
+  audit_date: -1,
+});
+
+
+registerAuditWorkflowHooks(safetyElevatorAuditSchema, {
+  sheetKey: "elevator-safety",
+});
+
+export default mongoose.model(
+  "SafetyElevatorAudit",
+  safetyElevatorAuditSchema
+);
