@@ -1,13 +1,80 @@
-import { modelsRegistry } from "../../data/modelRegistry.js";
-const { PresenceLog, UserSession } = modelsRegistry;
-import { VALID_MODES } from "../../constants/modes.js";
-
-
+import mongoose from "mongoose";
 import jwt from "jsonwebtoken";
-import redisClient from "../../lib/redisClient.js";
+import { modelsRegistry } from "../../data/modelRegistry.js";
+import { VALID_MODES } from "../../constants/modes.js";
+import { safeRedisGet } from "../../lib/redisClient.js";
 import { cookieDefaults } from "../../utils/authTokens.js";
 
-// ─── Services ─────────────────────────────────────────────────────────────────
+const { PresenceLog, UserSession } = modelsRegistry;
+
+const MODE_COOKIE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+
+function isMongoReady() {
+  return mongoose.connection.readyState === 1;
+}
+
+function buildModeCookieOptions() {
+  return {
+    ...cookieDefaults(),
+    maxAge: MODE_COOKIE_MAX_AGE_MS,
+  };
+}
+
+async function splitPresenceLogOnModeSwitch(userId, mode) {
+  if (!userId || !isMongoReady()) return;
+
+  try {
+    const normalizedUserId = String(userId);
+    const presenceKey = `presence:${normalizedUserId}`;
+    const currentStatus = await safeRedisGet(presenceKey);
+
+    if (currentStatus !== "online") {
+      return;
+    }
+
+    await PresenceLog.create({
+      userId: normalizedUserId,
+      status: "offline",
+      reason: "mode-switch-pre",
+    });
+    await PresenceLog.create({
+      userId: normalizedUserId,
+      status: "online",
+      mode,
+      reason: "mode-switch-post",
+    });
+  } catch (error) {
+    console.error("Failed to split presence log on mode change:", error);
+  }
+}
+
+async function updateSessionLocation(token, location) {
+  if (!token || !location || !isMongoReady()) return;
+
+  const { lat, lng, name } = location;
+  if (typeof lat !== "number" || typeof lng !== "number") {
+    return;
+  }
+
+  try {
+    const decoded = jwt.decode(token);
+    const sessionId = decoded?.sid;
+
+    if (!sessionId || !mongoose.isValidObjectId(sessionId)) {
+      return;
+    }
+
+    await UserSession.findByIdAndUpdate(sessionId, {
+      location: {
+        lat,
+        lng,
+        ...(typeof name === "string" ? { name } : {}),
+      },
+    });
+  } catch (error) {
+    console.error("Failed to update location in session:", error);
+  }
+}
 
 /**
  * Validate the mode, set the httpOnly mode cookie, split presence log session
@@ -15,46 +82,17 @@ import { cookieDefaults } from "../../utils/authTokens.js";
  */
 export async function setModeService({ res, mode, location, userId, token }) {
   if (!mode || !VALID_MODES.includes(mode)) {
-    const err = new Error(`Invalid mode. Accepted values are: ${VALID_MODES.join(", ")}`);
+    const err = new Error(
+      `Invalid mode. Accepted values are: ${VALID_MODES.join(", ")}`,
+    );
     err.statusCode = 400;
     throw err;
   }
 
-  res.cookie("mode", mode, {
-    ...cookieDefaults(),
-    sameSite: "strict",
-    maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-  });
+  res.cookie("mode", mode, buildModeCookieOptions());
 
-  // If user is currently online, split the presence log session
-  // so the old mode stops counting and the new mode starts.
-  if (userId) {
-    try {
-      const presenceKey = `presence:${userId}`;
-      const currentStatus = await redisClient.get(presenceKey);
-
-      if (currentStatus === "online") {
-        await PresenceLog.create({ userId, status: "offline", reason: "mode-switch-pre" });
-        await PresenceLog.create({ userId, status: "online", mode, reason: "mode-switch-post" });
-      }
-    } catch (error) {
-      console.error("Failed to split presence log on mode change:", error);
-    }
-  }
-
-  // Update UserSession with location if provided
-  if (location && typeof location.lat === "number" && typeof location.lng === "number") {
-    if (token) {
-      try {
-        const decoded = jwt.decode(token);
-        if (decoded?.sid) {
-          await UserSession.findByIdAndUpdate(decoded.sid, { location });
-        }
-      } catch (err) {
-        console.error("Failed to update location in session:", err);
-      }
-    }
-  }
+  await splitPresenceLogOnModeSwitch(userId, mode);
+  await updateSessionLocation(token, location);
 
   return { mode };
 }
@@ -70,8 +108,5 @@ export function getModeService({ cookies }) {
  * Clear the mode cookie.
  */
 export function clearModeService({ res }) {
-  res.clearCookie("mode", {
-    ...cookieDefaults(),
-    sameSite: "strict",
-  });
+  res.clearCookie("mode", buildModeCookieOptions());
 }

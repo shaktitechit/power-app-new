@@ -1,5 +1,5 @@
 import { modelsRegistry } from "../../data/modelRegistry.js";
-import redisClient from "../../lib/redisClient.js";
+import { safeRedisGet, safeRedisSet } from "../../lib/redisClient.js";
 import logger from "../../config/logger.js";
 
 const { User, UserSession, PresenceLog } = modelsRegistry;
@@ -30,14 +30,14 @@ export const buildSocketLogMeta = (socket, extra = {}) => {
 export const setPresenceStatus = async ({ userId, status, ttl = null }) => {
   const key = `presence:${userId}`;
   if (ttl) {
-    await redisClient.set(key, status, { EX: ttl });
+    await safeRedisSet(key, status, { EX: ttl });
   } else {
-    await redisClient.set(key, status);
+    await safeRedisSet(key, status);
   }
 };
 
 export const getPresenceStatus = async (userId) => {
-  return await redisClient.get(`presence:${userId}`);
+  return await safeRedisGet(`presence:${userId}`);
 };
 
 export const createPresenceLog = async ({ userId, status, sessionId = null, reason = null, mode = null }) => {
@@ -70,7 +70,7 @@ export const fetchPresenceSnapshot = async () => {
   const entries = await Promise.all(
     users.map(async (user) => {
       const id = user._id.toString();
-      const status = (await redisClient.get(`presence:${id}`)) || "offline";
+      const status = (await safeRedisGet(`presence:${id}`)) || "offline";
       return [id, status];
     }),
   );
