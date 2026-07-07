@@ -63,7 +63,10 @@ app.use(errorHandler);
 
 const server = http.createServer(app);
 
+const SOCKET_IO_PATH = "/api/socket.io";
+
 const io = new Server(server, {
+  path: SOCKET_IO_PATH,
   cors: {
     origin: frontendOrigins,
     credentials: true,
