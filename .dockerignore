@@ -3,8 +3,14 @@ node_modules
 .github
 Dockerfile*
 docker-compose.yml
+docker-compose.local.yml
+docker-compose.server.yml
 npm-debug.log
 frontend/node_modules
 frontend/.next
 backend/node_modules
 logs
+.env
+.env.prod
+.env.*
+!.env.example

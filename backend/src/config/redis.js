@@ -2,7 +2,7 @@ import IORedis from "ioredis";
 import dotenv from "dotenv";
 dotenv.config();
 
-const url = process.env.REDIS_URL;
+const url = process.env.REDIS_URL || "redis://redis:6379";
 
 export const redisConnection = new IORedis(url, {
   maxRetriesPerRequest: null,

@@ -3,9 +3,21 @@ import dotenv from "dotenv";
 dotenv.config();
 
 const DEFAULT_COMMAND_TIMEOUT_MS = 2_000;
+const ERROR_LOG_INTERVAL_MS = 30_000;
+let lastGetErrorLogAt = 0;
+let lastSetErrorLogAt = 0;
+
+const logThrottled = (label, error, getLast, setLast) => {
+  const now = Date.now();
+  if (now - getLast() < ERROR_LOG_INTERVAL_MS) return;
+  setLast(now);
+  console.error(`[redis] ${label}:`, error?.message || error);
+};
+
+const redisUrl = process.env.REDIS_URL || "redis://redis:6379";
 
 const redisClient = createClient({
-  url: process.env.REDIS_URL,
+  url: redisUrl,
   socket: {
     connectTimeout: 5_000,
     family: 4,
@@ -19,11 +31,20 @@ const redisClient = createClient({
 });
 
 redisClient.on("error", (err) => {
-  console.error("[redis]", err.message);
+  console.error("[redis]", err.code || "", err.message);
 });
 
 redisClient.connect().catch((err) => {
-  console.error("[redis] connect failed:", err.message);
+  try {
+    const host = new URL(redisUrl).hostname;
+    console.error(
+      `[redis] connect failed (${host}):`,
+      err.message,
+      "— ensure the redis service is running on the same Docker network",
+    );
+  } catch {
+    console.error("[redis] connect failed:", err.message);
+  }
 });
 
 export async function safeRedisGet(
@@ -47,12 +68,24 @@ export async function safeRedisGet(
       }),
     ]);
   } catch (error) {
-    console.error("[redis] safeRedisGet failed:", error.message);
+    logThrottled(
+      "safeRedisGet failed",
+      error,
+      () => lastGetErrorLogAt,
+      (value) => {
+        lastGetErrorLogAt = value;
+      },
+    );
     return null;
   }
 }
 
-export async function safeRedisSet(key, value, options = {}, timeoutMs = DEFAULT_COMMAND_TIMEOUT_MS) {
+export async function safeRedisSet(
+  key,
+  value,
+  options = {},
+  timeoutMs = DEFAULT_COMMAND_TIMEOUT_MS,
+) {
   if (!key || !redisClient.isOpen) {
     return false;
   }
@@ -69,7 +102,14 @@ export async function safeRedisSet(key, value, options = {}, timeoutMs = DEFAULT
     ]);
     return true;
   } catch (error) {
-    console.error("[redis] safeRedisSet failed:", error.message);
+    logThrottled(
+      "safeRedisSet failed",
+      error,
+      () => lastSetErrorLogAt,
+      (value) => {
+        lastSetErrorLogAt = value;
+      },
+    );
     return false;
   }
 }
