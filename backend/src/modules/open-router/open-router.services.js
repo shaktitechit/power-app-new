@@ -61,8 +61,6 @@ export async function createChatCompletion(messages, options = {}) {
     headers: {
       Authorization: `Bearer ${OPENROUTER_API_KEY}`,
       "Content-Type": "application/json",
-      "HTTP-Referer": "https://power.spspl.com",
-      "X-Title": "SPSPL Power Audit App",
     },
     body: JSON.stringify(body),
   });
