@@ -203,48 +203,30 @@ export const updateMiscLoadAuditRecordService = async ({ user, body, files, reqQ
     operation: "update",
   });
 
-  // If utility_account_id is being changed
-  if (body.utility_account_id) {
-    const newUtility = await resolveAccessibleUtilityAccount(
-      user,
-      body.utility_account_id,
-    );
+  const nextFacilityId = body.facility_id || record.facility_id?.toString();
+  const nextUtilityId =
+    body.utility_account_id || record.utility_account_id?.toString();
 
-    if (!newUtility) {
-      { const error = new Error("No access to new utility"); error.statusCode = 403; throw error; }
-    }
-
-    const facilityIdToCheck =
-      body.facility_id || record.facility_id.toString();
-
-    if (newUtility.facility_id.toString() !== facilityIdToCheck) {
-      { const error = new Error("Utility does not belong to selected facility"); error.statusCode = 400; throw error; }
-    }
+  if (!nextFacilityId || !nextUtilityId) {
+    { const error = new Error("facility_id & utility_account_id required"); error.statusCode = 400; throw error; }
   }
 
-  // If facility_id is being changed
-  if (body.facility_id) {
-    const newFacility = await resolveAccessibleFacility(
-      user,
-      body.facility_id,
-    );
+  const facility = await resolveAccessibleFacility(user, nextFacilityId);
+  if (!facility) {
+    { const error = new Error("No access to facility"); error.statusCode = 403; throw error; }
+  }
 
-    if (!newFacility) {
-      { const error = new Error("No access to new facility"); error.statusCode = 403; throw error; }
-    }
+  const nextUtility = await resolveAccessibleUtilityAccount(
+    user,
+    nextUtilityId,
+  );
 
-    const utilityIdToCheck =
-      body.utility_account_id || record.utility_account_id.toString();
+  if (!nextUtility) {
+    { const error = new Error("No access to utility"); error.statusCode = 403; throw error; }
+  }
 
-    const utilityToCheck = await UtilityAccount.findById(utilityIdToCheck);
-
-    if (!utilityToCheck) {
-      { const error = new Error("Utility not found"); error.statusCode = 404; throw error; }
-    }
-
-    if (utilityToCheck.facility_id.toString() !== body.facility_id) {
-      { const error = new Error("Utility does not belong to selected facility"); error.statusCode = 400; throw error; }
-    }
+  if (nextUtility.facility_id.toString() !== String(nextFacilityId)) {
+    { const error = new Error("Utility does not belong to selected facility"); error.statusCode = 400; throw error; }
   }
 
   const { existing_documents: existingDocumentsRaw, ...restBody } = body;

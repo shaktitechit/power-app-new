@@ -156,12 +156,12 @@ export function formatDisplayValue(value?: string | number | null | boolean) {
 
 export function buildLuxMeasurementPayload(
   form: LuxMeasurementFormState,
-  facilityId: string,
-  utilityAccountId: string,
+  facilityId?: string,
+  utilityAccountId?: string,
 ): CreateLuxMeasurementRequest {
   return {
-    facility_id: facilityId,
-    utility_account_id: utilityAccountId,
+    facility_id: facilityId || form.facility_id,
+    utility_account_id: utilityAccountId || form.utility_account_id,
     area_location: form.area_location || undefined,
     room_type: form.room_type || undefined,
     required_lux: toNumber(form.required_lux),
