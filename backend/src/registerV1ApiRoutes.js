@@ -15,6 +15,7 @@ import adminRoutes from "./modules/super-admin/super-admin.routes.js";
 import emailRoutes from "./modules/email/email.routes.js";
 import fileManagementRoute from "./modules/file-management/file-management.routes.js";
 import notificationRoutes from "./modules/notification/notification.routes.js";
+import openRouterRoutes from "./modules/open-router/open-router.routes.js";
 
 // Electrical audit (utility account domain)
 import utilityTarrifRoutes from "./modules/electrical-audit/utility-tarrif/utility-tarrif.routes.js";
@@ -68,6 +69,7 @@ export function registerV1ApiRoutes(app) {
   // --- Email & files ---
   app.use("/api/v1/email", emailRoutes);
   app.use("/api/v1/file-management", fileManagementRoute);
+  app.use("/api/v1/open-router", openRouterRoutes);
 
   // --- Users, facilities, utilities (root shared) ---
   app.use("/api/v1/users", usersRoute);

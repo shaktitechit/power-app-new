@@ -886,9 +886,12 @@ export default function EnquiryDetailPage() {
                     Created by
                   </p>
                   <p className="text-sm">
-                    {typeof enquiry.created_by === "object"
+                    {enquiry.created_by &&
+                    typeof enquiry.created_by === "object"
                       ? enquiry.created_by.name ?? enquiry.created_by.email
-                      : String(enquiry.created_by)}
+                      : enquiry.created_by
+                        ? String(enquiry.created_by)
+                        : "—"}
                   </p>
                 </div>
                 <div className="sm:col-span-2">

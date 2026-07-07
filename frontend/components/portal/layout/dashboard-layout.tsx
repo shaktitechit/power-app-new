@@ -8,6 +8,7 @@ import { useAppSelector } from "@/store/hooks";
 import PresenceBootstrap from "../shared/components/presenceBootstrap";
 import { PortalLayoutContext } from "@/app/[portal]/[[...rest]]/PortalLayoutClient";
 import { getNavItemsForRole } from "./nav-utils";
+import { ChatbotWidget } from "../shared/components/chatbot-widget";
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
@@ -71,6 +72,7 @@ export function DashboardLayout({
           {children}
         </main>
       </div>
+      <ChatbotWidget />
     </div>
   );
 }

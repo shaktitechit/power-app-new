@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useRef } from "react";
 import { Button } from "@/components/portal/ui/button";
 import {
   Dialog,
@@ -10,7 +11,9 @@ import {
 } from "@/components/portal/ui/dialog";
 import { Input } from "@/components/portal/ui/input";
 import { Label } from "@/components/portal/ui/label";
-import { Save, X } from "lucide-react";
+import { Save, X, Sparkles } from "lucide-react";
+import { toast } from "sonner";
+import { useParseUtilityBillMutation } from "@/store/slices/openRouterApiSlice";
 import {
   autoInputClass,
   editableInputClass,
@@ -34,15 +37,79 @@ export function UtilityBillingRecordFormModal({
   onSave,
   saving = false,
 }: Props) {
+  const [parseUtilityBill, { isLoading: parsing }] = useParseUtilityBillMutation();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleAiAutofillUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith("image/") && file.type !== "application/pdf") {
+      toast.error("Only image files or PDFs are supported.");
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append("documents", file);
+
+    const parsePromise = parseUtilityBill(formData).unwrap();
+
+    toast.promise(parsePromise, {
+      loading: "AI is analyzing your bill...",
+      success: (data) => {
+        if (!data || Object.keys(data).length === 0) {
+          return "No readable electricity bill data was detected. Try another file.";
+        }
+
+        let filledCount = 0;
+        Object.entries(data).forEach(([key, val]) => {
+          if (val !== null && val !== undefined) {
+            onFieldChange(key as keyof BillingFormState, String(val));
+            filledCount++;
+          }
+        });
+
+        return filledCount > 0
+          ? `Autofilled ${filledCount} fields from the bill!`
+          : "No billing fields could be extracted from this document.";
+      },
+      error: (err) => {
+        return `Autofill failed: ${err?.data?.message || err?.message || "Internal error"}`;
+      }
+    });
+
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
   if (!form) return null;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-5xl">
-        <DialogHeader>
+        <DialogHeader className="flex flex-row items-center justify-between pr-8 space-y-0">
           <DialogTitle>
             {form.isNew ? "Add Billing Record" : "Edit Billing Record"}
           </DialogTitle>
+          <div className="flex items-center gap-2">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*,application/pdf"
+              onChange={handleAiAutofillUpload}
+              className="hidden"
+            />
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={parsing || saving}
+              className="bg-primary/5 hover:bg-primary/10 text-primary border-primary/20 flex items-center gap-1.5 h-8 font-medium text-xs rounded-lg transition-all"
+            >
+              <Sparkles className={`h-3.5 w-3.5 ${parsing ? "animate-pulse text-primary" : ""}`} />
+              {parsing ? "Processing..." : "AI Autofill from Bill"}
+            </Button>
+          </div>
         </DialogHeader>
 
         <div className="grid grid-cols-3 gap-4 py-2">
