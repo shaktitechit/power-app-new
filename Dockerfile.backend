@@ -2,8 +2,27 @@ FROM node:20-alpine
 
 WORKDIR /app
 
+# Build + runtime deps for node-canvas (pdfjs 300 DPI page render → Tesseract OCR).
+RUN apk add --no-cache \
+  build-base \
+  g++ \
+  python3 \
+  pkgconfig \
+  cairo-dev \
+  pango-dev \
+  jpeg-dev \
+  giflib-dev \
+  pixman-dev \
+  freetype-dev \
+  fontconfig-dev
+
 COPY package*.json ./
 RUN npm install
+
+# Bundle Tesseract language files locally (avoid CDN fetch at runtime).
+RUN mkdir -p /app/backend/tessdata && \
+  cp node_modules/@tesseract.js-data/eng/4.0.0/eng.traineddata.gz /app/backend/tessdata/ && \
+  cp node_modules/@tesseract.js-data/hin/4.0.0/hin.traineddata.gz /app/backend/tessdata/
 
 COPY . .
 

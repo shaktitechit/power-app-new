@@ -17,6 +17,16 @@ export const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL || "openrouter/free
  */
 export const OPENROUTER_BASE_URL = process.env.OPENROUTER_BASE_URL || "https://openrouter.ai/api/v1";
 
+/** Max characters of extracted document text sent to the LLM (per request). */
+export const OPENROUTER_MAX_DOCUMENT_CHARS = Number(
+  process.env.OPENROUTER_MAX_DOCUMENT_CHARS || 15000,
+);
+
+/** Minimum extracted PDF text length before treating PDF as scanned (cloud OCR). */
+export const OPENROUTER_MIN_PDF_TEXT_CHARS = Number(
+  process.env.OPENROUTER_MIN_PDF_TEXT_CHARS || 80,
+);
+
 /**
  * Validates the OpenRouter configuration in production.
  */

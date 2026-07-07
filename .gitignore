@@ -12,3 +12,4 @@ docker-compose.server.yml
 *.log
 backend/logs/*
 !backend/logs/.gitkeep
+backend/tessdata/

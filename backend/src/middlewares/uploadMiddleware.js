@@ -1,12 +1,22 @@
 import multer from "multer";
+import path from "path";
 
 const storage = multer.memoryStorage();
 
-const fileFilter = (req, file, cb) => {
-  const allowed =
-    file.mimetype.startsWith("image/") || file.mimetype === "application/pdf";
+const IMAGE_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".tif", ".tiff"]);
+const PDF_EXTENSIONS = new Set([".pdf"]);
 
-  if (allowed) cb(null, true);
+function isAllowedUpload(file) {
+  if (file.mimetype.startsWith("image/") || file.mimetype === "application/pdf") {
+    return true;
+  }
+
+  const ext = path.extname(file.originalname || "").toLowerCase();
+  return IMAGE_EXTENSIONS.has(ext) || PDF_EXTENSIONS.has(ext);
+}
+
+const fileFilter = (req, file, cb) => {
+  if (isAllowedUpload(file)) cb(null, true);
   else cb(new Error("Only images and PDFs are allowed"), false);
 };
 
