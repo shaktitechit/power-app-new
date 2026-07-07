@@ -52,7 +52,7 @@ export async function createChatCompletion(messages, options = {}) {
     model,
     messages,
     temperature: options.temperature ?? 0.7,
-    max_tokens: options.max_tokens,
+    max_tokens: options.max_tokens ?? 1500, // Safe default to prevent 402 errors on low credit balances
     ...options.extraParams,
   };
 
@@ -100,15 +100,29 @@ export async function generateText(prompt, options = {}) {
  * @returns {Record<string, unknown>}
  */
 export function parseJsonCompletion(completion) {
-  if (!completion?.choices?.[0]?.message?.content) {
+  const content = completion?.choices?.[0]?.message?.content;
+  if (!content) {
     return {};
   }
 
+  const cleanText = content.trim();
+
+  // Try direct parsing first
   try {
-    return JSON.parse(completion.choices[0].message.content.trim());
-  } catch {
-    return {};
+    return JSON.parse(cleanText);
+  } catch (e) {
+    // If direct parse fails, check and strip markdown code blocks
+    try {
+      const match = cleanText.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+      if (match && match[1]) {
+        return JSON.parse(match[1].trim());
+      }
+    } catch (innerError) {
+      // ignore
+    }
   }
+
+  return {};
 }
 
 /**

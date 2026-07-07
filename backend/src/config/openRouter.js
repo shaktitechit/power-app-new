@@ -10,7 +10,7 @@ export const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || "";
 /**
  * OpenRouter Model identifier (defaults to google/gemini-2.5-flash).
  */
-export const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL || "openrouter/free";
+export const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL || "nvidia/nemotron-nano-12b-v2-vl:free";
 
 /**
  * Base URL for OpenRouter API requests.
