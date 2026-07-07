@@ -63,10 +63,10 @@ app.use(errorHandler);
 
 const server = http.createServer(app);
 
-const SOCKET_IO_PATH = "/api/socket.io";
-
 const io = new Server(server, {
-  path: SOCKET_IO_PATH,
+  // Match client URL `/api/socket.io?...` (no trailing slash before query).
+  path: "/api/socket.io",
+  addTrailingSlash: false,
   cors: {
     origin: frontendOrigins,
     credentials: true,
