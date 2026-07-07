@@ -40,11 +40,12 @@ const assertOwnReportForNonAdmin = (user, report) => {
   }
 };
 
-const populateReportById = (reportId) =>
+const populateReportById = async (reportId) =>
   Report.findById(reportId)
     .populate("facility_id", "name city address audit_type")
     .populate("utility_account_id", "account_number connection_type category")
-    .populate("created_by", "name email role");
+    .populate("created_by", "name email role")
+    .lean();
 
 const resolveReportContext = async ({ user, facility_id, utility_account_id, report_scope }) => {
   const facility = await resolveAccessibleFacility(user, facility_id);

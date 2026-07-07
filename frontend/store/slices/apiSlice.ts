@@ -19,6 +19,29 @@ const rawBaseQuery = fetchBaseQuery({
   },
   fetchFn: (input, init) =>
     fetch(input, { ...init, cache: init?.cache ?? "no-store" }),
+  responseHandler: async (response) => {
+    const contentType = response.headers.get("content-type") || "";
+
+    if (
+      contentType.includes("spreadsheet") ||
+      contentType.includes("octet-stream") ||
+      contentType.includes("application/pdf") ||
+      contentType.startsWith("image/")
+    ) {
+      return response.blob();
+    }
+
+    const text = await response.text();
+    if (!text) return null;
+
+    try {
+      return JSON.parse(text);
+    } catch {
+      return {
+        message: text.trim() || `Request failed (${response.status})`,
+      };
+    }
+  },
 });
 
 type RawQueryResult = Awaited<ReturnType<typeof rawBaseQuery>>;
