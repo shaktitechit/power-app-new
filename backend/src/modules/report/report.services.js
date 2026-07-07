@@ -117,7 +117,7 @@ export async function generateReportService({ user, body }) {
     action: "generate",
   });
 
-  return populateReportById(report._id);
+  return await populateReportById(report._id);
 }
 
 /**
@@ -147,7 +147,7 @@ export async function regenerateReportService({ user, reportId }) {
     action: "regenerate",
   });
 
-  return populateReportById(report._id);
+  return await populateReportById(report._id);
 }
 
 /**
@@ -191,7 +191,7 @@ export async function createReportService({ user, body }) {
     meta: { report_scope: report.report_scope, report_type: report.report_type, status: report.status },
   });
 
-  return populateReportById(report._id);
+  return await populateReportById(report._id);
 }
 
 /**
@@ -291,7 +291,7 @@ export async function updateReportService({ user, reportId, body }) {
     meta: { updated_fields: [...new Set(updatedFields)], report_scope: report.report_scope, report_type: report.report_type, status: report.status },
   });
 
-  return populateReportById(report._id);
+  return await populateReportById(report._id);
 }
 
 /**
