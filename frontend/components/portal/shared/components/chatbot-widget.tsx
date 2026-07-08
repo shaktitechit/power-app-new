@@ -301,7 +301,7 @@ export function ChatbotWidget() {
       {/* Floating Toggle Button */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="relative flex h-14 w-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-2xl transition-all duration-300 hover:scale-110 active:scale-95 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 hover:shadow-primary/30 hover:shadow-lg"
+        className="relative flex h-14 w-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-2xl transition-all duration-300 hover:scale-110 active:scale-95 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 hover:shadow-primary/30 hover:shadow-lg overflow-hidden"
       >
         {!isOpen && (
           <span className="absolute -inset-0.5 -z-10 rounded-full bg-primary/40 animate-ping opacity-75" />
@@ -309,7 +309,7 @@ export function ChatbotWidget() {
         {isOpen ? (
           <X className="h-6 w-6 transition-transform duration-200 rotate-90" />
         ) : (
-          <MessageSquare className="h-6 w-6 transition-transform duration-200" />
+          <LadyAvatar className="h-10 w-10 transition-transform duration-300 hover:rotate-6" />
         )}
       </button>
     </div>
