@@ -455,15 +455,15 @@ export default function FacilitiesPage() {
                 </CardHeader>
 
                 <CardContent className="px-5 py-3 space-y-3 text-xs text-muted-foreground border-y border-muted/20 bg-muted/5 flex-1 min-w-0">
-                  {facility.facility_type && (
+                  {/* {facility.facility_type && (
                     <div className="flex items-center gap-2 min-w-0">
                       <span className="font-medium text-foreground min-w-[75px] shrink-0">Type:</span>
                       <span className="block truncate flex-1">{facility.facility_type}</span>
                     </div>
-                  )}
+                  )} */}
 
                   {/* Client Rep info */}
-                  <div className="space-y-1 min-w-0">
+                  {/* <div className="space-y-1 min-w-0">
                     <div className="flex items-center gap-2 text-foreground font-medium min-w-0">
                       <User className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                       <span className="block truncate flex-1">{facility.client_representative || "No Representative"}</span>
@@ -484,7 +484,7 @@ export default function FacilitiesPage() {
                         )}
                       </div>
                     )}
-                  </div>
+                  </div> */}
 
                   {/* Dates */}
                   <div className="grid grid-cols-2 gap-2 pt-2 border-t border-dashed border-muted/50 text-[11px] min-w-0">
