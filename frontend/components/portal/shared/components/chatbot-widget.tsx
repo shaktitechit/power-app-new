@@ -5,7 +5,6 @@ import { useChatCompletionMutation, useChatWithFileMutation } from "@/store/slic
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/portal/ui/card";
 import {
   Send,
-  Bot,
   Sparkles,
   User as UserIcon,
   RefreshCw,
@@ -16,16 +15,44 @@ import {
   Image as ImageIcon,
 } from "lucide-react";
 
+function LadyAvatar({ className = "h-5 w-5" }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" className={className}>
+      <circle cx="32" cy="32" r="30" fill="#ECFDF5" stroke="#10B981" strokeWidth="1.5"/>
+      {/* Hair back */}
+      <path d="M16 34C16 20 24 12 32 12C40 12 48 20 48 34" fill="#374151"/>
+      {/* Face */}
+      <path d="M22 34C22 41 26 46 32 46C38 46 42 41 42 34V28H22V34Z" fill="#FDE047"/>
+      {/* Eyes */}
+      <circle cx="28" cy="31" r="2" fill="#1F2937"/>
+      <circle cx="36" cy="31" r="2" fill="#1F2937"/>
+      {/* Smile */}
+      <path d="M28 38C29.5 40 34.5 40 36 38" stroke="#1F2937" strokeWidth="2" strokeLinecap="round"/>
+      {/* Cheeks */}
+      <circle cx="25" cy="35" r="1.5" fill="#F87171" opacity="0.6"/>
+      <circle cx="39" cy="35" r="1.5" fill="#F87171" opacity="0.6"/>
+      {/* Hair front / bangs */}
+      <path d="M16 28C20 24 25 22 32 24C39 22 44 24 48 28C48 28 49 20 44 16C39 12 25 12 20 16C15 20 16 28 16 28Z" fill="#1F2937"/>
+      {/* Collar/Shirt */}
+      <path d="M24 54C24 50 28 47 32 47C36 47 40 50 40 54" stroke="#10B981" strokeWidth="3" strokeLinecap="round"/>
+      {/* Headset mic */}
+      <path d="M19 32C19 23 23 18 32 18C41 18 45 23 45 32" stroke="#4B5563" strokeWidth="2" fill="none"/>
+      <path d="M44 32C44 35 41 37 39 37" stroke="#4B5563" strokeWidth="2" fill="none" strokeLinecap="round"/>
+      <circle cx="38" cy="37" r="1.5" fill="#EF4444"/>
+    </svg>
+  );
+}
+
 export function ChatbotWidget() {
   const [isOpen, setIsOpen] = useState(false);
   const [chatMessages, setChatMessages] = useState<Array<{ role: "user" | "assistant" | "system"; content: string }>>([
     {
       role: "system",
-      content: "You are a helpful AI assistant for the Power Audit application. You can assist users with facility energy audits, safety inspections, equipment logs, and utility data questions.",
+      content: "You are Shakti AI, a helpful and polite female AI assistant for the Power Audit application. You assist users with facility energy audits, safety inspections, equipment logs, and utility data questions.",
     },
     {
       role: "assistant",
-      content: "Hello! I am your AI assistant. How can I help you with your audits today?",
+      content: "Hello! I am Shakti AI, your power audit assistant. How can I help you with your audits today?",
     },
   ]);
   const [chatInput, setChatInput] = useState("");
@@ -109,11 +136,11 @@ export function ChatbotWidget() {
     setChatMessages([
       {
         role: "system",
-        content: "You are a helpful AI assistant for the Power Audit application. You can assist users with facility energy audits, safety inspections, equipment logs, and utility data questions.",
+        content: "You are Shakti AI, a helpful and polite female AI assistant for the Power Audit application. You assist users with facility energy audits, safety inspections, equipment logs, and utility data questions.",
       },
       {
         role: "assistant",
-        content: "Hello! I am your AI assistant. How can I help you with your audits today?",
+        content: "Hello! I am Shakti AI, your power audit assistant. How can I help you with your audits today?",
       },
     ]);
     setChatInput("");
@@ -127,12 +154,12 @@ export function ChatbotWidget() {
         <Card className="mb-4 flex flex-col border border-border bg-card/95 backdrop-blur-sm shadow-2xl rounded-2xl w-[380px] max-w-[calc(100vw-3rem)] h-[500px] min-h-0 overflow-hidden transition-all duration-300 animate-in fade-in slide-in-from-bottom-5 zoom-in-95">
           <CardHeader className="flex flex-row items-center justify-between border-b border-border/60 pb-3 pt-4 px-4 bg-muted/20">
             <div className="flex items-center gap-2.5">
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10">
-                <Sparkles className="h-4.5 w-4.5 text-primary" />
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 overflow-hidden">
+                <LadyAvatar className="h-7 w-7" />
               </div>
               <div>
                 <CardTitle className="text-sm font-semibold text-card-foreground">
-                  AI Assistant
+                  Shakti AI
                 </CardTitle>
                 <p className="text-[10px] text-muted-foreground">
                   Ask about audits & facilities
@@ -163,7 +190,7 @@ export function ChatbotWidget() {
               .map((msg, index) => (
                 <div
                   key={index}
-                  className={`flex items-start gap-2.5 ${
+                  className={`flex items-start gap-2.5 animate-in fade-in slide-in-from-bottom-2 duration-300 ${
                     msg.role === "user" ? "flex-row-reverse" : ""
                   }`}
                 >
@@ -171,13 +198,13 @@ export function ChatbotWidget() {
                     className={`flex h-7 w-7 shrink-0 select-none items-center justify-center rounded-full text-[10px] font-semibold ${
                       msg.role === "user"
                         ? "bg-primary text-primary-foreground"
-                        : "bg-muted text-muted-foreground border border-border"
+                        : "bg-muted text-muted-foreground border border-border overflow-hidden"
                     }`}
                   >
                     {msg.role === "user" ? (
                       <UserIcon className="h-3.5 w-3.5" />
                     ) : (
-                      <Bot className="h-3.5 w-3.5" />
+                      <LadyAvatar className="h-5 w-5" />
                     )}
                   </div>
                   <div
@@ -192,9 +219,9 @@ export function ChatbotWidget() {
                 </div>
               ))}
             {chatLoading && (
-              <div className="flex items-start gap-2.5">
-                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-border bg-muted text-muted-foreground">
-                  <Bot className="h-3.5 w-3.5" />
+              <div className="flex items-start gap-2.5 animate-in fade-in duration-300">
+                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-border bg-muted overflow-hidden">
+                  <LadyAvatar className="h-5 w-5" />
                 </div>
                 <div className="flex items-center gap-1 rounded-2xl bg-muted/60 border border-border/40 px-3 py-2">
                   <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-muted-foreground/60 [animation-delay:-0.3s]"></span>
@@ -212,7 +239,7 @@ export function ChatbotWidget() {
               {selectedFiles.map((file, idx) => (
                 <div
                   key={idx}
-                  className="relative flex items-center gap-1 rounded-md border border-border bg-background py-1 pl-1.5 pr-5 text-[10px] text-foreground"
+                  className="relative flex items-center gap-1 rounded-md border border-border bg-background py-1 pl-1.5 pr-5 text-[10px] text-foreground animate-in fade-in duration-250 zoom-in-95"
                 >
                   {file.type.startsWith("image/") ? (
                     <ImageIcon className="h-3 w-3 text-blue-500 shrink-0" />
@@ -274,12 +301,15 @@ export function ChatbotWidget() {
       {/* Floating Toggle Button */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="flex h-14 w-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-2xl transition-all duration-300 hover:scale-105 active:scale-95 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 hover:shadow-primary/20 hover:shadow-lg"
+        className="relative flex h-14 w-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-2xl transition-all duration-300 hover:scale-110 active:scale-95 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 hover:shadow-primary/30 hover:shadow-lg"
       >
+        {!isOpen && (
+          <span className="absolute -inset-0.5 -z-10 rounded-full bg-primary/40 animate-ping opacity-75" />
+        )}
         {isOpen ? (
-          <X className="h-6 w-6" />
+          <X className="h-6 w-6 transition-transform duration-200 rotate-90" />
         ) : (
-          <MessageSquare className="h-6 w-6" />
+          <MessageSquare className="h-6 w-6 transition-transform duration-200" />
         )}
       </button>
     </div>
