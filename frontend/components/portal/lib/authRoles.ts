@@ -272,6 +272,13 @@ export function canAccessPerformanceHub(
   return role === "super_admin" || role === "admin";
 }
 
+/** Facilities spreadsheet view (admin / super admin only). */
+export function canViewFacilitiesSheet(
+  role: string | null | undefined,
+): boolean {
+  return role === "super_admin" || role === "admin";
+}
+
 /**
  * View uploaded documents anywhere in the app. Only super admin, admin, and manager;
  * enforced server-side for `/files/*` routes as well.

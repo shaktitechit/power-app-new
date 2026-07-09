@@ -38,6 +38,7 @@ export interface Enquiry {
     email?: string;
   }[];
   assigned_to?: string | EnquiryUserRef | null;
+  assigned_admin_to?: string | EnquiryUserRef | null;
   enquiry_status: EnquiryStatus;
   source?: string;
   expected_value?: number;
@@ -71,25 +72,16 @@ export interface FollowUp {
   updatedAt?: string;
 }
 
-export type QuotationStatus =
-  | "draft"
-  | "pending_approval"
-  | "sent"
-  | "viewed"
-  | "revision_requested"
-  | "approved"
-  | "rejected"
-  | "expired";
 
-/** Must match `status` enum on the Quotation model (see `backend/models/quotation.js`). */
-
-export interface QuotationLineItem {
-  audit_type?: RequestedAuditType;
-  description?: string;
-  price?: number;
+export interface EnquiryDocumentDetails {
+  fileUrl: string;
+  fileType: "image" | "pdf";
+  fileName?: string;
+  caption?: string;
+  uploadedAt?: string;
 }
 
-export interface Quotation {
+export interface EnquiryDocument {
   _id: string;
   enquiry_id:
     | string
@@ -99,13 +91,8 @@ export interface Quotation {
         city?: string;
         enquiry_status?: EnquiryStatus;
       };
-  quotation_number?: string;
-  amount: number;
-  line_items?: QuotationLineItem[];
-  status: QuotationStatus;
-  valid_till?: string;
-  document_url?: string;
-  notes?: string;
+  document_number?: string;
+  document: EnquiryDocumentDetails;
   created_by: string | EnquiryUserRef;
   deleted_at?: string | null;
   createdAt?: string;
@@ -174,36 +161,28 @@ export interface UpdateFollowUpRequest {
   next_followup_date?: string | null;
 }
 
-export interface CreateQuotationRequest {
+export interface CreateEnquiryDocumentRequest {
   enquiryId: string;
-  /** Ignored on create: the server assigns a unique number. */
-  quotation_number?: string;
-  amount: number;
-  line_items?: QuotationLineItem[];
-  /** Ignored on create: new quotations are always stored as `draft`. */
-  status?: QuotationStatus;
-  valid_till?: string | null;
+  document_number?: string;
+  document?: EnquiryDocumentDetails;
   document_url?: string;
-  notes?: string;
+  file?: File;
+  caption?: string;
 }
 
-export interface UpdateQuotationRequest {
+export interface UpdateEnquiryDocumentRequest {
   enquiryId: string;
-  quotationId: string;
-  quotation_number?: string | null;
-  amount?: number;
-  line_items?: QuotationLineItem[];
-  status?: QuotationStatus;
-  valid_till?: string | null;
+  enquiryDocumentId: string;
+  document_number?: string | null;
+  document?: EnquiryDocumentDetails | null;
   document_url?: string | null;
-  notes?: string | null;
-  /** Logged onto server `notes` with a timestamp (workflow audit trail). */
-  workflow_remark?: string | null;
+  file?: File;
+  caption?: string;
 }
 
-export interface DeleteQuotationRequest {
+export interface DeleteEnquiryDocumentRequest {
   enquiryId: string;
-  quotationId: string;
+  enquiryDocumentId: string;
   workflow_remark?: string | null;
 }
 
@@ -235,15 +214,15 @@ export interface FollowUpDetailResponse {
   data: FollowUp;
 }
 
-export interface QuotationListResponse {
+export interface EnquiryDocumentListResponse {
   success: boolean;
   count: number;
-  data: Quotation[];
+  data: EnquiryDocument[];
 }
 
-export interface QuotationDetailResponse {
+export interface EnquiryDocumentDetailResponse {
   success: boolean;
-  data: Quotation;
+  data: EnquiryDocument;
 }
 
 export interface DeleteMutationResponse {
@@ -259,13 +238,33 @@ function followUpListTag(enquiryId: string) {
   return { type: "FollowUp" as const, id: `ENQUIRY-${enquiryId}` };
 }
 
-function quotationListTag(enquiryId: string) {
-  return { type: "Quotation" as const, id: `ENQUIRY-${enquiryId}` };
+function enquiryDocumentListTag(enquiryId: string) {
+  return { type: "EnquiryDocument" as const, id: `ENQUIRY-${enquiryId}` };
 }
 
-function quotationPendingApprovalListTag() {
-  return { type: "Quotation" as const, id: "PENDING_APPROVAL_LIST" };
+function enquiryDocumentPendingApprovalListTag() {
+  return { type: "EnquiryDocument" as const, id: "PENDING_APPROVAL_LIST" };
 }
+
+const buildEnquiryDocumentFormData = (data: Partial<CreateEnquiryDocumentRequest | UpdateEnquiryDocumentRequest>) => {
+  const formData = new FormData();
+  if (data.document_number !== undefined && data.document_number !== null) {
+    formData.append("quotation_number", data.document_number); // matching backend body expects quotation_number
+  }
+  if (data.document_url !== undefined && data.document_url !== null) {
+    formData.append("document_url", data.document_url);
+  }
+  if (data.caption !== undefined && data.caption !== null) {
+    formData.append("caption", data.caption);
+  }
+  if (data.file) {
+    formData.append("documents", data.file);
+  }
+  if (data.document) {
+    formData.append("document", JSON.stringify(data.document));
+  }
+  return formData;
+};
 
 export const enquiryApiSlice = apiSlice.injectEndpoints({
   endpoints: (builder) => ({
@@ -281,16 +280,17 @@ export const enquiryApiSlice = apiSlice.injectEndpoints({
       invalidatesTags: enquiryListTags,
     }),
 
-    getEnquiries: builder.query<EnquiryListResponse, GetEnquiriesQueryArgs | void>(
-      {
-        query: (params) => ({
-          url: "/v1/enquiries",
-          method: "GET",
-          params: params ?? {},
-        }),
-        providesTags: enquiryListTags,
-      },
-    ),
+    getEnquiries: builder.query<
+      EnquiryListResponse,
+      GetEnquiriesQueryArgs | void
+    >({
+      query: (params) => ({
+        url: "/v1/enquiries",
+        method: "GET",
+        params: params ?? {},
+      }),
+      providesTags: enquiryListTags,
+    }),
 
     getEnquiryById: builder.query<EnquiryDetailResponse, string>({
       query: (id) => ({
@@ -316,7 +316,7 @@ export const enquiryApiSlice = apiSlice.injectEndpoints({
         ...enquiryListTags(),
         { type: "Enquiry", id },
         followUpListTag(id),
-        quotationListTag(id),
+        enquiryDocumentListTag(id),
       ],
     }),
 
@@ -329,7 +329,7 @@ export const enquiryApiSlice = apiSlice.injectEndpoints({
         ...enquiryListTags(),
         { type: "Enquiry", id },
         followUpListTag(id),
-        quotationListTag(id),
+        enquiryDocumentListTag(id),
       ],
     }),
 
@@ -403,91 +403,81 @@ export const enquiryApiSlice = apiSlice.injectEndpoints({
       ],
     }),
 
-    getQuotations: builder.query<QuotationListResponse, string>({
+    getEnquiryDocuments: builder.query<EnquiryDocumentListResponse, string>({
       query: (enquiryId) => ({
-        url: `/v1/enquiries/${enquiryId}/quotations`,
+        url: `/v1/enquiries/${enquiryId}/enquiry-documents`,
         method: "GET",
       }),
       providesTags: (_result, _error, enquiryId) => [
-        quotationListTag(enquiryId),
+        enquiryDocumentListTag(enquiryId),
       ],
     }),
 
-    getPendingQuotationsForApproval: builder.query<
-      QuotationListResponse,
-      void
-    >({
-      query: () => ({
-        url: "/v1/enquiries/pending-quotations",
-        method: "GET",
-      }),
-      providesTags: () => [quotationPendingApprovalListTag()],
-    }),
 
-    getQuotationById: builder.query<
-      QuotationDetailResponse,
-      { enquiryId: string; quotationId: string }
+    getEnquiryDocumentById: builder.query<
+      EnquiryDocumentDetailResponse,
+      { enquiryId: string; enquiryDocumentId: string }
     >({
-      query: ({ enquiryId, quotationId }) => ({
-        url: `/v1/enquiries/${enquiryId}/quotations/${quotationId}`,
+      query: ({ enquiryId, enquiryDocumentId }) => ({
+        url: `/v1/enquiries/${enquiryId}/enquiry-documents/${enquiryDocumentId}`,
         method: "GET",
       }),
-      providesTags: (_result, _error, { enquiryId, quotationId }) => [
-        quotationListTag(enquiryId),
-        { type: "Quotation", id: quotationId },
+      providesTags: (_result, _error, { enquiryId, enquiryDocumentId }) => [
+        enquiryDocumentListTag(enquiryId),
+        { type: "EnquiryDocument", id: enquiryDocumentId },
       ],
     }),
 
-    createQuotation: builder.mutation<
-      EnquiryMutationResponse<Quotation>,
-      CreateQuotationRequest
+    createEnquiryDocument: builder.mutation<
+      EnquiryMutationResponse<EnquiryDocument>,
+      CreateEnquiryDocumentRequest
     >({
       query: ({ enquiryId, ...body }) => ({
-        url: `/v1/enquiries/${enquiryId}/quotations`,
+        url: `/v1/enquiries/${enquiryId}/enquiry-documents`,
         method: "POST",
-        body,
+        body: buildEnquiryDocumentFormData(body),
       }),
       invalidatesTags: (_result, _error, { enquiryId }) => [
-        quotationListTag(enquiryId),
-        quotationPendingApprovalListTag(),
+        enquiryDocumentListTag(enquiryId),
+        enquiryDocumentPendingApprovalListTag(),
         { type: "Enquiry", id: enquiryId },
       ],
     }),
 
-    updateQuotation: builder.mutation<
-      EnquiryMutationResponse<Quotation>,
-      UpdateQuotationRequest
+    updateEnquiryDocument: builder.mutation<
+      EnquiryMutationResponse<EnquiryDocument>,
+      UpdateEnquiryDocumentRequest
     >({
-      query: ({ enquiryId, quotationId, ...body }) => ({
-        url: `/v1/enquiries/${enquiryId}/quotations/${quotationId}`,
+      query: ({ enquiryId, enquiryDocumentId, ...body }) => ({
+        url: `/v1/enquiries/${enquiryId}/enquiry-documents/${enquiryDocumentId}`,
         method: "PUT",
-        body,
+        body: buildEnquiryDocumentFormData(body),
       }),
-      invalidatesTags: (_result, _error, { enquiryId, quotationId }) => [
-        quotationListTag(enquiryId),
-        quotationPendingApprovalListTag(),
-        { type: "Quotation", id: quotationId },
+      invalidatesTags: (_result, _error, { enquiryId, enquiryDocumentId }) => [
+        enquiryDocumentListTag(enquiryId),
+        enquiryDocumentPendingApprovalListTag(),
+        { type: "EnquiryDocument", id: enquiryDocumentId },
         { type: "Enquiry", id: enquiryId },
       ],
     }),
 
-    deleteQuotation: builder.mutation<
+    deleteEnquiryDocument: builder.mutation<
       DeleteMutationResponse,
-      DeleteQuotationRequest
+      DeleteEnquiryDocumentRequest
     >({
-      query: ({ enquiryId, quotationId, workflow_remark }) => {
+      query: ({ enquiryId, enquiryDocumentId, workflow_remark }) => {
         const trimmed =
           workflow_remark != null ? String(workflow_remark).trim() : "";
         return {
-          url: `/v1/enquiries/${enquiryId}/quotations/${quotationId}`,
+          url: `/v1/enquiries/${enquiryId}/enquiry-documents/${enquiryDocumentId}`,
           method: "DELETE",
           body: trimmed ? { workflow_remark: trimmed } : undefined,
         };
       },
-      invalidatesTags: (_result, _error, { enquiryId, quotationId }) => [
-        quotationListTag(enquiryId),
-        quotationPendingApprovalListTag(),
-        { type: "Quotation", id: quotationId },
+      invalidatesTags: (_result, _error, { enquiryId, enquiryDocumentId }) => [
+        enquiryDocumentListTag(enquiryId),
+        enquiryDocumentPendingApprovalListTag(),
+        { type: "EnquiryDocument", id: enquiryDocumentId },
         { type: "Enquiry", id: enquiryId },
       ],
     }),
@@ -505,10 +495,9 @@ export const {
   useCreateFollowUpMutation,
   useUpdateFollowUpMutation,
   useDeleteFollowUpMutation,
-  useGetQuotationsQuery,
-  useGetPendingQuotationsForApprovalQuery,
-  useGetQuotationByIdQuery,
-  useCreateQuotationMutation,
-  useUpdateQuotationMutation,
-  useDeleteQuotationMutation,
+  useGetEnquiryDocumentsQuery,
+  useGetEnquiryDocumentByIdQuery,
+  useCreateEnquiryDocumentMutation,
+  useUpdateEnquiryDocumentMutation,
+  useDeleteEnquiryDocumentMutation,
 } = enquiryApiSlice;

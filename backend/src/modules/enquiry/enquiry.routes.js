@@ -11,12 +11,11 @@ import {
   getFollowUpById,
   updateFollowUp,
   deleteFollowUp,
-  getQuotations,
-  getPendingQuotationsForApproval,
-  createQuotation,
-  getQuotationById,
-  updateQuotation,
-  deleteQuotation,
+  getEnquiryDocuments,
+  createEnquiryDocument,
+  getEnquiryDocumentById,
+  updateEnquiryDocument,
+  deleteEnquiryDocument,
 } from "./enquiry.controllers.js";
 import { createFacilityFromEnquiry } from "../facility/facility.controllers.js";
 import { uploadDocuments } from "../../middlewares/uploadMiddleware.js";
@@ -25,7 +24,6 @@ const router = express.Router();
 
 router.route("/").post(protect, createEnquiry).get(protect, getEnquiries);
 
-router.get("/pending-quotations", protect, getPendingQuotationsForApproval);
 
 router.post("/:enquiryId/facility", protect, uploadDocuments, createFacilityFromEnquiry);
 
@@ -41,15 +39,15 @@ router
   .delete(protect, deleteFollowUp);
 
 router
-  .route("/:enquiryId/quotations")
-  .get(protect, getQuotations)
-  .post(protect, createQuotation);
+  .route("/:enquiryId/enquiry-documents")
+  .get(protect, getEnquiryDocuments)
+  .post(protect, uploadDocuments, createEnquiryDocument);
 
 router
-  .route("/:enquiryId/quotations/:quotationId")
-  .get(protect, getQuotationById)
-  .put(protect, updateQuotation)
-  .delete(protect, deleteQuotation);
+  .route("/:enquiryId/enquiry-documents/:enquiryDocumentId")
+  .get(protect, getEnquiryDocumentById)
+  .put(protect, uploadDocuments, updateEnquiryDocument)
+  .delete(protect, deleteEnquiryDocument);
 
 router
   .route("/:id")

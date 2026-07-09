@@ -67,6 +67,7 @@ export interface Facility {
   };
   created_by: string;
   documents: FacilityDocument[];
+  assignedAuditors?: AssignedAuditor[];
   budget?: {
     no_of_persons?: number | null;
     no_planned_site_visits?: number | null;

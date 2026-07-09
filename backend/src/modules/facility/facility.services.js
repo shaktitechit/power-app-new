@@ -409,7 +409,31 @@ export const getFacilitiesService = async (user) => {
     }).sort({ start_date: -1, createdAt: -1 });
   }
 
-  return facilities;
+  const facilityIds = facilities.map((f) => f._id);
+  const allAssignments = await FacilityAuditor.find({
+    facility_id: { $in: facilityIds },
+  })
+    .populate("user_id", "name email")
+    .lean();
+
+  const assignmentsByFacility = {};
+  allAssignments.forEach((assign) => {
+    const fid = String(assign.facility_id);
+    if (!assignmentsByFacility[fid]) {
+      assignmentsByFacility[fid] = [];
+    }
+    assignmentsByFacility[fid].push({
+      _id: String(assign._id),
+      user_id: assign.user_id,
+      assigned_role: assign.assigned_role,
+    });
+  });
+
+  return facilities.map((facility) => {
+    const facilityObj = facility.toObject();
+    facilityObj.assignedAuditors = assignmentsByFacility[String(facility._id)] || [];
+    return facilityObj;
+  });
 };
 
 const parseFacilityIdsParam = (raw) => {

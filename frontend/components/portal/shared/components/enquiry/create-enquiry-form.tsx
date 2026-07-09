@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -22,6 +22,7 @@ import {
 import { useAssignableUsersQuery } from "@/store/slices/userApiSlice";
 import { useCreateEnquiryMutation } from "@/store/slices/enquiryApiSlice";
 import { toastHandler } from "@/components/portal/lib/toast";
+import { useAppSelector } from "@/store/hooks";
 import { toast } from "sonner";
 import {
   ENQUIRY_STATUS_OPTIONS,
@@ -52,6 +53,7 @@ export function CreateEnquiryForm({
   const [clientContactNumber, setClientContactNumber] = useState("");
   const [clientEmail, setClientEmail] = useState("");
   const [assignedTo, setAssignedTo] = useState<string>(UNASSIGNED);
+  const [assignedAdminTo, setAssignedAdminTo] = useState<string>(UNASSIGNED);
   const [enquiryStatus, setEnquiryStatus] = useState<EnquiryStatus>("new");
   const [source, setSource] = useState("");
   const [expectedValue, setExpectedValue] = useState("");
@@ -65,6 +67,56 @@ export function CreateEnquiryForm({
     skip: !open,
   });
   const assignableUsers = assignableRes?.data ?? [];
+  const assignableAdmins = useMemo(() => {
+    return assignableUsers.filter((u) => u.role === "admin");
+  }, [assignableUsers]);
+  const assignableAuditorsAndManagers = useMemo(() => {
+    return assignableUsers.filter((u) => u.role === "auditor" || u.role === "manager");
+  }, [assignableUsers]);
+  const currentUser = useAppSelector((state) => state.auth.user);
+
+  const finalAssignableAdmins = useMemo(() => {
+    const list = [...assignableAdmins];
+    if (currentUser?._id && currentUser.role === "admin") {
+      if (!list.some((u) => u._id === currentUser._id)) {
+        list.unshift({
+          _id: currentUser._id,
+          name: currentUser.name,
+          email: currentUser.email,
+          role: currentUser.role,
+        } as any);
+      }
+    }
+    return list;
+  }, [assignableAdmins, currentUser]);
+  const finalAssignableAuditorsAndManagers = useMemo(() => {
+    const list = [...assignableAuditorsAndManagers];
+    if (currentUser?._id && (currentUser.role === "auditor" || currentUser.role === "manager")) {
+      if (!list.some((u) => u._id === currentUser._id)) {
+        list.unshift({
+          _id: currentUser._id,
+          name: currentUser.name,
+          email: currentUser.email,
+          role: currentUser.role,
+        } as any);
+      }
+    }
+    return list;
+  }, [assignableAuditorsAndManagers, currentUser]);
+
+  useEffect(() => {
+    if (!open || !currentUser?._id) return;
+    if (currentUser.role === "admin") {
+      setAssignedAdminTo(currentUser._id);
+      setAssignedTo(UNASSIGNED);
+    } else if (currentUser.role === "auditor" || currentUser.role === "manager") {
+      setAssignedTo(currentUser._id);
+      setAssignedAdminTo(UNASSIGNED);
+    } else {
+      setAssignedTo(UNASSIGNED);
+      setAssignedAdminTo(UNASSIGNED);
+    }
+  }, [open, currentUser]);
 
   const [createEnquiry, { isLoading }] = useCreateEnquiryMutation();
 
@@ -85,6 +137,7 @@ export function CreateEnquiryForm({
     setClientContactNumber("");
     setClientEmail("");
     setAssignedTo(UNASSIGNED);
+    setAssignedAdminTo(UNASSIGNED);
     setEnquiryStatus("new");
     setSource("");
     setExpectedValue("");
@@ -124,6 +177,8 @@ export function CreateEnquiryForm({
       client_email: clientEmail.trim() || undefined,
       assigned_to:
         assignedTo === UNASSIGNED ? undefined : assignedTo || undefined,
+      assigned_admin_to:
+        assignedAdminTo === UNASSIGNED ? undefined : assignedAdminTo || undefined,
       enquiry_status: enquiryStatus,
       source: source.trim() || undefined,
       expected_value: evRaw,
@@ -241,13 +296,17 @@ export function CreateEnquiryForm({
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
               <Label>Assigned to</Label>
-              <Select value={assignedTo} onValueChange={setAssignedTo}>
+              <Select
+                value={assignedTo}
+                onValueChange={setAssignedTo}
+                disabled={currentUser?.role === "auditor" || currentUser?.role === "manager"}
+              >
                 <SelectTrigger>
                   <SelectValue placeholder="Unassigned" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value={UNASSIGNED}>Unassigned</SelectItem>
-                  {assignableUsers.map((u) => (
+                   {finalAssignableAuditorsAndManagers.map((u) => (
                     <SelectItem key={u._id} value={u._id}>
                       {u.name}
                       {u.email ? ` (${u.email})` : ""}
@@ -256,6 +315,30 @@ export function CreateEnquiryForm({
                 </SelectContent>
               </Select>
             </div>
+            <div className="space-y-2">
+              <Label>Assigned Admin</Label>
+              <Select
+                value={assignedAdminTo}
+                onValueChange={setAssignedAdminTo}
+                disabled={currentUser?.role === "admin"}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Unassigned" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={UNASSIGNED}>Unassigned</SelectItem>
+                   {finalAssignableAdmins.map((u) => (
+                    <SelectItem key={u._id} value={u._id}>
+                      {u.name}
+                      {u.email ? ` (${u.email})` : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
               <Label htmlFor="enq-source">Source</Label>
               <Input

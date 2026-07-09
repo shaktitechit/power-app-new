@@ -120,7 +120,7 @@ export const apiSlice = createApi({
     "Report",
     "Enquiry",
     "FollowUp",
-    "Quotation",
+    "EnquiryDocument",
     "Dashboard",
     "RecentActivity",
     "PresenceLog",

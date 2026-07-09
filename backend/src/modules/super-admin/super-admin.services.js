@@ -64,18 +64,6 @@ export const getUsersService = async ({ user, req }) => {
 };
 
 export const getAssignableUsersService = async ({ user }) => {
-  const canAssignFacilityTeam =
-    isAdmin(user) ||
-    hasPolicyScopeAll(user, RESOURCES.FACILITY, ACTIONS.CREATE) ||
-    hasPolicyScopeAll(user, RESOURCES.FACILITY, ACTIONS.UPDATE) ||
-    hasPolicyScopeAll(user, RESOURCES.FACILITY, ACTIONS.ASSIGN);
-
-  if (!canAssignFacilityTeam) {
-    const error = new Error("Not authorized");
-    error.statusCode = 403;
-    throw error;
-  }
-
   return User.find({
     role: { $nin: ["super_admin"] },
   }).select("-password");

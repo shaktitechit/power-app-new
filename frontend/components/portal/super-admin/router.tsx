@@ -10,7 +10,6 @@ import Facilities from "@/components/portal/shared/facilities";
 import FacilityAuditType from "@/components/portal/shared/facility/[auditType]";
 import FacilityDetails from "@/components/portal/shared/facility/[auditType]/[facilityId]";
 import UtilityAccountDetails from "@/components/portal/shared/facility/[auditType]/[facilityId]/utility-account/[utility_account_id]";
-import PendingQuotation from "@/components/portal/shared/pending-quotation";
 import Performance from "@/components/portal/shared/performance";
 import PerformanceUser from "@/components/portal/shared/performance/[user_id]";
 import Profile from "@/components/portal/shared/profile/[user_id]";
@@ -29,7 +28,6 @@ export function render(segments: string[]) {
   if (segments[0] === "analytics") return <Analytics />;
   if (segments[0] === "audits") return <Audits />;
   if (segments[0] === "settings") return <Settings />;
-  if (segments[0] === "pending-quotation") return <PendingQuotation />;
   if (segments[0] === "submited-enquiries") return <SubmittedEnquiries />;
   if (segments[0] === "facilities") return <Facilities />;
   if (segments[0] === "reports") return <Reports />;

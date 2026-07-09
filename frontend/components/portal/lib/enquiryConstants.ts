@@ -11,9 +11,6 @@ export const ENQUIRY_STATUS_OPTIONS: { value: EnquiryStatus; label: string }[] =
     { value: "in_discussion", label: "In discussion" },
     { value: "quoted", label: "Quoted" },
     { value: "negotiation", label: "Negotiation" },
-    { value: "won", label: "Won" },
-    { value: "lost", label: "Lost" },
-    { value: "dropped", label: "Dropped" },
   ];
 
 export const REQUESTED_AUDIT_TYPE_OPTIONS: {

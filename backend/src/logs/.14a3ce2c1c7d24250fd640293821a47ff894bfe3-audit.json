@@ -74,6 +74,16 @@
             "date": 1783017000550,
             "name": "/Users/macbook/Desktop/power-app-main/backend/src/logs/exceptions-2026-07-03.log",
             "hash": "6881ab3a045c8f6bdfa4f7ee98d77fa47766a970ca2983b08f41688625cabab3"
+        },
+        {
+            "date": 1783510694252,
+            "name": "/Users/macbook/Desktop/power-app-main/backend/src/logs/exceptions-2026-07-08.log",
+            "hash": "45aa38cf239667392de674d006938dc1a825d0b0d9dd2325119913077361ba2c"
+        },
+        {
+            "date": 1783589425389,
+            "name": "/Users/macbook/Desktop/power-app-main/backend/src/logs/exceptions-2026-07-09.log",
+            "hash": "e73864bcdcc68e6afe07b246bbbc4c4823da70ab2a7091949c503f1f25afc771"
         }
     ],
     "hashType": "sha256"

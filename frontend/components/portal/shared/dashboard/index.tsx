@@ -52,7 +52,9 @@ export default function DashboardPage() {
   }, []);
 
   const dashboardStats = summaryResponse?.data;
-  const recentFacilities = recentFacilitiesResponse?.data ?? [];
+  const recentFacilities = (recentFacilitiesResponse?.data ?? []).filter(
+    (item) => !isFacilityAuditClosed(item.facility),
+  );
 
   if (!mounted) return null;
 

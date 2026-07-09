@@ -29,6 +29,7 @@ export const FOLDER_TO_RESOURCE_TYPE = {
   "reports/excel": "report",
   "reports/pdf": "report",
   "safety-audits": "safety_audit",
+  "enquiries": "enquiry_document",
 };
 
 export function buildProxyViewUrl(fileId) {

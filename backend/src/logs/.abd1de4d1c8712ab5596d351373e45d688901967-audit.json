@@ -29,6 +29,16 @@
             "date": 1783061734569,
             "name": "/Users/macbook/Desktop/power-app-main/backend/src/logs/security-2026-07-03.log",
             "hash": "e0743e6f760517a31fe5a3163f491931c5a2100c32c5d43f98ad08f74673e4f5"
+        },
+        {
+            "date": 1783510694251,
+            "name": "/Users/macbook/Desktop/power-app-main/backend/src/logs/security-2026-07-08.log",
+            "hash": "f7397d0e10ac297a95974e56a6126a7d55efb5a2e5e1c47b5077832e55e1899f"
+        },
+        {
+            "date": 1783589425388,
+            "name": "/Users/macbook/Desktop/power-app-main/backend/src/logs/security-2026-07-09.log",
+            "hash": "4f299df975d638a841447c1fa16be56aff1bda0db3c0cdc9d6e8347f96cdd993"
         }
     ],
     "hashType": "sha256"

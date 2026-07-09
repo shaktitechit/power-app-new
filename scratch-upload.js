@@ -8,7 +8,7 @@ async function testUploadAndGetViewUrl() {
   console.log("Using URL:", url);
   console.log("Using Key:", key ? `${key.substring(0, 15)}...` : "NOT FOUND");
 
-  const resourceType = "facility";
+  const resourceType = "enquiry_document";
   const resourceId = "69ce58daf78547cd43f64946"; // Real facility ID from DB
 
   const body = {

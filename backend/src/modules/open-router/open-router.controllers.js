@@ -86,7 +86,9 @@ export const parseUtilityBill = asyncHandler(async (req, res) => {
     return res.status(400).json({ message: "No bill document uploaded." });
   }
 
-  const { context, warnings, hasReadableText } = await buildDocumentTextContext(files);
+  const { context, warnings, hasReadableText } = await buildDocumentTextContext(files, {
+    billMode: true,
+  });
 
   if (!hasReadableText) {
     const detail =

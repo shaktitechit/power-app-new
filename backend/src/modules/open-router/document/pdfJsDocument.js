@@ -46,6 +46,14 @@ class NodeCanvasFactory {
  */
 
 /**
+ * @typedef {Object} PdfProcessResult
+ * @property {string} text
+ * @property {number} pageCount
+ * @property {boolean} hasEmbeddedText
+ * @property {Buffer[]} [ocrImages]
+ */
+
+/**
  * pdfjs-dist rejects Node.js Buffer even though it extends Uint8Array.
  * @param {Buffer | Uint8Array | ArrayBuffer} buffer
  * @returns {Uint8Array}
@@ -64,14 +72,11 @@ async function loadPdfDocument(buffer) {
     cMapUrl: path.join(pdfjsPath, "cmaps/"),
     cMapPacked: true,
     isEvalSupported: false,
+    stopAtErrors: false,
     canvasFactory,
   }).promise;
 }
 
-/**
- * Sort text items top-to-bottom, left-to-right using PDF coordinates.
- * @param {PdfTextItem[]} items
- */
 function sortTextItems(items) {
   return [...items].sort((a, b) => {
     const yDiff = b.y - a.y;
@@ -80,10 +85,6 @@ function sortTextItems(items) {
   });
 }
 
-/**
- * Build page text from positioned pdf.js text items.
- * @param {import("pdfjs-dist/types/src/display/api").TextItem[]} rawItems
- */
 function buildPageText(rawItems) {
   const items = rawItems
     .filter((item) => "str" in item && item.str?.trim())
@@ -122,16 +123,22 @@ function buildPageText(rawItems) {
   };
 }
 
-/**
- * Extract embedded PDF text with positional ordering via pdfjs-dist.
- * @param {Buffer} pdfBuffer
- * @returns {Promise<PdfEmbeddedTextResult>}
- */
-export async function extractEmbeddedPdfTextWithPositions(pdfBuffer) {
-  const pdfDocument = await loadPdfDocument(pdfBuffer);
+function formatPageTexts(pages) {
+  return pages
+    .map((page) => {
+      if (!page.text) return "";
+      return `--- Page ${page.pageNumber} ---\n${page.text}`;
+    })
+    .filter(Boolean)
+    .join("\n\n")
+    .trim();
+}
+
+async function extractEmbeddedPages(pdfDocument, maxPages) {
+  const limit = Math.min(pdfDocument.numPages, maxPages);
   const pages = [];
 
-  for (let pageNumber = 1; pageNumber <= pdfDocument.numPages; pageNumber += 1) {
+  for (let pageNumber = 1; pageNumber <= limit; pageNumber += 1) {
     const page = await pdfDocument.getPage(pageNumber);
     const textContent = await page.getTextContent();
     const pageText = buildPageText(textContent.items);
@@ -143,34 +150,14 @@ export async function extractEmbeddedPdfTextWithPositions(pdfBuffer) {
     });
   }
 
-  const text = pages
-    .map((page) => {
-      if (!page.text) return "";
-      return `--- Page ${page.pageNumber} ---\n${page.text}`;
-    })
-    .filter(Boolean)
-    .join("\n\n");
-
-  return {
-    text: text.trim(),
-    pageCount: pdfDocument.numPages,
-    pages,
-  };
+  return pages;
 }
 
-/**
- * Render up to maxPages PDF pages at the requested DPI.
- * @param {Buffer} pdfBuffer
- * @param {number} dpi
- * @param {number} maxPages
- * @returns {Promise<Buffer[]>}
- */
-export async function renderPdfPagesAtDpi(pdfBuffer, dpi, maxPages) {
-  const pdfDocument = await loadPdfDocument(pdfBuffer);
+async function renderDocumentPages(pdfDocument, dpi, maxPages) {
   const limit = Math.min(pdfDocument.numPages, maxPages);
   const scale = dpi / 72;
   const canvasFactory = new NodeCanvasFactory();
-  const pages = [];
+  const images = [];
 
   for (let pageNumber = 1; pageNumber <= limit; pageNumber += 1) {
     const page = await pdfDocument.getPage(pageNumber);
@@ -183,13 +170,76 @@ export async function renderPdfPagesAtDpi(pdfBuffer, dpi, maxPages) {
       viewport,
     }).promise;
 
-    pages.push(canvas.toBuffer("image/png"));
+    images.push(canvas.toBuffer("image/png"));
     canvasFactory.destroy({ canvas, context });
   }
 
-  if (pages.length === 0) {
+  if (images.length === 0) {
     throw new Error("PDF has no renderable pages.");
   }
 
-  return pages;
+  return images;
+}
+
+/**
+ * Load PDF once, extract embedded text, optionally render pages for OCR.
+ * @param {Buffer} pdfBuffer
+ * @param {{ minChars?: number, dpi?: number, maxPages?: number }} [options]
+ * @returns {Promise<PdfProcessResult>}
+ */
+export async function processPdfDocument(pdfBuffer, options = {}) {
+  const minChars = options.minChars ?? 80;
+  const dpi = options.dpi ?? 200;
+  const maxPages = options.maxPages ?? 2;
+
+  const pdfDocument = await loadPdfDocument(pdfBuffer);
+
+  try {
+    const pages = await extractEmbeddedPages(pdfDocument, maxPages);
+    const text = formatPageTexts(pages);
+
+    if (text.length >= minChars) {
+      return {
+        text,
+        pageCount: pdfDocument.numPages,
+        hasEmbeddedText: true,
+      };
+    }
+
+    const ocrImages = await renderDocumentPages(pdfDocument, dpi, maxPages);
+
+    return {
+      text,
+      pageCount: pdfDocument.numPages,
+      hasEmbeddedText: false,
+      ocrImages,
+    };
+  } finally {
+    await pdfDocument.destroy();
+  }
+}
+
+/** @deprecated Use processPdfDocument instead. */
+export async function extractEmbeddedPdfTextWithPositions(pdfBuffer) {
+  const result = await processPdfDocument(pdfBuffer, {
+    minChars: Number.MAX_SAFE_INTEGER,
+    maxPages: 50,
+  });
+
+  return {
+    text: result.text,
+    pageCount: result.pageCount,
+    pages: [],
+  };
+}
+
+/** @deprecated Use processPdfDocument instead. */
+export async function renderPdfPagesAtDpi(pdfBuffer, dpi, maxPages) {
+  const pdfDocument = await loadPdfDocument(pdfBuffer);
+
+  try {
+    return renderDocumentPages(pdfDocument, dpi, maxPages);
+  } finally {
+    await pdfDocument.destroy();
+  }
 }

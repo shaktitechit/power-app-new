@@ -109,7 +109,7 @@ export function HVACAuditSection({
   });
 
   const facilityPrefill = useMemo((): FacilityPrefill | undefined => {
-    const facility = facilityResponse?.data?.facility;
+  const facility = facilityResponse?.data?.facility;
     if (!facility) return undefined;
     return {
       name: facility.name,
@@ -406,60 +406,60 @@ export function HVACAuditSection({
               to open the form in a modal. Upload documents from the documents
               panel.
             </p>
-          </div>
+      </div>
 
-          <div
-            className={cnHideUtilityAuditEdits(
+              <div
+                className={cnHideUtilityAuditEdits(
               sheetEditsLocked,
-              "flex flex-wrap items-center gap-2",
-            )}
-          >
-            <input
+                  "flex flex-wrap items-center gap-2",
+                )}
+              >
+                <input
               id="hvac-audit-excel-import"
-              type="file"
-              accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
-              className="hidden"
+                  type="file"
+                  accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
+                  className="hidden"
               onChange={handleHVACExcelImport}
-              disabled={excelImporting}
-            />
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
+                  disabled={excelImporting}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
               onClick={openCreateModal}
               className="border-primary/20 bg-primary/5 text-primary hover:bg-primary/10"
-            >
+                >
               <Plus className="mr-2 h-4 w-4" />
               Add HVAC Audit
-            </Button>
-            <Button
+                </Button>
+                    <Button
               type="button"
-              variant="outline"
-              size="sm"
+                      variant="outline"
+                      size="sm"
               onClick={handleDownloadHVACExcel}
-            >
+                    >
               <Download className="mr-2 h-4 w-4" />
               Excel template
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
               disabled={excelImporting}
-              onClick={() =>
+                      onClick={() =>
                 document.getElementById("hvac-audit-excel-import")?.click()
               }
             >
               <FileSpreadsheet className="mr-2 h-4 w-4" />
               {excelImporting ? "Reading…" : "Import Excel"}
-            </Button>
-          </div>
-        </div>
+                    </Button>
+                </div>
+              </div>
 
         {sortedRecords.length === 0 ? (
           <AuditRecordsEmptyState />
         ) : (
-          <div className="space-y-4">
+              <div className="space-y-4">
             <CustomTabs
               tabs={hvacTabs}
               activeTab={activeHvacTabId}
@@ -486,7 +486,7 @@ export function HVACAuditSection({
                 onPreviewDocument={handleOpenPreview}
               />
             ) : null}
-          </div>
+                    </div>
         )}
 
       <HVACAuditFormModal
@@ -548,7 +548,7 @@ export function HVACAuditSection({
           <div className="space-y-4 py-2">
             <div
               className="flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-border bg-muted/30 p-8 transition-colors hover:bg-muted/50"
-              onClick={() =>
+                      onClick={() =>
                 document.getElementById("hvac-doc-file-input")?.click()
               }
             >
@@ -565,7 +565,7 @@ export function HVACAuditSection({
                 onChange={(e) => {
                   const files = Array.from(e.target.files ?? []);
                   setUploadFiles((prev) => [
-                    ...prev,
+                              ...prev,
                     ...files.map((file) => ({
                       id: newPendingUploadId(),
                       file,
@@ -574,8 +574,8 @@ export function HVACAuditSection({
                   ]);
                   e.target.value = "";
                 }}
-              />
-            </div>
+                      />
+                    </div>
             {uploadFiles.length > 0 ? (
               <ul className="space-y-3">
                 {uploadFiles.map((item) => (
@@ -588,8 +588,8 @@ export function HVACAuditSection({
                         {item.file.name}
                       </span>
                       <button
-                        type="button"
-                        onClick={() =>
+                      type="button"
+                      onClick={() =>
                           setUploadFiles((prev) =>
                             prev.filter((entry) => entry.id !== item.id),
                           )
@@ -598,7 +598,7 @@ export function HVACAuditSection({
                       >
                         <X className="h-4 w-4" />
                       </button>
-                    </div>
+                </div>
                     <div className="space-y-1">
                       <Label htmlFor={`hvac-doc-caption-${item.id}`}>
                         Caption
@@ -622,26 +622,26 @@ export function HVACAuditSection({
                 ))}
               </ul>
             ) : null}
-          </div>
+                </div>
           <div className="flex justify-end gap-2">
-            <Button
-              type="button"
-              variant="outline"
+                    <Button
+                      type="button"
+                      variant="outline"
               onClick={() => {
                 setUploadModalRecordId(null);
                 setUploadFiles([]);
               }}
             >
               Cancel
-            </Button>
-            <Button
-              type="button"
+                    </Button>
+                          <Button
+                            type="button"
               onClick={handleUploadDocs}
               disabled={uploadFiles.length === 0 || isUploadingDocs}
             >
               {isUploadingDocs ? "Uploading…" : "Upload"}
-            </Button>
-          </div>
+                          </Button>
+                        </div>
         </DialogContent>
       </Dialog>
 
@@ -661,7 +661,7 @@ export function HVACAuditSection({
             <DialogTitle>{previewDoc?.fileName || "Document"}</DialogTitle>
           </DialogHeader>
           {previewDoc ? (
-            <div className="space-y-4">
+              <div className="space-y-4">
               {previewDoc.fileType === "image" ? (
                 <img
                   src={toSameOriginFileManagementUrl(previewDoc.fileUrl)}
@@ -688,11 +688,11 @@ export function HVACAuditSection({
                     <Button type="button" onClick={handleSaveCaption}>
                       <Save className="mr-2 h-4 w-4" />
                       Save
-                    </Button>
-                  </div>
-                </div>
+                            </Button>
+                        </div>
+                    </div>
               ) : null}
-            </div>
+                  </div>
           ) : null}
         </DialogContent>
       </Dialog>

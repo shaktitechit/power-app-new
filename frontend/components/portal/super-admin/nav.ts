@@ -23,7 +23,6 @@ export const navItems: NavItem[] = [
     icon: ListChecks,
     children: [
       { title: "Submitted enquiries", href: "/submited-enquiries", icon: CircleCheck },
-      { title: "Pending quotations", href: "/pending-quotation", icon: Hourglass },
     ],
   },
   { title: "Audits", href: "/audits", icon: ClipboardList },

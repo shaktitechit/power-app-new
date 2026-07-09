@@ -86,3 +86,8 @@ const MODE = process.env.NODE_ENV || "development";
 server.listen(PORT, HOST, () => {
   console.log(`Server running on http://${HOST}:${PORT} in ${MODE} mode`);
 });
+
+// Bill OCR + OpenRouter can take several minutes on large scanned PDFs.
+server.timeout = 5 * 60 * 1000;
+server.keepAliveTimeout = 120 * 1000;
+server.headersTimeout = 121 * 1000;

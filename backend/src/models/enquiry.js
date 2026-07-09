@@ -62,6 +62,11 @@ const enquirySchema = new mongoose.Schema({
         ref: "User",
     },
 
+    assigned_admin_to: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+    },
+
     enquiry_status: {
         type: String,
         enum: [

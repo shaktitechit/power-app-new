@@ -10,12 +10,11 @@ import {
   getFollowUpByIdService,
   updateFollowUpService,
   deleteFollowUpService,
-  getPendingQuotationsService,
-  getQuotationsService,
-  createQuotationService,
-  getQuotationByIdService,
-  updateQuotationService,
-  deleteQuotationService,
+  getEnquiryDocumentsService,
+  createEnquiryDocumentService,
+  getEnquiryDocumentByIdService,
+  updateEnquiryDocumentService,
+  deleteEnquiryDocumentService,
 } from "./enquiry.services.js";
 
 // ─── Enquiry handlers ─────────────────────────────────────────────────────────
@@ -93,54 +92,49 @@ export const deleteFollowUp = asyncHandler(async (req, res) => {
 
 // ─── Quotation handlers ───────────────────────────────────────────────────────
 
-// GET /api/v1/enquiries/pending-quotations
-export const getPendingQuotationsForApproval = asyncHandler(async (req, res) => {
-  const rows = await getPendingQuotationsService({ user: req.user });
+
+// GET /api/v1/enquiries/:enquiryId/enquiry-documents
+export const getEnquiryDocuments = asyncHandler(async (req, res) => {
+  const rows = await getEnquiryDocumentsService({ user: req.user, enquiryId: req.params.enquiryId });
   return res.status(200).json({ success: true, count: rows.length, data: rows });
 });
 
-// GET /api/v1/enquiries/:enquiryId/quotations
-export const getQuotations = asyncHandler(async (req, res) => {
-  const rows = await getQuotationsService({ user: req.user, enquiryId: req.params.enquiryId });
-  return res.status(200).json({ success: true, count: rows.length, data: rows });
-});
-
-// POST /api/v1/enquiries/:enquiryId/quotations
-export const createQuotation = asyncHandler(async (req, res) => {
+// POST /api/v1/enquiries/:enquiryId/enquiry-documents
+export const createEnquiryDocument = asyncHandler(async (req, res) => {
   try {
-    const data = await createQuotationService({ user: req.user, enquiryId: req.params.enquiryId, body: req.body });
-    return res.status(201).json({ success: true, message: "Quotation created successfully", data });
+    const data = await createEnquiryDocumentService({ user: req.user, enquiryId: req.params.enquiryId, body: req.body, files: req.files });
+    return res.status(201).json({ success: true, message: "Document created successfully", data });
   } catch (err) {
     if (err?.code === 11000) {
       res.status(409);
-      throw new Error("Quotation number already in use");
+      throw new Error("Document number already in use");
     }
     throw err;
   }
 });
 
-// GET /api/v1/enquiries/:enquiryId/quotations/:quotationId
-export const getQuotationById = asyncHandler(async (req, res) => {
-  const data = await getQuotationByIdService({ user: req.user, enquiryId: req.params.enquiryId, quotationId: req.params.quotationId });
+// GET /api/v1/enquiries/:enquiryId/enquiry-documents/:enquiryDocumentId
+export const getEnquiryDocumentById = asyncHandler(async (req, res) => {
+  const data = await getEnquiryDocumentByIdService({ user: req.user, enquiryId: req.params.enquiryId, enquiryDocumentId: req.params.enquiryDocumentId });
   return res.status(200).json({ success: true, data });
 });
 
-// PUT /api/v1/enquiries/:enquiryId/quotations/:quotationId
-export const updateQuotation = asyncHandler(async (req, res) => {
+// PUT /api/v1/enquiries/:enquiryId/enquiry-documents/:enquiryDocumentId
+export const updateEnquiryDocument = asyncHandler(async (req, res) => {
   try {
-    const data = await updateQuotationService({ user: req.user, enquiryId: req.params.enquiryId, quotationId: req.params.quotationId, body: req.body });
-    return res.status(200).json({ success: true, message: "Quotation updated successfully", data });
+    const data = await updateEnquiryDocumentService({ user: req.user, enquiryId: req.params.enquiryId, enquiryDocumentId: req.params.enquiryDocumentId, body: req.body, files: req.files });
+    return res.status(200).json({ success: true, message: "Document updated successfully", data });
   } catch (err) {
     if (err?.code === 11000) {
       res.status(409);
-      throw new Error("Quotation number already in use");
+      throw new Error("Document number already in use");
     }
     throw err;
   }
 });
 
-// DELETE /api/v1/enquiries/:enquiryId/quotations/:quotationId
-export const deleteQuotation = asyncHandler(async (req, res) => {
-  await deleteQuotationService({ user: req.user, enquiryId: req.params.enquiryId, quotationId: req.params.quotationId, body: req.body });
-  return res.status(200).json({ success: true, message: "Quotation deleted successfully" });
+// DELETE /api/v1/enquiries/:enquiryId/enquiry-documents/:enquiryDocumentId
+export const deleteEnquiryDocument = asyncHandler(async (req, res) => {
+  await deleteEnquiryDocumentService({ user: req.user, enquiryId: req.params.enquiryId, enquiryDocumentId: req.params.enquiryDocumentId, body: req.body });
+  return res.status(200).json({ success: true, message: "Document deleted successfully" });
 });

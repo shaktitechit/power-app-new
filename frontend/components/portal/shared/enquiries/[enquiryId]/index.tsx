@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import { useParams } from "@/components/portal/hooks/useParams";
+import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import Link from "next/link";
 import { DashboardLayout } from "@/components/portal/layout/dashboard-layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/portal/ui/card";
@@ -34,27 +35,30 @@ import {
   AlertDialogTitle,
 } from "@/components/portal/ui/alert-dialog";
 import { EnquiryStatusPill } from "@/components/portal/shared/components/enquiry/enquiry-status-pill";
+import { EditEnquiryForm } from "@/components/portal/shared/components/enquiry/edit-enquiry-form";
 import { canEditEnquiry } from "@/components/portal/lib/enquiryAccess";
+import { toSameOriginFileManagementUrl } from "@/components/portal/lib/fileManagementUrls";
 import {
   ENQUIRY_STATUS_OPTIONS,
   FOLLOW_UP_MODE_OPTIONS,
   FOLLOW_UP_OUTCOME_OPTIONS,
-  quotationStatusLabel,
 } from "@/components/portal/lib/enquiryConstants";
 import { toastHandler } from "@/components/portal/lib/toast";
 import {
   type FollowUp,
-  type Quotation,
+  type EnquiryDocument,
   type EnquiryStatus,
   useGetEnquiryByIdQuery,
   useGetFollowUpsQuery,
-  useGetQuotationsQuery,
+  useGetEnquiryDocumentsQuery,
   useCreateFollowUpMutation,
   useUpdateFollowUpMutation,
-  useCreateQuotationMutation,
-  useDeleteQuotationMutation,
-  useUpdateQuotationMutation,
+  useDeleteFollowUpMutation,
+  useCreateEnquiryDocumentMutation,
+  useDeleteEnquiryDocumentMutation,
+  useUpdateEnquiryDocumentMutation,
   useUpdateEnquiryMutation,
+  useDeleteEnquiryMutation,
 } from "@/store/slices/enquiryApiSlice";
 import { useAppSelector } from "@/store/hooks";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/portal/ui/tabs";
@@ -70,12 +74,13 @@ import {
   Pencil,
   Trash2,
   Eye,
+  Upload,
+  X,
+  Download,
+  Info,
+  Image as ImageIcon,
 } from "lucide-react";
-import {
-  QuotationWorkflowDialog,
-  targetStatusForStep,
-  type QuotationWorkflowStep,
-} from "@/components/portal/shared/components/enquiry/quotation-workflow-dialog";
+
 
 function WhatsAppGlyph({ className }: { className?: string }) {
   return (
@@ -118,16 +123,7 @@ const TERMINAL_ENQUIRY_STATUSES = new Set([
   "dropped",
 ]);
 
-const QUOTATION_TABLE_WORKFLOW_STATUSES = new Set<string>([
-  "draft",
-  "pending_approval",
-  "approved",
-  "rejected",
-]);
 
-type QuotationUiDialog =
-  | { type: "view"; q: Quotation }
-  | { type: "workflow"; step: QuotationWorkflowStep; q: Quotation };
 
 function telHref(phone?: string | null) {
   if (!phone?.trim()) return null;
@@ -182,6 +178,17 @@ export default function EnquiryDetailPage() {
     return Array.isArray(raw) ? raw[0] : (raw as string) ?? "";
   }, [params?.enquiryId]);
 
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const pathname = usePathname();
+
+  const currentTab = searchParams.get("tab") || "details";
+  const setTab = (tabValue: string) => {
+    const nextParams = new URLSearchParams(searchParams.toString());
+    nextParams.set("tab", tabValue);
+    router.push(`${pathname}?${nextParams.toString()}`);
+  };
+
   const user = useAppSelector((s) => s.auth.user);
   const userId = user?._id?.toString();
 
@@ -194,18 +201,51 @@ export default function EnquiryDetailPage() {
   const [fuNext, setFuNext] = useState("");
 
   const [qOpen, setQOpen] = useState(false);
-  const [qAmount, setQAmount] = useState("");
-  const [qValidTill, setQValidTill] = useState("");
-  const [qNotes, setQNotes] = useState("");
   const [qDocUrl, setQDocUrl] = useState("");
-  const [qtDialog, setQtDialog] = useState<QuotationUiDialog | null>(null);
+  const [deleteDoc, setDeleteDoc] = useState<EnquiryDocument | null>(null);
+  const [qFile, setQFile] = useState<File | null>(null);
+  const [qFilePreview, setQFilePreview] = useState<string | null>(null);
+  const [dragActive, setDragActive] = useState(false);
+  const [qCaption, setQCaption] = useState("");
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [closeLeadOpen, setCloseLeadOpen] = useState(false);
+  const [submitConfirmOpen, setSubmitConfirmOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [previewDoc, setPreviewDoc] = useState<EnquiryDocument["document"] | null>(null);
+  const [deleteEnquiry, { isLoading: isDeletingEnquiry }] = useDeleteEnquiryMutation();
+
+  const handleDrag = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.type === "dragenter" || e.type === "dragover") {
+      setDragActive(true);
+    } else if (e.type === "dragleave") {
+      setDragActive(false);
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragActive(false);
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      const file = e.dataTransfer.files[0];
+      setQFile(file);
+      if (file.type.startsWith("image/")) {
+        setQFilePreview(URL.createObjectURL(file));
+      } else {
+        setQFilePreview(null);
+      }
+    }
+  };
 
   const {
     data: enquiryRes,
     isLoading: enquiryLoading,
     isError: enquiryError,
     isFetching: enquiryFetching,
+    refetch: refetchEnquiry,
   } = useGetEnquiryByIdQuery(enquiryId, { skip: !enquiryId });
 
   const { data: fuRes, isLoading: fuLoading } = useGetFollowUpsQuery(
@@ -213,29 +253,45 @@ export default function EnquiryDetailPage() {
     { skip: !enquiryId },
   );
 
-  const { data: qRes, isLoading: qLoading } = useGetQuotationsQuery(
+  const { data: qRes, isLoading: qLoading } = useGetEnquiryDocumentsQuery(
     enquiryId,
     { skip: !enquiryId },
   );
 
   const [createFu, { isLoading: creatingFu }] = useCreateFollowUpMutation();
   const [updateFu, { isLoading: updatingFu }] = useUpdateFollowUpMutation();
+  const [deleteFu, { isLoading: deletingFu }] = useDeleteFollowUpMutation();
 
-  const [createQ, { isLoading: creatingQ }] = useCreateQuotationMutation();
-  const [updateQuote, { isLoading: updatingQuote }] =
-    useUpdateQuotationMutation();
+  const [createQ, { isLoading: creatingQ }] = useCreateEnquiryDocumentMutation();
+  const [updateQ, { isLoading: updatingQ }] =
+    useUpdateEnquiryDocumentMutation();
   const [deleteQuote, { isLoading: deletingQuote }] =
-    useDeleteQuotationMutation();
+    useDeleteEnquiryDocumentMutation();
 
   const [updateEnquiry, { isLoading: updatingLeadStatus }] =
     useUpdateEnquiryMutation();
 
   const enquiry = enquiryRes?.data;
   const followUps = fuRes?.data ?? [];
-  const quotations = qRes?.data ?? [];
+  const enquiryDocuments = qRes?.data ?? [];
 
   const canManage =
     user?.role === "super_admin" || (enquiry && canEditEnquiry(userId, enquiry));
+
+  const canDeleteEnquiry = user?.role === "super_admin";
+
+  const handleDeleteEnquiry = async () => {
+    try {
+      await toastHandler({
+        action: () => deleteEnquiry(enquiryId!).unwrap(),
+        loading: "Deleting enquiry...",
+        success: "Enquiry deleted successfully.",
+      });
+      router.push("/enquiries");
+    } catch (err) {
+      console.error(err);
+    }
+  };
 
   const leadIsTerminal =
     enquiry != null && TERMINAL_ENQUIRY_STATUSES.has(enquiry.enquiry_status);
@@ -400,109 +456,47 @@ export default function EnquiryDetailPage() {
   };
 
   const openCreateQuote = () => {
-    setQAmount("");
-    setQValidTill("");
-    setQNotes("");
     setQDocUrl("");
+    setQFile(null);
+    if (qFilePreview) {
+      URL.revokeObjectURL(qFilePreview);
+      setQFilePreview(null);
+    }
+    setQCaption("");
+    if (fileInputRef.current) fileInputRef.current.value = "";
     setQOpen(true);
   };
 
   const submitQuote = async () => {
     if (!canActOnFollowUpsAndQuotes) return;
     if (!enquiryId) return;
-    const amt = Number(qAmount);
-    if (Number.isNaN(amt)) {
-      return;
-    }
-    const payloadBase = {
-      amount: amt,
-      valid_till: qValidTill.trim() === "" ? null : qValidTill,
-      notes: qNotes.trim() || undefined,
-      document_url: qDocUrl.trim() || undefined,
-    };
 
     try {
       await toastHandler({
         action: () =>
-          createQ({ enquiryId, ...payloadBase }).unwrap(),
-        loading: "Creating quotation…",
-        success: "Draft quotation created.",
+          createQ({
+            enquiryId,
+            document_url: qDocUrl.trim() || undefined,
+            file: qFile || undefined,
+            caption: qCaption.trim() || undefined,
+          }).unwrap(),
+        loading: "Adding document…",
+        success: "Document added.",
       });
+      if (qFilePreview) {
+        URL.revokeObjectURL(qFilePreview);
+        setQFilePreview(null);
+      }
+      setQFile(null);
       setQOpen(false);
     } catch {
       /* toast */
     }
   };
 
-  const executeQuotationWorkflow = useCallback(
-    async (
-      step: QuotationWorkflowStep,
-      quotation: Quotation,
-      remark: string,
-    ) => {
-      if (!enquiryId) return;
-      const workflow_remark = remark.trim() || undefined;
 
-      const stepMessages: Record<
-        Exclude<QuotationWorkflowStep, "delete">,
-        { loading: string; success: string }
-      > = {
-        send_for_approval: {
-          loading: "Sending for approval…",
-          success: "Quotation sent for approval.",
-        },
-        send_to_client: {
-          loading: "Sending to client…",
-          success: "Quotation marked as sent to client.",
-        },
-        approve: {
-          loading: "Approving…",
-          success: "Quotation approved.",
-        },
-        reject: {
-          loading: "Rejecting…",
-          success: "Quotation rejected.",
-        },
-      };
 
-      try {
-        if (step === "delete") {
-          if (quotation.status !== "rejected") return;
-          await toastHandler({
-            action: () =>
-              deleteQuote({
-                enquiryId,
-                quotationId: quotation._id,
-                workflow_remark,
-              }).unwrap(),
-            loading: "Deleting quotation…",
-            success: "Quotation deleted.",
-          });
-        } else {
-          const status = targetStatusForStep(step);
-          if (!status) return;
-          const msg = stepMessages[step];
-          await toastHandler({
-            action: () =>
-              updateQuote({
-                enquiryId,
-                quotationId: quotation._id,
-                status,
-                workflow_remark,
-              }).unwrap(),
-            loading: msg.loading,
-            success: msg.success,
-          });
-        }
-        setQtDialog(null);
-      } catch {
-        /* toast */
-      }
-    },
-    [enquiryId, deleteQuote, updateQuote],
-  );
-
-  const quoteBusy = updatingQuote || deletingQuote;
+  const quoteBusy = creatingQ || updatingQ || deletingQuote;
 
   const followUpColumns: Column<FollowUp>[] = useMemo(
     () => [
@@ -557,30 +551,36 @@ export default function EnquiryDetailPage() {
     [canActOnFollowUpsAndQuotes, openEditFu],
   );
 
-  const quotationColumns: Column<Quotation>[] = useMemo(() => {
-    const cols: Column<Quotation>[] = [
+  const enquiryDocumentColumns: Column<EnquiryDocument>[] = useMemo(() => {
+    const cols: Column<EnquiryDocument>[] = [
       {
-        key: "quotation_number",
+        key: "document_number",
         header: "Number",
-        render: (row) => row.quotation_number || "—",
+        render: (row) => row.document_number || "—",
       },
       {
-        key: "amount",
-        header: "Amount",
-        render: (row) => formatInr(row.amount),
-      },
-      {
-        key: "status",
-        header: "Status",
-        render: (row) => (
-          <span className="text-sm">{quotationStatusLabel(row.status)}</span>
-        ),
-      },
-      {
-        key: "valid_till",
-        header: "Valid till",
-        hideOnMobile: true,
-        render: (row) => formatShortDate(row.valid_till),
+        key: "document",
+        header: "Document",
+        render: (row) =>
+          row.document?.fileUrl ? (
+            <div className="flex flex-col gap-0.5">
+              <button
+                type="button"
+                onClick={() => setPreviewDoc(row.document)}
+                className="text-primary hover:underline font-medium text-sm text-left flex items-center gap-1.5"
+              >
+                <Eye className="h-3.5 w-3.5" />
+                {row.document.fileName || "Open link"}
+              </button>
+              {row.document.caption ? (
+                <span className="text-xs text-muted-foreground italic">
+                  {row.document.caption}
+                </span>
+              ) : null}
+            </div>
+          ) : (
+            "—"
+          ),
       },
     ];
 
@@ -589,119 +589,24 @@ export default function EnquiryDetailPage() {
     cols.push({
       key: "actions",
       header: "Actions",
-      render: (row) => {
-        const wf = QUOTATION_TABLE_WORKFLOW_STATUSES.has(row.status);
-
-        const viewBtn = (
+      render: (row) => (
+        <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
           <Button
-            variant="outline"
+            variant="destructive"
             size="sm"
             className="h-8"
             disabled={quoteBusy}
-            onClick={() => setQtDialog({ type: "view", q: row })}
+            onClick={() => setDeleteDoc(row)}
           >
-            <Eye className="mr-1 h-3.5 w-3.5" />
-            View
+            <Trash2 className="mr-1 h-3.5 w-3.5" />
+            Delete
           </Button>
-        );
-
-        const inner =
-          row.status === "draft" ? (
-            <>
-              {viewBtn}
-              <Button
-                variant="default"
-                size="sm"
-                className="h-8"
-                disabled={quoteBusy}
-                onClick={() =>
-                  setQtDialog({
-                    type: "workflow",
-                    step: "send_for_approval",
-                    q: row,
-                  })
-                }
-              >
-                <Send className="mr-1 h-3.5 w-3.5" />
-                Send for approval
-              </Button>
-            </>
-          ) : row.status === "pending_approval" ? (
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:flex-wrap">
-              {viewBtn}
-              <span className="text-xs text-muted-foreground">
-                Awaiting approval
-                {user?.role === "super_admin" ? (
-                  <>
-                    <span aria-hidden> · </span>
-                    <Link
-                      href="/pending-quotation"
-                      className="text-primary underline-offset-4 hover:underline"
-                    >
-                      Review queue
-                    </Link>
-                  </>
-                ) : null}
-              </span>
-            </div>
-          ) : row.status === "approved" ? (
-            <>
-              {viewBtn}
-              <Button
-                variant="default"
-                size="sm"
-                className="h-8"
-                disabled={quoteBusy}
-                onClick={() =>
-                  setQtDialog({
-                    type: "workflow",
-                    step: "send_to_client",
-                    q: row,
-                  })
-                }
-              >
-                <Send className="mr-1 h-3.5 w-3.5" />
-                Send to client
-              </Button>
-            </>
-          ) : row.status === "rejected" ? (
-            <>
-              {viewBtn}
-              <Button
-                variant="destructive"
-                size="sm"
-                className="h-8"
-                disabled={quoteBusy}
-                onClick={() =>
-                  setQtDialog({
-                    type: "workflow",
-                    step: "delete",
-                    q: row,
-                  })
-                }
-              >
-                <Trash2 className="mr-1 h-3.5 w-3.5" />
-                Delete
-              </Button>
-            </>
-          ) : null;
-
-        return (
-          <div className="flex flex-wrap gap-2" onClick={(e) => e.stopPropagation()}>
-            {!wf ? (
-              <span className="text-xs text-muted-foreground">—</span>
-            ) : inner ? (
-              inner
-            ) : (
-              <span className="text-xs text-muted-foreground">—</span>
-            )}
-          </div>
-        );
-      },
+        </div>
+      ),
     });
 
     return cols;
-  }, [canActOnFollowUpsAndQuotes, quoteBusy, user?.role]);
+  }, [canActOnFollowUpsAndQuotes, quoteBusy]);
 
   const loadingMain =
     !enquiryId || enquiryLoading || (enquiryFetching && !enquiry);
@@ -738,243 +643,93 @@ export default function EnquiryDetailPage() {
         </Card>
       ) : (
         <>
-          <div className="grid gap-4 lg:grid-cols-3">
-            <Card className="lg:col-span-2">
-              <CardHeader className="flex flex-col gap-4 space-y-0">
-                <div className="flex flex-row items-start justify-between gap-4">
-                  <div className="min-w-0">
-                    <CardTitle className="flex flex-wrap items-center gap-2 text-xl">
-                      <span className="truncate">{enquiry.name}</span>
-                      <EnquiryStatusPill status={enquiry.enquiry_status} />
-                    </CardTitle>
-                    <p className="mt-1 text-sm text-muted-foreground">
-                      {enquiry.city}
-                      {enquiry.address ? ` · ${enquiry.address}` : ""}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex flex-wrap gap-2 border-t border-border pt-3">
-                  {contactTel ? (
-                    <Button variant="secondary" size="sm" asChild className="gap-1.5">
-                      <a href={contactTel}>
-                        <Phone className="h-4 w-4" />
-                        Call
-                      </a>
-                    </Button>
-                  ) : (
-                    <Button variant="secondary" size="sm" disabled className="gap-1.5">
-                      <Phone className="h-4 w-4" />
+          {/* Sticky Actions Header */}
+          <div className="sticky top-0 z-20 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-b border-border pb-4 pt-2 flex flex-col gap-4 md:flex-row md:items-center md:justify-between -mx-4 px-4 sm:-mx-6 sm:px-6">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2.5">
+                <h1 className="text-xl font-bold tracking-tight text-foreground truncate max-w-md">
+                  {enquiry.name}
+                </h1>
+                <EnquiryStatusPill status={enquiry.enquiry_status} />
+              </div>
+              <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1.5">
+                <span>{enquiry.city}</span>
+                {enquiry.address && (
+                  <>
+                    <span>·</span>
+                    <span className="truncate max-w-sm">{enquiry.address}</span>
+                  </>
+                )}
+              </p>
+              
+              <div className="flex flex-wrap gap-1.5 mt-2.5">
+                {contactTel ? (
+                  <Button variant="secondary" size="sm" asChild className="h-7 gap-1 px-2.5 text-xs">
+                    <a href={contactTel}>
+                      <Phone className="h-3 w-3" />
                       Call
-                    </Button>
-                  )}
-                  {contactMail ? (
-                    <Button variant="secondary" size="sm" asChild className="gap-1.5">
-                      <a href={contactMail}>
-                        <Mail className="h-4 w-4" />
-                        Email
-                      </a>
-                    </Button>
-                  ) : (
-                    <Button variant="secondary" size="sm" disabled className="gap-1.5">
-                      <Mail className="h-4 w-4" />
+                    </a>
+                  </Button>
+                ) : null}
+                {contactMail ? (
+                  <Button variant="secondary" size="sm" asChild className="h-7 gap-1 px-2.5 text-xs">
+                    <a href={contactMail}>
+                      <Mail className="h-3 w-3" />
                       Email
-                    </Button>
-                  )}
-                  {contactWa ? (
-                    <Button variant="secondary" size="sm" asChild className="gap-1.5 text-emerald-700 dark:text-emerald-400">
-                      <a
-                        href={contactWa}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                      >
-                        <WhatsAppGlyph className="h-4 w-4" />
-                        WhatsApp
-                      </a>
-                    </Button>
-                  ) : (
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      disabled
-                      className="gap-1.5"
-                    >
-                      <WhatsAppGlyph className="h-4 w-4" />
+                    </a>
+                  </Button>
+                ) : null}
+                {contactWa ? (
+                  <Button variant="secondary" size="sm" asChild className="h-7 gap-1 px-2.5 text-xs text-emerald-700 dark:text-emerald-400">
+                    <a href={contactWa} target="_blank" rel="noopener noreferrer">
+                      <WhatsAppGlyph className="h-3 w-3" />
                       WhatsApp
-                    </Button>
-                  )}
-                </div>
-              </CardHeader>
-              <CardContent className="grid gap-4 sm:grid-cols-2">
-                <div>
-                  <p className="text-xs font-medium text-muted-foreground">
-                    Client
-                  </p>
-                  <p className="text-sm">
-                    {enquiry.client_representative || "—"}
-                  </p>
-                  <p className="text-sm text-muted-foreground">
-                    {enquiry.client_contact_number || ""}
-                    {enquiry.client_contact_number && enquiry.client_email
-                      ? " · "
-                      : ""}
-                    {enquiry.client_email || ""}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-xs font-medium text-muted-foreground">
-                    Pipeline
-                  </p>
-                  <p className="text-sm">
-                    Source: {enquiry.source?.trim() || "—"}
-                  </p>
-                  <p className="text-sm">
-                    Expected value:{" "}
-                    {enquiry.expected_value != null
-                      ? formatInr(enquiry.expected_value)
-                      : "—"}
-                  </p>
-                  <p className="text-sm">
-                    Next follow-up:{" "}
-                    {enquiry.next_followup_date
-                      ? formatShortDate(enquiry.next_followup_date)
-                      : "—"}
-                  </p>
-                </div>
-                <div className="sm:col-span-2">
-                  <p className="text-xs font-medium text-muted-foreground">
-                    Requested audits
-                  </p>
-                  <div className="mt-1 flex flex-wrap gap-1.5">
-                    {(enquiry.requested_audit_types?.length ?? 0) === 0 ? (
-                      <span className="text-sm text-muted-foreground">—</span>
-                    ) : (
-                      enquiry.requested_audit_types?.map((t) => (
-                        <span
-                          key={t}
-                          className="inline-flex rounded-md border border-border bg-muted/40 px-2 py-0.5 text-xs"
-                        >
-                          {t}
-                        </span>
-                      ))
-                    )}
-                  </div>
-                </div>
-                <div className="sm:col-span-2">
-                  <p className="text-xs font-medium text-muted-foreground">
-                    Notes
-                  </p>
-                  <p className="whitespace-pre-wrap text-sm">
-                    {enquiry.notes?.trim() || "—"}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-xs font-medium text-muted-foreground">
-                    Assigned to
-                  </p>
-                  <p className="text-sm">
-                    {enquiry.assigned_to &&
-                    typeof enquiry.assigned_to === "object"
-                      ? enquiry.assigned_to.name ?? enquiry.assigned_to.email
-                      : enquiry.assigned_to
-                        ? String(enquiry.assigned_to)
-                        : "—"}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-xs font-medium text-muted-foreground">
-                    Created by
-                  </p>
-                  <p className="text-sm">
-                    {enquiry.created_by &&
-                    typeof enquiry.created_by === "object"
-                      ? enquiry.created_by.name ?? enquiry.created_by.email
-                      : enquiry.created_by
-                        ? String(enquiry.created_by)
-                        : "—"}
-                  </p>
-                </div>
-                <div className="sm:col-span-2">
-                  <p className="text-xs font-medium text-muted-foreground">
-                    Facility conversion
-                  </p>
-                  <p className="text-sm">
-                    {enquiry.is_converted_to_facility ? (
-                      <>
-                        <span className="text-emerald-600 dark:text-emerald-400">
-                          Converted
-                        </span>
-                        {enquiry.converted_facility_id &&
-                        typeof enquiry.converted_facility_id === "object" ? (
-                          <>
-                            {" "}
-                            →{" "}
-                            <span className="font-medium">
-                              {enquiry.converted_facility_id.name}
-                              {enquiry.converted_facility_id.city
-                                ? ` (${enquiry.converted_facility_id.city})`
-                                : ""}
-                            </span>
-                          </>
-                        ) : enquiry.converted_facility_id ? (
-                          <span className="ml-1 font-mono text-xs">
-                            {String(enquiry.converted_facility_id)}
-                          </span>
-                        ) : null}
-                      </>
-                    ) : (
-                      "Not converted"
-                    )}
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
+                    </a>
+                  </Button>
+                ) : null}
+              </div>
+            </div>
 
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Actions</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4 text-sm">
-                <div className="space-y-2">
-                  <Label htmlFor="pipeline-status" className="text-xs">
-                    Pipeline status
-                  </Label>
-                  <Select
-                    value={enquiry.enquiry_status}
-                    onValueChange={(v) =>
-                      void changePipelineStatus(v as EnquiryStatus)
-                    }
-                    disabled={
-                      !canManage || leadIsTerminal || updatingLeadStatus
-                    }
-                  >
-                    <SelectTrigger id="pipeline-status" className="w-full">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {ENQUIRY_STATUS_OPTIONS.map((o) => (
-                        <SelectItem key={o.value} value={o.value}>
-                          {o.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {leadIsTerminal ? (
-                    <p className="text-xs text-muted-foreground">
-                      Pipeline is fixed for submitted or closed leads.
-                    </p>
-                  ) : null}
-                </div>
+            <div className="flex flex-wrap items-center gap-2.5 md:self-end">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-medium text-muted-foreground whitespace-nowrap">Pipeline status:</span>
+                <Select
+                  value={enquiry.enquiry_status}
+                  onValueChange={(v) => void changePipelineStatus(v as EnquiryStatus)}
+                  disabled={!canManage || leadIsTerminal || updatingLeadStatus}
+                >
+                  <SelectTrigger id="pipeline-status" className="h-9 w-[130px] text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {ENQUIRY_STATUS_OPTIONS.map((o) => (
+                      <SelectItem key={o.value} value={o.value} className="text-xs">
+                        {o.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
 
+              <div className="flex items-center gap-2">
                 {canManage && !leadIsTerminal ? (
-                  <div className="flex flex-col gap-2">
+                  <>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setEditOpen(true)}
+                      className="h-9 gap-1.5 text-xs"
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                      Edit enquiry
+                    </Button>
                     <Button
                       size="sm"
-                      onClick={() => void submitLead()}
+                      onClick={() => setSubmitConfirmOpen(true)}
                       disabled={updatingLeadStatus}
-                      className="w-full gap-1.5"
+                      className="h-9 gap-1.5 text-xs"
                     >
-                      <Send className="h-4 w-4" />
+                      <Send className="h-3.5 w-3.5" />
                       Submit lead
                     </Button>
                     <Button
@@ -982,94 +737,253 @@ export default function EnquiryDetailPage() {
                       size="sm"
                       onClick={() => setCloseLeadOpen(true)}
                       disabled={updatingLeadStatus}
-                      className="w-full gap-1.5"
+                      className="h-9 gap-1.5 text-xs border-destructive text-destructive hover:bg-destructive hover:text-white"
                     >
-                      <CircleSlash className="h-4 w-4" />
-                      Close lead
+                      <CircleSlash className="h-3.5 w-3.5" />
+                      Declined lead
                     </Button>
-                  </div>
+                  </>
                 ) : null}
 
-                <div className="space-y-1 border-t border-border pt-3 text-xs text-muted-foreground">
-                  <p>
-                    <span className="font-medium text-foreground">Updated: </span>
-                    {formatShortDate(enquiry.updated_at)}
-                  </p>
-                  <p>
-                    <span className="font-medium text-foreground">Created: </span>
-                    {formatShortDate(enquiry.created_at)}
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
+                {canDeleteEnquiry && (
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={() => setDeleteDialogOpen(true)}
+                    disabled={isDeletingEnquiry}
+                    className="h-9 gap-1.5 text-xs"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                    Delete enquiry
+                  </Button>
+                )}
+              </div>
+            </div>
           </div>
 
-          <Card className="mt-6">
-            <CardContent className="pt-6">
-              <Tabs defaultValue="followups" className="w-full">
-                <div className="flex flex-col gap-4 border-b border-border pb-4 sm:flex-row sm:items-center sm:justify-between">
-                  <TabsList className="grid h-auto w-full grid-cols-2 p-1 sm:h-9 sm:w-fit sm:max-w-md">
-                    <TabsTrigger value="followups" className="gap-1.5 px-3 py-2 sm:py-1">
-                      <MessageSquare className="h-4 w-4 shrink-0" />
-                      Follow-ups
-                      <span className="text-muted-foreground">({followUps.length})</span>
-                    </TabsTrigger>
-                    <TabsTrigger value="quotations" className="gap-1.5 px-3 py-2 sm:py-1">
-                      <FileText className="h-4 w-4 shrink-0" />
-                      Quotations
-                      <span className="text-muted-foreground">({quotations.length})</span>
-                    </TabsTrigger>
-                  </TabsList>
+          <Tabs value={currentTab} onValueChange={setTab} className="w-full mt-6">
+            <TabsList className="grid h-auto w-full grid-cols-3 p-1 sm:h-9 sm:w-fit sm:max-w-md">
+              <TabsTrigger value="details" className="gap-1.5 px-3 py-2 sm:py-1">
+                <Info className="h-4 w-4 shrink-0" />
+                Details
+              </TabsTrigger>
+              <TabsTrigger value="followups" className="gap-1.5 px-3 py-2 sm:py-1">
+                <MessageSquare className="h-4 w-4 shrink-0" />
+                Follow-ups
+                <span className="text-muted-foreground text-xs font-normal">({followUps.length})</span>
+              </TabsTrigger>
+              <TabsTrigger value="documents" className="gap-1.5 px-3 py-2 sm:py-1">
+                <FileText className="h-4 w-4 shrink-0" />
+                Documents
+                <span className="text-muted-foreground text-xs font-normal">({enquiryDocuments.length})</span>
+              </TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="details" className="mt-4 space-y-6">
+              <div className="grid gap-6 md:grid-cols-2">
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-base font-semibold">Client Profile</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3.5">
+                    <div>
+                      <p className="text-xs font-medium text-muted-foreground">Client Representative</p>
+                      <p className="text-sm font-medium mt-0.5">{enquiry.client_representative || "—"}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs font-medium text-muted-foreground">Contact Number</p>
+                      <p className="text-sm font-medium mt-0.5">{enquiry.client_contact_number || "—"}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs font-medium text-muted-foreground">Client Email</p>
+                      <p className="text-sm font-medium mt-0.5">{enquiry.client_email || "—"}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs font-medium text-muted-foreground">Address</p>
+                      <p className="text-sm font-medium mt-0.5">{enquiry.address || "—"}</p>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-base font-semibold">Pipeline & Sales Info</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3.5">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <p className="text-xs font-medium text-muted-foreground">Expected Value</p>
+                        <p className="text-sm font-semibold text-primary mt-0.5">
+                          {enquiry.expected_value != null ? formatInr(enquiry.expected_value) : "—"}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-xs font-medium text-muted-foreground">Next Follow-up</p>
+                        <p className="text-sm font-medium mt-0.5">
+                          {enquiry.next_followup_date ? formatShortDate(enquiry.next_followup_date) : "—"}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <p className="text-xs font-medium text-muted-foreground">Lead Source</p>
+                        <p className="text-sm font-medium mt-0.5">{enquiry.source?.trim() || "—"}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs font-medium text-muted-foreground">Assigned To</p>
+                        <p className="text-sm font-medium mt-0.5">
+                          {enquiry.assigned_to && typeof enquiry.assigned_to === "object"
+                            ? enquiry.assigned_to.name ?? enquiry.assigned_to.email
+                            : enquiry.assigned_to
+                              ? String(enquiry.assigned_to)
+                              : "—"}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <p className="text-xs font-medium text-muted-foreground">Created By</p>
+                        <p className="text-sm font-medium mt-0.5">
+                          {enquiry.created_by && typeof enquiry.created_by === "object"
+                            ? enquiry.created_by.name ?? enquiry.created_by.email
+                            : enquiry.created_by
+                              ? String(enquiry.created_by)
+                              : "—"}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-xs font-medium text-muted-foreground">Assigned Admin</p>
+                        <p className="text-sm font-medium mt-0.5">
+                          {enquiry.assigned_admin_to && typeof enquiry.assigned_admin_to === "object"
+                            ? enquiry.assigned_admin_to.name ?? enquiry.assigned_admin_to.email
+                            : enquiry.assigned_admin_to
+                              ? String(enquiry.assigned_admin_to)
+                              : "—"}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4 mt-4">
+                      <div>
+                        <p className="text-xs font-medium text-muted-foreground">Created At</p>
+                        <p className="text-sm font-medium mt-0.5">
+                          {enquiry.created_at
+                            ? new Date(enquiry.created_at).toLocaleDateString()
+                            : "—"}
+                        </p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card className="md:col-span-2">
+                  <CardHeader>
+                    <CardTitle className="text-base font-semibold">Audit Configuration & Notes</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div>
+                      <p className="text-xs font-medium text-muted-foreground">Requested Audits</p>
+                      <div className="mt-1.5 flex flex-wrap gap-1.5">
+                        {(enquiry.requested_audit_types?.length ?? 0) === 0 ? (
+                          <span className="text-sm text-muted-foreground">—</span>
+                        ) : (
+                          enquiry.requested_audit_types?.map((t) => (
+                            <span
+                              key={t}
+                              className="inline-flex rounded-md border border-border bg-muted/40 px-2.5 py-0.5 text-xs font-medium"
+                            >
+                              {t}
+                            </span>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                    
+                    <div>
+                      <p className="text-xs font-medium text-muted-foreground">Notes</p>
+                      <p className="whitespace-pre-wrap text-sm mt-1 bg-muted/20 p-3 rounded-lg border border-border/50">
+                        {enquiry.notes?.trim() || "—"}
+                      </p>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4 pt-2 border-t border-border">
+                      <div>
+                        <p className="text-xs font-medium text-muted-foreground">Facility Conversion</p>
+                        <p className="text-sm mt-0.5">
+                          {enquiry.is_converted_to_facility ? (
+                            <>
+                              <span className="font-semibold text-emerald-600 dark:text-emerald-400">Converted</span>
+                              {enquiry.converted_facility_id && typeof enquiry.converted_facility_id === "object" ? (
+                                <span className="font-medium text-foreground">
+                                  {" "}→ {enquiry.converted_facility_id.name}
+                                </span>
+                              ) : enquiry.converted_facility_id ? (
+                                <span className="ml-1 font-mono text-xs text-foreground">
+                                  {" "}→ {String(enquiry.converted_facility_id)}
+                                </span>
+                              ) : null}
+                            </>
+                          ) : (
+                            "Not converted"
+                          )}
+                        </p>
+                      </div>
+                      
+                      <div className="text-right text-xs text-muted-foreground self-end space-y-0.5">
+                        <p>Created: {formatShortDate(enquiry.created_at)}</p>
+                        <p>Updated: {formatShortDate(enquiry.updated_at)}</p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            </TabsContent>
+
+            <TabsContent value="followups" className="mt-4 space-y-4">
+              {leadIsTerminal ? (
+                <p className="rounded-md border border-border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
+                  This lead is submitted or closed — you cannot add or change
+                  follow-ups here.
+                </p>
+              ) : null}
+              {canActOnFollowUpsAndQuotes ? (
+                <div className="flex justify-end">
+                  <Button size="sm" onClick={openCreateFu}>
+                    <Plus className="mr-1 h-4 w-4" />
+                    Add follow-up
+                  </Button>
                 </div>
+              ) : null}
+              <DataTable<FollowUp>
+                columns={followUpColumns}
+                data={followUps}
+                loading={fuLoading}
+                emptyMessage="No follow-ups yet"
+              />
+            </TabsContent>
 
-                <TabsContent value="followups" className="mt-4 space-y-4">
-                  {leadIsTerminal ? (
-                    <p className="rounded-md border border-border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
-                      This lead is submitted or closed — you cannot add or change
-                      follow-ups here.
-                    </p>
-                  ) : null}
-                  {canActOnFollowUpsAndQuotes ? (
-                    <div className="flex justify-end">
-                      <Button size="sm" onClick={openCreateFu}>
-                        <Plus className="mr-1 h-4 w-4" />
-                        Add follow-up
-                      </Button>
-                    </div>
-                  ) : null}
-                  <DataTable<FollowUp>
-                    columns={followUpColumns}
-                    data={followUps}
-                    loading={fuLoading}
-                    emptyMessage="No follow-ups yet"
-                  />
-                </TabsContent>
-
-                <TabsContent value="quotations" className="mt-4 space-y-4">
-                  {leadIsTerminal ? (
-                    <p className="rounded-md border border-border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
-                      This lead is submitted or closed — you cannot add or change
-                      quotations here.
-                    </p>
-                  ) : null}
-                  {canActOnFollowUpsAndQuotes ? (
-                    <div className="flex justify-end">
-                      <Button size="sm" onClick={openCreateQuote}>
-                        <Plus className="mr-1 h-4 w-4" />
-                        Add quotation
-                      </Button>
-                    </div>
-                  ) : null}
-                  <DataTable<Quotation>
-                    columns={quotationColumns}
-                    data={quotations}
-                    loading={qLoading}
-                    emptyMessage="No quotations yet"
-                  />
-                </TabsContent>
-              </Tabs>
-            </CardContent>
-          </Card>
+            <TabsContent value="documents" className="mt-4 space-y-4">
+              {leadIsTerminal ? (
+                <p className="rounded-md border border-border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
+                  This lead is submitted or closed — you cannot add or change
+                  documents here.
+                </p>
+              ) : null}
+              {canActOnFollowUpsAndQuotes ? (
+                <div className="flex justify-end">
+                  <Button size="sm" onClick={openCreateQuote}>
+                    <Plus className="mr-1 h-4 w-4" />
+                    Add document
+                  </Button>
+                </div>
+              ) : null}
+              <DataTable<EnquiryDocument>
+                columns={enquiryDocumentColumns}
+                data={enquiryDocuments}
+                loading={qLoading}
+                emptyMessage="No documents yet"
+              />
+            </TabsContent>
+          </Tabs>
         </>
       )}
 
@@ -1080,7 +994,7 @@ export default function EnquiryDetailPage() {
           if (!open) setFuEditing(null);
         }}
       >
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-md" aria-describedby={undefined}>
           <DialogHeader>
             <DialogTitle>
               {fuEditing ? "Edit follow-up" : "New follow-up"}
@@ -1168,55 +1082,128 @@ export default function EnquiryDetailPage() {
       </Dialog>
 
       <Dialog open={qOpen} onOpenChange={setQOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-md" aria-describedby={undefined}>
           <DialogHeader>
-            <DialogTitle>New quotation</DialogTitle>
+            <DialogTitle>Add document</DialogTitle>
           </DialogHeader>
           <div className="grid gap-4 py-2">
             <div className="rounded-md border border-border bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
-              Quotation number is generated automatically. New records are always
-              saved as a <strong className="font-medium text-foreground">draft</strong>
-              . Send for approval from this page; a super administrator approves or
-              rejects under <strong className="font-medium text-foreground">Pending quotations</strong>
-              , then you can send to the client once approved—or delete here if rejected.
+              Document number is generated automatically. Upload a PDF/image, or record a link.
             </div>
+
             <div className="space-y-2">
-              <Label htmlFor="q-amt">Amount (INR) *</Label>
-              <Input
-                id="q-amt"
-                type="number"
-                min={0}
-                step="any"
-                value={qAmount}
-                onChange={(e) => setQAmount(e.target.value)}
-                required
-              />
+              <Label>File Upload (PDF or Image)</Label>
+              {qFile ? (
+                <div className="flex flex-col gap-2 rounded-lg border border-primary/20 bg-primary/5 p-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2 min-w-0 flex-1">
+                      {qFile.type === "application/pdf" ? (
+                        <FileText className="h-4 w-4 shrink-0 text-destructive" />
+                      ) : (
+                        <ImageIcon className="h-4 w-4 shrink-0 text-primary" />
+                      )}
+                      <span className="truncate text-sm font-medium">{qFile.name}</span>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                      onClick={() => {
+                        setQFile(null);
+                        if (qFilePreview) {
+                          URL.revokeObjectURL(qFilePreview);
+                          setQFilePreview(null);
+                        }
+                        if (fileInputRef.current) fileInputRef.current.value = "";
+                      }}
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+
+                  {qFilePreview ? (
+                    <div className="mt-2 overflow-hidden rounded-md border border-border bg-background flex justify-center items-center max-h-[160px] p-2">
+                      <img
+                        src={qFilePreview}
+                        alt="Preview"
+                        className="object-contain max-h-[140px] w-auto rounded-sm"
+                      />
+                    </div>
+                  ) : qFile.type === "application/pdf" ? (
+                    <div className="mt-2 p-4 rounded-md border border-border bg-background flex flex-col items-center justify-center gap-1.5">
+                      <FileText className="h-10 w-10 text-destructive" />
+                      <span className="text-xs text-muted-foreground font-medium">PDF Document</span>
+                    </div>
+                  ) : null}
+                </div>
+              ) : (
+                <div
+                  onDragEnter={handleDrag}
+                  onDragOver={handleDrag}
+                  onDragLeave={handleDrag}
+                  onDrop={handleDrop}
+                  className={`rounded-xl border border-dashed p-6 flex flex-col items-center justify-center gap-2 transition-colors ${
+                    dragActive
+                      ? "border-primary bg-primary/5"
+                      : "border-border bg-muted/20"
+                  }`}
+                >
+                  <label
+                    htmlFor="enquiry_doc_file"
+                    className="flex cursor-pointer flex-col items-center justify-center gap-1.5 text-center w-full h-full"
+                  >
+                    <Upload className={`h-6 w-6 transition-transform ${dragActive ? "scale-110 text-primary" : "text-muted-foreground"}`} />
+                    <span className="text-xs font-semibold text-primary hover:underline">
+                      Click to upload file
+                    </span>
+                    <span className="text-[10px] text-muted-foreground">
+                      or drag and drop here
+                    </span>
+                    <span className="text-[9px] text-muted-foreground font-medium mt-1">
+                      Supported: JPG, PNG, WEBP, PDF (Max 10MB)
+                    </span>
+                  </label>
+                  <input
+                    ref={fileInputRef}
+                    id="enquiry_doc_file"
+                    type="file"
+                    accept="image/*,.pdf,application/pdf"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        setQFile(file);
+                        if (file.type.startsWith("image/")) {
+                          setQFilePreview(URL.createObjectURL(file));
+                        } else {
+                          setQFilePreview(null);
+                        }
+                      }
+                    }}
+                    className="hidden"
+                  />
+                </div>
+              )}
             </div>
+
             <div className="space-y-2">
-              <Label htmlFor="q-valid">Valid till</Label>
-              <Input
-                id="q-valid"
-                type="date"
-                value={qValidTill}
-                onChange={(e) => setQValidTill(e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="q-doc">Document URL</Label>
+              <Label htmlFor="q-doc">Or Document URL</Label>
               <Input
                 id="q-doc"
                 value={qDocUrl}
                 onChange={(e) => setQDocUrl(e.target.value)}
                 placeholder="https://…"
+                disabled={!!qFile}
               />
             </div>
+
             <div className="space-y-2">
-              <Label htmlFor="q-notes">Notes</Label>
-              <Textarea
-                id="q-notes"
-                value={qNotes}
-                onChange={(e) => setQNotes(e.target.value)}
-                rows={2}
+              <Label htmlFor="q-caption">Caption</Label>
+              <Input
+                id="q-caption"
+                value={qCaption}
+                onChange={(e) => setQCaption(e.target.value)}
+                placeholder="e.g. Approved Document copy"
               />
             </div>
           </div>
@@ -1227,64 +1214,61 @@ export default function EnquiryDetailPage() {
             <Button
               onClick={() => void submitQuote()}
               disabled={
-                !qAmount.trim() ||
+                (!qDocUrl.trim() && !qFile) ||
                 creatingQ ||
                 !canActOnFollowUpsAndQuotes
               }
             >
-              {creatingQ ? "Saving…" : "Save draft"}
+              {creatingQ ? "Saving…" : "Save"}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      <QuotationWorkflowDialog
-        open={qtDialog != null}
-        onOpenChange={(v) => {
-          if (!v) setQtDialog(null);
-        }}
-        mode={
-          qtDialog?.type === "view"
-            ? { type: "view" }
-            : qtDialog?.type === "workflow"
-              ? { type: "workflow", step: qtDialog.step }
-              : null
-        }
-        quotation={qtDialog?.q ?? null}
-        enquiryName={enquiry?.name}
-        enquiryCity={enquiry?.city}
-        sendToClientContext={
-          enquiry &&
-          qtDialog?.type === "workflow" &&
-          qtDialog.step === "send_to_client"
-            ? {
-                clientRepresentative: enquiry.client_representative ?? null,
-                clientEmail: enquiry.client_email ?? null,
-                clientPhone: enquiry.client_contact_number ?? null,
-                senderName: user?.name ?? null,
-                requested_audit_types: enquiry.requested_audit_types ?? null,
-              }
-            : undefined
-        }
-        onWorkflowConfirm={
-          qtDialog?.type === "workflow"
-            ? (remark) => {
-                const d = qtDialog;
-                if (d?.type !== "workflow") return;
-                return executeQuotationWorkflow(d.step, d.q, remark);
-              }
-            : undefined
-        }
-        isSubmitting={quoteBusy}
-      />
+      <AlertDialog open={!!deleteDoc} onOpenChange={(v) => !v && setDeleteDoc(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this document?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This document will be removed from the enquiry.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="flex-col gap-2 sm:flex-row sm:justify-end">
+            <AlertDialogCancel disabled={quoteBusy}>Cancel</AlertDialogCancel>
+            <Button
+              variant="destructive"
+              disabled={quoteBusy}
+              onClick={async () => {
+                if (!deleteDoc) return;
+                try {
+                  await toastHandler({
+                    action: () =>
+                      deleteQuote({
+                        enquiryId: enquiryId!,
+                        enquiryDocumentId: deleteDoc._id,
+                      }).unwrap(),
+                    loading: "Deleting document…",
+                    success: "Document deleted.",
+                  });
+                  setDeleteDoc(null);
+                } catch {
+                  /* toast */
+                }
+              }}
+            >
+              Delete document
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog open={closeLeadOpen} onOpenChange={setCloseLeadOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Close this lead?</AlertDialogTitle>
+            <AlertDialogTitle>Decline this lead?</AlertDialogTitle>
             <AlertDialogDescription>
               Pick an outcome. Follow-ups and quotations stay read-only after the
-              lead is closed.
+              lead is declined.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter className="flex-col gap-2 sm:flex-row sm:justify-end">
@@ -1310,6 +1294,117 @@ export default function EnquiryDetailPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <AlertDialog open={submitConfirmOpen} onOpenChange={setSubmitConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Submit this lead?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to submit this lead? This will mark the lead as submitted and freeze edits.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="flex-col gap-2 sm:flex-row sm:justify-end">
+            <AlertDialogCancel disabled={updatingLeadStatus}>
+              Cancel
+            </AlertDialogCancel>
+            <Button
+              type="button"
+              disabled={updatingLeadStatus}
+              onClick={async () => {
+                await submitLead();
+                setSubmitConfirmOpen(false);
+              }}
+            >
+              Confirm submit
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this enquiry?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete this enquiry? This action cannot be undone and will delete all associated follow-ups and documents.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="flex-col gap-2 sm:flex-row sm:justify-end">
+            <AlertDialogCancel disabled={isDeletingEnquiry}>Cancel</AlertDialogCancel>
+            <Button
+              variant="destructive"
+              disabled={isDeletingEnquiry}
+              onClick={handleDeleteEnquiry}
+            >
+              {isDeletingEnquiry ? "Deleting…" : "Delete enquiry"}
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <Dialog
+        open={!!previewDoc}
+        onOpenChange={(open) => {
+          if (!open) setPreviewDoc(null);
+        }}
+      >
+        <DialogContent className="flex h-[90vh] max-w-6xl w-[95vw] flex-col overflow-hidden p-0 sm:rounded-xl">
+          <DialogHeader className="shrink-0 border-b border-border px-6 py-4">
+            <div className="flex items-center justify-between gap-3 pr-6">
+              <div className="min-w-0 flex-1">
+                <DialogTitle className="truncate pr-4 text-left text-base">
+                  {previewDoc?.caption || previewDoc?.fileName || "Document Preview"}
+                </DialogTitle>
+                {previewDoc?.caption && (
+                  <p className="truncate text-xs text-muted-foreground mt-0.5">
+                    {previewDoc.fileName}
+                  </p>
+                )}
+              </div>
+              {previewDoc ? (
+                <Button asChild size="sm" variant="secondary" className="shrink-0 gap-2">
+                  <a href={toSameOriginFileManagementUrl(previewDoc.fileUrl)} download target="_blank" rel="noopener noreferrer">
+                    <Download className="size-4" />
+                    Download
+                  </a>
+                </Button>
+              ) : null}
+            </div>
+          </DialogHeader>
+
+          <div className="relative flex min-h-0 flex-1 items-center justify-center bg-muted/10 p-4">
+            {previewDoc?.fileType === "image" ? (
+              <img
+                src={toSameOriginFileManagementUrl(previewDoc.fileUrl)}
+                alt={previewDoc.fileName || "Document"}
+                className="max-h-full max-w-full rounded-md object-contain"
+              />
+            ) : previewDoc?.fileType === "pdf" ? (
+              <iframe
+                src={toSameOriginFileManagementUrl(previewDoc.fileUrl)}
+                className="h-full w-full rounded-md border-0 bg-white"
+                title={previewDoc.fileName || "PDF Document"}
+              />
+            ) : (
+              <div className="flex flex-col items-center gap-4 text-muted-foreground">
+                <FileText className="size-16 opacity-50" />
+                <p>No preview available for this file type.</p>
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {user ? (
+        <EditEnquiryForm
+          open={editOpen}
+          onOpenChange={setEditOpen}
+          onComplete={() => {
+            void refetchEnquiry();
+          }}
+          enquiryId={enquiryId ?? null}
+        />
+      ) : null}
     </DashboardLayout>
   );
 }

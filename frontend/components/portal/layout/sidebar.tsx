@@ -37,7 +37,6 @@ interface SidebarProps {
 
 const SUBMITTED_OR_PENDING_ROUTE_PREFIXES = [
   "/submited-enquiries",
-  "/pending-quotation",
 ] as const;
 
 function isSubmittedOrPendingPath(pathname: string) {

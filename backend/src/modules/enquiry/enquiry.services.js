@@ -1,7 +1,8 @@
 import { modelsRegistry } from "../../data/modelRegistry.js";
-const { Enquiry, FollowUp, Quotation, Facility } = modelsRegistry;
+const { Enquiry, FollowUp, EnquiryDocument, Facility } = modelsRegistry;
 import crypto from "crypto";
 import mongoose from "mongoose";
+import { uploadAuditDocuments } from "../shared/electrical-audit.helpers.js";
 
 
 
@@ -24,16 +25,6 @@ export const ENQUIRY_STATUSES = [
   "dropped",
 ];
 
-export const QUOTATION_STATUSES = [
-  "draft",
-  "pending_approval",
-  "sent",
-  "viewed",
-  "revision_requested",
-  "approved",
-  "rejected",
-  "expired",
-];
 
 export const AUDIT_TYPES = [
   "Electrical Energy Audit",
@@ -66,19 +57,19 @@ export function parseClientRepresentatives(client_representatives) {
     .filter((rep) => rep.name || rep.contact_number || rep.email);
 }
 
-async function generateUniqueQuotationNumber() {
+async function generateUniqueEnquiryDocumentNumber() {
   const maxAttempts = 12;
   for (let i = 0; i < maxAttempts; i++) {
     const d = new Date();
     const ymd = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}${String(d.getDate()).padStart(2, "0")}`;
     const rand = crypto.randomBytes(4).toString("hex").toUpperCase().slice(0, 8);
-    const candidate = `QT-${ymd}-${rand}`;
-    const taken = await Quotation.findOne({ quotation_number: candidate, deleted_at: null })
+    const candidate = `DOC-${ymd}-${rand}`;
+    const taken = await EnquiryDocument.findOne({ document_number: candidate, deleted_at: null })
       .select("_id")
       .lean();
     if (!taken) return candidate;
   }
-  return `QT-${Date.now()}-${crypto.randomBytes(3).toString("hex").toUpperCase()}`;
+  return `DOC-${Date.now()}-${crypto.randomBytes(3).toString("hex").toUpperCase()}`;
 }
 
 export function parseRequestedAuditTypes(value) {
@@ -104,6 +95,7 @@ export function displayEnquiryName(enquiry) {
 export function buildEnquiryPopulate() {
   return [
     { path: "assigned_to", select: "name email role" },
+    { path: "assigned_admin_to", select: "name email role" },
     { path: "created_by", select: "name email role" },
     { path: "converted_facility_id", select: "name city status" },
   ];
@@ -120,6 +112,10 @@ export async function resolveAccessibleEnquiry(user, enquiryId) {
 
   const enquiry = await Enquiry.findById(enquiryId);
   if (!enquiry) return null;
+  if (user?.role === "admin") {
+    if (enquiry.assigned_admin_to?.toString() === user._id.toString()) return enquiry;
+    return null;
+  }
   if (isAdmin(user)) return enquiry;
 
   const uid = user._id.toString();
@@ -137,6 +133,7 @@ export async function createEnquiryService({ user, body, io }) {
     client_representative, client_contact_number, client_email,
     client_representatives,
     assigned_to: assignedRaw,
+    assigned_admin_to: assignedAdminRaw,
     enquiry_status, source, expected_value,
     requested_audit_types, notes, next_followup_date,
   } = body;
@@ -158,6 +155,13 @@ export async function createEnquiryService({ user, body, io }) {
   const assigned_to = parseOptionalObjectId(assignedRaw);
   if (assignedRaw && assigned_to === undefined) {
     const err = new Error("Invalid assigned_to");
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const assigned_admin_to = parseOptionalObjectId(assignedAdminRaw);
+  if (assignedAdminRaw && assigned_admin_to === undefined) {
+    const err = new Error("Invalid assigned_admin_to");
     err.statusCode = 400;
     throw err;
   }
@@ -190,6 +194,7 @@ export async function createEnquiryService({ user, body, io }) {
     client_email,
     client_representatives: fallbackClientReps,
     assigned_to: assigned_to || undefined,
+    assigned_admin_to: assigned_admin_to || undefined,
     enquiry_status: enquiry_status || "new",
     source: source != null ? String(source).trim() : undefined,
     expected_value: expected_value !== undefined && expected_value !== "" ? Number(expected_value) : undefined,
@@ -251,7 +256,9 @@ export async function getEnquiriesService({ user, query: rawQuery }) {
     query.assigned_to = aid;
   }
 
-  if (!isAdmin(user)) {
+  if (user?.role === "admin") {
+    query.assigned_admin_to = user._id;
+  } else if (!isAdmin(user)) {
     query.$or = [{ created_by: user._id }, { assigned_to: user._id }];
   }
 
@@ -282,6 +289,7 @@ export async function updateEnquiryService({ user, enquiryId, body, io }) {
     client_representative, client_contact_number, client_email,
     client_representatives,
     assigned_to: assignedRaw,
+    assigned_admin_to: assignedAdminRaw,
     enquiry_status, source, expected_value,
     requested_audit_types, notes, next_followup_date,
     is_converted_to_facility,
@@ -309,6 +317,20 @@ export async function updateEnquiryService({ user, enquiryId, body, io }) {
         throw err;
       }
       enquiry.assigned_to = aid;
+    }
+  }
+
+  if (assignedAdminRaw !== undefined) {
+    if (assignedAdminRaw === null || assignedAdminRaw === "") {
+      enquiry.assigned_admin_to = undefined;
+    } else {
+      const aid = parseOptionalObjectId(assignedAdminRaw);
+      if (!aid) {
+        const err = new Error("Invalid assigned_admin_to");
+        err.statusCode = 400;
+        throw err;
+      }
+      enquiry.assigned_admin_to = aid;
     }
   }
 
@@ -417,7 +439,7 @@ export async function deleteEnquiryService({ user, enquiryId }) {
 
   const name = displayEnquiryName(enquiry);
   await FollowUp.softDeleteMany({ enquiry_id: enquiry._id });
-  await Quotation.softDeleteMany({ enquiry_id: enquiry._id });
+  await EnquiryDocument.softDeleteMany({ enquiry_id: enquiry._id });
   await enquiry.softDelete();
 
   await createRecentActivity({
@@ -606,33 +628,22 @@ export async function deleteFollowUpService({ user, enquiryId, followUpId }) {
   });
 }
 
-// ─── Quotation services ───────────────────────────────────────────────────────
+// ─── Enquiry Document services ────────────────────────────────────────────────
 
-export async function getPendingQuotationsService({ user }) {
-  if (!isAdmin(user)) {
-    const err = new Error("Not authorized");
-    err.statusCode = 403;
-    throw err;
-  }
-  return Quotation.find({ status: "pending_approval", deleted_at: null })
-    .populate("enquiry_id", "name city enquiry_status")
-    .populate("created_by", "name email role")
-    .sort({ updatedAt: -1 });
-}
 
-export async function getQuotationsService({ user, enquiryId }) {
+export async function getEnquiryDocumentsService({ user, enquiryId }) {
   const enquiry = await resolveAccessibleEnquiry(user, enquiryId);
   if (!enquiry) {
     const err = new Error("Enquiry not found");
     err.statusCode = 404;
     throw err;
   }
-  return Quotation.find({ enquiry_id: enquiry._id })
+  return EnquiryDocument.find({ enquiry_id: enquiry._id })
     .populate("created_by", "name email role")
     .sort({ createdAt: -1 });
 }
 
-export async function createQuotationService({ user, enquiryId, body }) {
+export async function createEnquiryDocumentService({ user, enquiryId, body, files }) {
   const enquiry = await resolveAccessibleEnquiry(user, enquiryId);
   if (!enquiry) {
     const err = new Error("Enquiry not found");
@@ -640,48 +651,42 @@ export async function createQuotationService({ user, enquiryId, body }) {
     throw err;
   }
 
-  const { amount, line_items, valid_till, document_url, notes } = body;
+  let docObj = undefined;
 
-  if (amount === undefined || amount === "") {
-    const err = new Error("amount is required");
-    err.statusCode = 400;
-    throw err;
-  }
-  const amt = Number(amount);
-  if (Number.isNaN(amt)) {
-    const err = new Error("Invalid amount");
-    err.statusCode = 400;
-    throw err;
-  }
-
-  let validTill = undefined;
-  if (valid_till) {
-    const vt = new Date(valid_till);
-    if (Number.isNaN(vt.getTime())) {
-      const err = new Error("Invalid valid_till");
-      err.statusCode = 400;
-      throw err;
+  if (files && files.length > 0) {
+    const uploadedDocs = await uploadAuditDocuments(files, "enquiries", enquiry._id);
+    if (uploadedDocs.length > 0) {
+      docObj = uploadedDocs[0];
+      if (body.caption) {
+        docObj.caption = String(body.caption).trim();
+      }
     }
-    validTill = vt;
   }
 
-  let lines = [];
-  if (Array.isArray(line_items)) {
-    lines = line_items;
-  } else if (typeof line_items === "string") {
-    try { lines = JSON.parse(line_items); } catch { lines = []; }
+  if (!docObj) {
+    docObj = body.document;
+    if (!docObj && body.document_url) {
+      docObj = {
+        fileUrl: String(body.document_url).trim(),
+        fileType: String(body.document_url).trim().toLowerCase().endsWith(".pdf") ? "pdf" : "image",
+        fileName: String(body.document_url).trim().split("/").pop() || "Document",
+        caption: body.caption ? String(body.caption).trim() : "",
+        uploadedAt: new Date(),
+      };
+    }
   }
 
-  const quotation_number = await generateUniqueQuotationNumber();
-  const row = await Quotation.create({
+  if (!docObj || !docObj.fileUrl) {
+    const err = new Error("document file is required");
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const document_number = await generateUniqueEnquiryDocumentNumber();
+  const row = await EnquiryDocument.create({
     enquiry_id: enquiry._id,
-    quotation_number,
-    amount: amt,
-    line_items: lines,
-    status: "draft",
-    valid_till: validTill,
-    document_url: document_url != null ? String(document_url).trim() : undefined,
-    notes: notes != null ? String(notes).trim() : undefined,
+    document_number,
+    document: docObj,
     created_by: user._id,
   });
 
@@ -690,96 +695,94 @@ export async function createQuotationService({ user, enquiryId, body }) {
   await createRecentActivity({
     actor: user,
     action: "created",
-    entity_type: "quotation",
+    entity_type: "enquiry_document",
     entity_id: row._id,
-    entity_name: row.quotation_number || displayEnquiryName(enquiry),
-    message: buildActivityMessage({ actorName: user?.name || "User", action: "created", entityLabel: "quotation", entityName: row.quotation_number || displayEnquiryName(enquiry) }),
-    meta: { enquiry_id: enquiry._id, amount: row.amount },
+    entity_name: row.document_number || displayEnquiryName(enquiry),
+    message: buildActivityMessage({ actorName: user?.name || "User", action: "created", entityLabel: "document", entityName: row.document_number || displayEnquiryName(enquiry) }),
+    meta: { enquiry_id: enquiry._id },
   });
 
   return row;
 }
 
-export async function getQuotationByIdService({ user, enquiryId, quotationId }) {
+export async function getEnquiryDocumentByIdService({ user, enquiryId, enquiryDocumentId }) {
   const enquiry = await resolveAccessibleEnquiry(user, enquiryId);
   if (!enquiry) {
     const err = new Error("Enquiry not found");
     err.statusCode = 404;
     throw err;
   }
-  const row = await Quotation.findOne({ _id: quotationId, enquiry_id: enquiry._id })
+  const row = await EnquiryDocument.findOne({ _id: enquiryDocumentId, enquiry_id: enquiry._id })
     .populate("created_by", "name email role");
   if (!row) {
-    const err = new Error("Quotation not found");
+    const err = new Error("Document not found");
     err.statusCode = 404;
     throw err;
   }
   return row;
 }
 
-export async function updateQuotationService({ user, enquiryId, quotationId, body }) {
+export async function updateEnquiryDocumentService({ user, enquiryId, enquiryDocumentId, body, files }) {
   const enquiry = await resolveAccessibleEnquiry(user, enquiryId);
   if (!enquiry) {
     const err = new Error("Enquiry not found");
     err.statusCode = 404;
     throw err;
   }
-  const row = await Quotation.findOne({ _id: quotationId, enquiry_id: enquiry._id });
+  const row = await EnquiryDocument.findOne({ _id: enquiryDocumentId, enquiry_id: enquiry._id });
   if (!row) {
-    const err = new Error("Quotation not found");
+    const err = new Error("Document not found");
     err.statusCode = 404;
     throw err;
   }
 
-  const { quotation_number, amount, line_items, status, valid_till, document_url, notes, workflow_remark } = body;
+  const { document_number, document, document_url, caption } = body;
   const updatedFields = Object.keys(body || {});
 
-  if (quotation_number !== undefined) {
-    row.quotation_number = quotation_number ? String(quotation_number).trim() : undefined;
+  if (document_number !== undefined) {
+    row.document_number = document_number ? String(document_number).trim() : undefined;
   }
-  if (amount !== undefined) {
-    const amt = Number(amount);
-    if (Number.isNaN(amt)) {
-      const err = new Error("Invalid amount");
-      err.statusCode = 400;
-      throw err;
-    }
-    row.amount = amt;
-  }
-  if (line_items !== undefined) {
-    let lines = [];
-    if (Array.isArray(line_items)) lines = line_items;
-    else if (typeof line_items === "string") { try { lines = JSON.parse(line_items); } catch { lines = []; } }
-    row.line_items = lines;
-  }
-  if (status !== undefined) {
-    if (!QUOTATION_STATUSES.includes(String(status))) {
-      const err = new Error("Invalid quotation status");
-      err.statusCode = 400;
-      throw err;
-    }
-    row.status = String(status);
-  }
-  if (valid_till !== undefined) {
-    if (valid_till === null || valid_till === "") {
-      row.valid_till = undefined;
-    } else {
-      const vt = new Date(valid_till);
-      if (Number.isNaN(vt.getTime())) {
-        const err = new Error("Invalid valid_till");
-        err.statusCode = 400;
-        throw err;
+
+  let docObj = undefined;
+
+  if (files && files.length > 0) {
+    const uploadedDocs = await uploadAuditDocuments(files, "enquiries", enquiry._id);
+    if (uploadedDocs.length > 0) {
+      docObj = uploadedDocs[0];
+      if (caption !== undefined) {
+        docObj.caption = caption ? String(caption).trim() : "";
       }
-      row.valid_till = vt;
     }
   }
-  if (document_url !== undefined) row.document_url = document_url ? String(document_url).trim() : "";
-  if (notes !== undefined) row.notes = notes ? String(notes).trim() : "";
-  if (workflow_remark != null && String(workflow_remark).trim() !== "") {
-    const wr = String(workflow_remark).trim();
-    const statusLabel = status !== undefined ? String(status) : row.status;
-    const line = `[${new Date().toISOString()}] Quotation workflow (${statusLabel}): ${wr}`;
-    row.notes = row.notes ? `${row.notes}\n\n${line}` : line;
+
+  if (docObj === undefined) {
+    if (document !== undefined) {
+      docObj = document;
+      if (docObj && caption !== undefined) {
+        docObj.caption = caption ? String(caption).trim() : "";
+      }
+    } else if (document_url !== undefined) {
+      if (document_url) {
+        docObj = {
+          fileUrl: String(document_url).trim(),
+          fileType: String(document_url).trim().toLowerCase().endsWith(".pdf") ? "pdf" : "image",
+          fileName: String(document_url).trim().split("/").pop() || "Document",
+          caption: caption ? String(caption).trim() : (row.document?.caption || ""),
+          uploadedAt: new Date(),
+        };
+      } else {
+        docObj = null;
+      }
+    } else if (caption !== undefined && row.document) {
+      docObj = {
+        ...row.document.toObject(),
+        caption: caption ? String(caption).trim() : "",
+      };
+    }
+  }
+
+  if (docObj !== undefined && docObj !== null) {
+    row.document = docObj;
   }
 
   const updated = await row.save();
@@ -788,33 +791,33 @@ export async function updateQuotationService({ user, enquiryId, quotationId, bod
   await createRecentActivity({
     actor: user,
     action: "updated",
-    entity_type: "quotation",
+    entity_type: "enquiry_document",
     entity_id: updated._id,
-    entity_name: updated.quotation_number || displayEnquiryName(enquiry),
-    message: buildActivityMessage({ actorName: user?.name || "User", action: "updated", entityLabel: "quotation", entityName: updated.quotation_number || displayEnquiryName(enquiry) }),
+    entity_name: updated.document_number || displayEnquiryName(enquiry),
+    message: buildActivityMessage({ actorName: user?.name || "User", action: "updated", entityLabel: "document", entityName: updated.document_number || displayEnquiryName(enquiry) }),
     meta: { enquiry_id: enquiry._id, updated_fields: [...new Set(updatedFields)] },
   });
 
   return updated;
 }
 
-export async function deleteQuotationService({ user, enquiryId, quotationId, body }) {
+export async function deleteEnquiryDocumentService({ user, enquiryId, enquiryDocumentId, body }) {
   const enquiry = await resolveAccessibleEnquiry(user, enquiryId);
   if (!enquiry) {
     const err = new Error("Enquiry not found");
     err.statusCode = 404;
     throw err;
   }
-  const row = await Quotation.findOne({ _id: quotationId, enquiry_id: enquiry._id });
+  const row = await EnquiryDocument.findOne({ _id: enquiryDocumentId, enquiry_id: enquiry._id });
   if (!row) {
-    const err = new Error("Quotation not found");
+    const err = new Error("Document not found");
     err.statusCode = 404;
     throw err;
   }
 
   const wf = body?.workflow_remark;
   if (wf != null && String(wf).trim() !== "") {
-    const line = `[${new Date().toISOString()}] Quotation deleted: ${String(wf).trim()}`;
+    const line = `[${new Date().toISOString()}] Document deleted: ${String(wf).trim()}`;
     row.notes = row.notes ? `${row.notes}\n\n${line}` : line;
     await row.save();
   }
@@ -824,10 +827,10 @@ export async function deleteQuotationService({ user, enquiryId, quotationId, bod
   await createRecentActivity({
     actor: user,
     action: "deleted",
-    entity_type: "quotation",
+    entity_type: "enquiry_document",
     entity_id: row._id,
-    entity_name: row.quotation_number || displayEnquiryName(enquiry),
-    message: buildActivityMessage({ actorName: user?.name || "User", action: "deleted", entityLabel: "quotation", entityName: row.quotation_number || displayEnquiryName(enquiry) }),
+    entity_name: row.document_number || displayEnquiryName(enquiry),
+    message: buildActivityMessage({ actorName: user?.name || "User", action: "deleted", entityLabel: "document", entityName: row.document_number || displayEnquiryName(enquiry) }),
     meta: { enquiry_id: enquiry._id },
   });
 }

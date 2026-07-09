@@ -29,6 +29,18 @@ export const DOCUMENT_OCR_MAX_IMAGE_WIDTH = Number(
   process.env.DOCUMENT_OCR_MAX_IMAGE_WIDTH || 2400,
 );
 
+/** Utility bill autofill: fewer pages + lower DPI to avoid OOM / proxy timeouts. */
+export const DOCUMENT_BILL_OCR_MAX_PAGES = Number(
+  process.env.DOCUMENT_BILL_OCR_MAX_PAGES || 2,
+);
+
+export const DOCUMENT_BILL_RENDER_DPI = Number(
+  process.env.DOCUMENT_BILL_RENDER_DPI || 200,
+);
+
+/** Bills are usually English-only; eng is faster than eng+hin. */
+export const DOCUMENT_BILL_OCR_LANGUAGE = process.env.DOCUMENT_BILL_OCR_LANGUAGE || "eng";
+
 /** PDF default point size is 72 DPI. */
 export const PDF_BASE_DPI = 72;
 

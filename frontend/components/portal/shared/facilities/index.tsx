@@ -1,6 +1,9 @@
 "use client";
 
-import { canManageResource } from "@/components/portal/lib/authRoles";
+import {
+  canManageResource,
+  canViewFacilitiesSheet,
+} from "@/components/portal/lib/authRoles";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { DashboardLayout } from "@/components/portal/layout/dashboard-layout";
@@ -35,6 +38,7 @@ import {
 } from "@/components/portal/ui/alert-dialog";
 import { CreateFacilityForm } from "@/components/portal/shared/components/facility/create-facility-form";
 import { EditFacilityForm } from "@/components/portal/shared/components/facility/edit-facility-form";
+import { FacilitiesSheetModal } from "./facilities-sheet-modal";
 import {
   Plus,
   Search,
@@ -47,6 +51,7 @@ import {
   Mail,
   Calendar,
   ArrowRight,
+  FileSpreadsheet,
 } from "lucide-react";
 import {
   type Facility,
@@ -146,9 +151,10 @@ export default function FacilitiesPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedAuditType, setSelectedAuditType] = useState<string>("all");
   const [selectedClosureFilter, setSelectedClosureFilter] =
-    useState<ClosureFilter>("all");
+    useState<ClosureFilter>("open");
   const [page, setPage] = useState(1);
   const [isWizardOpen, setIsWizardOpen] = useState(false);
+  const [isSheetOpen, setIsSheetOpen] = useState(false);
 
   const [editOpen, setEditOpen] = useState(false);
   const [selectedFacilityId, setSelectedFacilityId] = useState<string | null>(
@@ -166,6 +172,7 @@ export default function FacilitiesPage() {
   );
   const canUpdateFacility = user?.role === "super_admin" || user?.role === "admin";
   const canDeleteFacility = user?.role === "super_admin";
+  const canViewSheet = canViewFacilitiesSheet(user?.role);
 
   const {
     data,
@@ -300,15 +307,28 @@ export default function FacilitiesPage() {
           />
         </div>
 
-        {canCreateFacility ? (
-          <Button
-            onClick={() => setIsWizardOpen(true)}
-            className="w-full sm:w-auto"
-          >
-            <Plus className="mr-2 h-4 w-4" />
-            Create Facility
-          </Button>
-        ) : null}
+        <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
+          {canViewSheet ? (
+            <Button
+              variant="outline"
+              onClick={() => setIsSheetOpen(true)}
+              className="w-full sm:w-auto flex items-center gap-2 border-primary/30 text-primary hover:bg-primary/5"
+            >
+              <FileSpreadsheet className="h-4 w-4" />
+              View in Sheet
+            </Button>
+          ) : null}
+
+          {canCreateFacility ? (
+            <Button
+              onClick={() => setIsWizardOpen(true)}
+              className="w-full sm:w-auto"
+            >
+              <Plus className="mr-2 h-4 w-4" />
+              Create Facility
+            </Button>
+          ) : null}
+        </div>
       </div>
 
       {/* Audit type tabs + closure filter */}
@@ -634,6 +654,14 @@ export default function FacilitiesPage() {
             />
           ) : null}
         </>
+      ) : null}
+
+      {canViewSheet ? (
+        <FacilitiesSheetModal
+          facilities={facilities}
+          open={isSheetOpen}
+          onOpenChange={setIsSheetOpen}
+        />
       ) : null}
 
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>

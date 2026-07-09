@@ -55,7 +55,7 @@ export function UtilityBillingRecordFormModal({
     const parsePromise = parseUtilityBill(formData).unwrap();
 
     toast.promise(parsePromise, {
-      loading: "AI is analyzing your bill...",
+      loading: "Analyzing bill (scanned PDFs may take 1–2 minutes)...",
       success: (data) => {
         if (!data || Object.keys(data).length === 0) {
           return "No readable electricity bill data was detected. Try another file.";

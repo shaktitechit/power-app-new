@@ -27,6 +27,7 @@ import {
   type RequestedAuditType,
 } from "@/store/slices/enquiryApiSlice";
 import { toastHandler } from "@/components/portal/lib/toast";
+import { useAppSelector } from "@/store/hooks";
 import { toast } from "sonner";
 import {
   ENQUIRY_STATUS_OPTIONS,
@@ -55,6 +56,7 @@ export function EditEnquiryForm({
   const [clientContactNumber, setClientContactNumber] = useState("");
   const [clientEmail, setClientEmail] = useState("");
   const [assignedTo, setAssignedTo] = useState<string>(UNASSIGNED);
+  const [assignedAdminTo, setAssignedAdminTo] = useState<string>(UNASSIGNED);
   const [enquiryStatus, setEnquiryStatus] = useState<EnquiryStatus>("new");
   const [source, setSource] = useState("");
   const [expectedValue, setExpectedValue] = useState("");
@@ -70,6 +72,42 @@ export function EditEnquiryForm({
     skip: !open,
   });
   const assignableUsers = assignableRes?.data ?? [];
+  const assignableAdmins = useMemo(() => {
+    return assignableUsers.filter((u) => u.role === "admin");
+  }, [assignableUsers]);
+  const assignableAuditorsAndManagers = useMemo(() => {
+    return assignableUsers.filter((u) => u.role === "auditor" || u.role === "manager");
+  }, [assignableUsers]);
+  const currentUser = useAppSelector((state) => state.auth.user);
+
+  const finalAssignableAdmins = useMemo(() => {
+    const list = [...assignableAdmins];
+    if (currentUser?._id && currentUser.role === "admin") {
+      if (!list.some((u) => u._id === currentUser._id)) {
+        list.unshift({
+          _id: currentUser._id,
+          name: currentUser.name,
+          email: currentUser.email,
+          role: currentUser.role,
+        } as any);
+      }
+    }
+    return list;
+  }, [assignableAdmins, currentUser]);
+  const finalAssignableAuditorsAndManagers = useMemo(() => {
+    const list = [...assignableAuditorsAndManagers];
+    if (currentUser?._id && (currentUser.role === "auditor" || currentUser.role === "manager")) {
+      if (!list.some((u) => u._id === currentUser._id)) {
+        list.unshift({
+          _id: currentUser._id,
+          name: currentUser.name,
+          email: currentUser.email,
+          role: currentUser.role,
+        } as any);
+      }
+    }
+    return list;
+  }, [assignableAuditorsAndManagers, currentUser]);
 
   const {
     data: enquiryRes,
@@ -94,13 +132,29 @@ export function EditEnquiryForm({
     setClientContactNumber(enquiry.client_contact_number ?? "");
     setClientEmail(enquiry.client_email ?? "");
 
-    const aid =
-      enquiry.assigned_to &&
-      typeof enquiry.assigned_to === "object" &&
-      enquiry.assigned_to !== null
-        ? enquiry.assigned_to._id ?? ""
-        : (enquiry.assigned_to as string) ?? "";
-    setAssignedTo(aid ? String(aid) : UNASSIGNED);
+    if (currentUser?.role === "admin" && currentUser?._id) {
+      setAssignedAdminTo(currentUser._id);
+    } else {
+      const adminAid =
+        enquiry.assigned_admin_to &&
+        typeof enquiry.assigned_admin_to === "object" &&
+        enquiry.assigned_admin_to !== null
+          ? enquiry.assigned_admin_to._id ?? ""
+          : (enquiry.assigned_admin_to as string) ?? "";
+      setAssignedAdminTo(adminAid ? String(adminAid) : UNASSIGNED);
+    }
+
+    if ((currentUser?.role === "auditor" || currentUser?.role === "manager") && currentUser?._id) {
+      setAssignedTo(currentUser._id);
+    } else {
+      const aid =
+        enquiry.assigned_to &&
+        typeof enquiry.assigned_to === "object" &&
+        enquiry.assigned_to !== null
+          ? enquiry.assigned_to._id ?? ""
+          : (enquiry.assigned_to as string) ?? "";
+      setAssignedTo(aid ? String(aid) : UNASSIGNED);
+    }
 
     setEnquiryStatus(enquiry.enquiry_status ?? "new");
     setSource(enquiry.source ?? "");
@@ -129,7 +183,7 @@ export function EditEnquiryForm({
         ? enquiry.converted_facility_id._id
         : enquiry.converted_facility_id;
     setConvertedFacilityId(cf ? String(cf) : "");
-  }, [enquiry, open]);
+  }, [enquiry, open, currentUser]);
 
   const toggleAuditType = (t: RequestedAuditType) => {
     setAuditTypes((prev) => {
@@ -182,6 +236,8 @@ export function EditEnquiryForm({
       client_email: clientEmail.trim() || undefined,
       assigned_to:
         assignedTo === UNASSIGNED ? null : assignedTo || undefined,
+      assigned_admin_to:
+        assignedAdminTo === UNASSIGNED ? null : assignedAdminTo || undefined,
       enquiry_status: enquiryStatus,
       source: source.trim() || undefined,
       expected_value: evRaw ?? null,
@@ -311,13 +367,17 @@ export function EditEnquiryForm({
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label>Assigned to</Label>
-                <Select value={assignedTo} onValueChange={setAssignedTo}>
+                <Select
+                  value={assignedTo}
+                  onValueChange={setAssignedTo}
+                  disabled={currentUser?.role === "auditor" || currentUser?.role === "manager"}
+                >
                   <SelectTrigger>
                     <SelectValue placeholder="Unassigned" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value={UNASSIGNED}>Unassigned</SelectItem>
-                    {assignableUsers.map((u) => (
+                    {finalAssignableAuditorsAndManagers.map((u) => (
                       <SelectItem key={u._id} value={u._id}>
                         {u.name}
                         {u.email ? ` (${u.email})` : ""}
@@ -326,6 +386,30 @@ export function EditEnquiryForm({
                   </SelectContent>
                 </Select>
               </div>
+              <div className="space-y-2">
+                <Label>Assigned Admin</Label>
+                <Select
+                  value={assignedAdminTo}
+                  onValueChange={setAssignedAdminTo}
+                  disabled={currentUser?.role === "admin"}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Unassigned" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={UNASSIGNED}>Unassigned</SelectItem>
+                    {finalAssignableAdmins.map((u) => (
+                      <SelectItem key={u._id} value={u._id}>
+                        {u.name}
+                        {u.email ? ` (${u.email})` : ""}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="eenq-source">Source</Label>
                 <Input
