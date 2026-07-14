@@ -24,7 +24,7 @@ export function DashboardLayout({
   subtitle,
   isFullscreen = false,
 }: DashboardLayoutProps) {
-  const [isCollapsed, setIsCollapsed] = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState(true); // collapsed by default
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const user = useAppSelector((state) => state.auth.user);
 
@@ -41,6 +41,8 @@ export function DashboardLayout({
     return <>{children}</>;
   }
 
+  const handleSidebarToggle = () => setIsCollapsed((prev) => !prev);
+
   return (
     <div className="min-h-screen bg-background">
       <PresenceBootstrap />
@@ -49,7 +51,7 @@ export function DashboardLayout({
           navItems={getNavItemsForRole(user?.role)}
           isCollapsed={isCollapsed}
           isMobileOpen={isMobileOpen}
-          onToggle={() => setIsCollapsed(!isCollapsed)}
+          onToggle={handleSidebarToggle}
           onMobileClose={() => setIsMobileOpen(false)}
           userRole={user?.role}
         />
@@ -67,6 +69,9 @@ export function DashboardLayout({
           subtitle={subtitle}
           onMenuClick={() => setIsMobileOpen(true)}
           isFullscreen={isFullscreen}
+          isCollapsed={isCollapsed}
+          onSidebarToggle={handleSidebarToggle}
+          userRole={user?.role}
         />
         <main className="min-w-0 flex-1 overflow-x-auto p-4 sm:p-6">
           {children}

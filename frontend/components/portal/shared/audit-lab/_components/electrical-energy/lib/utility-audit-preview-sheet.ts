@@ -15,7 +15,6 @@ import type {
   SheetColumn,
   SheetRow,
 } from "@/components/portal/shared/components/google-sheet-grid";
-import { exportSheetRowsToCsv } from "@/components/portal/shared/components/google-sheet-grid";
 
 export type UtilityAuditPreviewRecordMeta = {
   id: string;
@@ -550,42 +549,4 @@ export function buildUtilityAuditPreviewSheetTabs(
       };
     })
     .filter(Boolean) as UtilityAuditPreviewSheetTab[];
-}
-
-export function exportPreviewTabToCsv(
-  tab: UtilityAuditPreviewSheetTab,
-  filenamePrefix: string,
-) {
-  const dataSections = tab.sections.filter(
-    (section) => !isEmptySectionMessage(section),
-  );
-
-  if (dataSections.length === 0) {
-    const fallback = tab.sections[0];
-    if (fallback) {
-      exportSheetRowsToCsv(fallback.columns, fallback.rows, `${filenamePrefix}.csv`);
-    }
-    return;
-  }
-
-  if (dataSections.length === 1) {
-    exportSheetRowsToCsv(
-      dataSections[0].columns,
-      dataSections[0].rows,
-      `${filenamePrefix}.csv`,
-    );
-    return;
-  }
-
-  for (const section of dataSections) {
-    const safeSection = section.title
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-+|-+$/g, "");
-    exportSheetRowsToCsv(
-      section.columns,
-      section.rows,
-      `${filenamePrefix}-${safeSection}.csv`,
-    );
-  }
 }

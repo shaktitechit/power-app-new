@@ -82,6 +82,28 @@ const utilityAccountSchema = new mongoose.Schema(
       createdAt: "created_at",
       updatedAt: "updated_at",
     },
+    toJSON: {
+      transform: function (doc, ret) {
+        if (ret.sanctioned_demand_value === undefined || ret.sanctioned_demand_value === null) {
+          if (ret.sanctioned_demand_kVA !== undefined && ret.sanctioned_demand_kVA !== null) {
+            ret.sanctioned_demand_value = ret.sanctioned_demand_kVA;
+            ret.sanctioned_demand_unit = "kVA";
+          }
+        }
+        return ret;
+      }
+    },
+    toObject: {
+      transform: function (doc, ret) {
+        if (ret.sanctioned_demand_value === undefined || ret.sanctioned_demand_value === null) {
+          if (ret.sanctioned_demand_kVA !== undefined && ret.sanctioned_demand_kVA !== null) {
+            ret.sanctioned_demand_value = ret.sanctioned_demand_kVA;
+            ret.sanctioned_demand_unit = "kVA";
+          }
+        }
+        return ret;
+      }
+    }
   },
 );
 
@@ -90,6 +112,24 @@ utilityAccountSchema.pre("save", function () {
 });
 
 utilityAccountSchema.plugin(softDeletePlugin);
+
+// Hook to normalize data format even on lean queries
+utilityAccountSchema.post(["find", "findOne", "findOneAndUpdate"], function (res) {
+  if (!res) return;
+  const normalize = (doc) => {
+    if (doc.sanctioned_demand_value === undefined || doc.sanctioned_demand_value === null) {
+      if (doc.sanctioned_demand_kVA !== undefined && doc.sanctioned_demand_kVA !== null) {
+        doc.sanctioned_demand_value = doc.sanctioned_demand_kVA;
+        doc.sanctioned_demand_unit = "kVA";
+      }
+    }
+  };
+  if (Array.isArray(res)) {
+    res.forEach(normalize);
+  } else {
+    normalize(res);
+  }
+});
 
 // 🔒 Prevent duplicate account per facility (among non-deleted rows)
 utilityAccountSchema.index(

@@ -52,7 +52,7 @@ export function FacilitiesSheetModal({
   open,
   onOpenChange,
 }: FacilitiesSheetModalProps) {
-  const [selectedTab, setSelectedTab] = useState<"open" | "closed">("open");
+  const [selectedTab, setSelectedTab] = useState<"all" | "open" | "closed">("all");
 
   // Filters State
   const [auditTypeFilter, setAuditTypeFilter] = useState<string>("all");
@@ -201,7 +201,11 @@ export function FacilitiesSheetModal({
     return filteredFacilities.filter((f) => isFacilityAuditClosed(f));
   }, [filteredFacilities]);
 
-  const activeFacilities = selectedTab === "open" ? openFacilities : closedFacilities;
+  const activeFacilities = useMemo(() => {
+    if (selectedTab === "open") return openFacilities;
+    if (selectedTab === "closed") return closedFacilities;
+    return filteredFacilities;
+  }, [selectedTab, openFacilities, closedFacilities, filteredFacilities]);
 
   // Transform active facilities into SheetRow formats
   const sheetRows = useMemo<SheetRow[]>(() => {
@@ -237,7 +241,7 @@ export function FacilitiesSheetModal({
       const ExcelJS = (await import("exceljs")).default;
       const workbook = new ExcelJS.Workbook();
       const worksheet = workbook.addWorksheet(
-        selectedTab === "open" ? "Open Audits" : "Closed Audits"
+        selectedTab === "open" ? "Open Audits" : selectedTab === "closed" ? "Closed Audits" : "All Audits"
       );
 
       // Define columns layout
@@ -448,6 +452,21 @@ export function FacilitiesSheetModal({
       {/* Sheet Tabs + Actions bar */}
       <div className="flex shrink-0 items-center justify-between border-b border-border bg-muted/20 px-4 py-3 sm:px-6">
         <div className="flex gap-1 rounded-lg border border-border bg-muted/40 p-1">
+          <button
+            type="button"
+            onClick={() => setSelectedTab("all")}
+            className={cn(
+              "rounded-md px-4 py-1.5 text-xs font-semibold transition",
+              selectedTab === "all"
+                ? "bg-background text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground",
+            )}
+          >
+            All Facilities
+            <span className="ml-1.5 text-[10px] font-normal text-muted-foreground">
+              ({filteredFacilities.length})
+            </span>
+          </button>
           <button
             type="button"
             onClick={() => setSelectedTab("open")}

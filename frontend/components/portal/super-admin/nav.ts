@@ -25,7 +25,7 @@ export const navItems: NavItem[] = [
       { title: "Submitted enquiries", href: "/submited-enquiries", icon: CircleCheck },
     ],
   },
-  { title: "Audits", href: "/audits", icon: ClipboardList },
+  { title: "Audit Lab", href: "/audits", icon: ClipboardList },
   { title: "Analytics", href: "/analytics", icon: BarChart3 },
   { title: "Reports", href: "/reports", icon: FileText },
   { title: "Users", href: "/users", icon: Users },

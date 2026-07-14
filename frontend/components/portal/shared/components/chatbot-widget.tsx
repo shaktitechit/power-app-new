@@ -5,14 +5,13 @@ import { useChatCompletionMutation, useChatWithFileMutation } from "@/store/slic
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/portal/ui/card";
 import {
   Send,
-  Sparkles,
   User as UserIcon,
   RefreshCw,
   X,
-  MessageSquare,
   Paperclip,
   FileText,
   Image as ImageIcon,
+  GripHorizontal,
 } from "lucide-react";
 
 function LadyAvatar({ className = "h-5 w-5" }: { className?: string }) {
@@ -58,6 +57,11 @@ export function ChatbotWidget() {
   const [chatInput, setChatInput] = useState("");
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
 
+  // ─── Drag & Drop States ───
+  const [position, setPosition] = useState({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
+  const dragStartRef = useRef({ x: 0, y: 0, posX: 0, posY: 0 });
+
   const [chatCompletion, { isLoading: chatCompletionLoading }] = useChatCompletionMutation();
   const [chatWithFile, { isLoading: chatWithFileLoading }] = useChatWithFileMutation();
   
@@ -71,6 +75,78 @@ export function ChatbotWidget() {
       chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }
   }, [chatMessages, isOpen]);
+
+  // ─── Drag Move & End Handlers ───
+  const hasMovedRef = useRef(false);
+
+  useEffect(() => {
+    if (!isDragging) return;
+
+    const handleMove = (clientX: number, clientY: number) => {
+      const dx = clientX - dragStartRef.current.x;
+      const dy = clientY - dragStartRef.current.y;
+      
+      if (Math.abs(dx) > 4 || Math.abs(dy) > 4) {
+        hasMovedRef.current = true;
+      }
+
+      setPosition({
+        x: dragStartRef.current.posX + dx,
+        y: dragStartRef.current.posY + dy,
+      });
+    };
+
+    const onMouseMove = (e: MouseEvent) => {
+      handleMove(e.clientX, e.clientY);
+    };
+
+    const onTouchMove = (e: TouchEvent) => {
+      if (e.touches[0]) {
+        handleMove(e.touches[0].clientX, e.touches[0].clientY);
+      }
+    };
+
+    const onDragEnd = () => {
+      setIsDragging(false);
+    };
+
+    window.addEventListener("mousemove", onMouseMove);
+    window.addEventListener("mouseup", onDragEnd);
+    window.addEventListener("touchmove", onTouchMove, { passive: false });
+    window.addEventListener("touchend", onDragEnd);
+
+    return () => {
+      window.removeEventListener("mousemove", onMouseMove);
+      window.removeEventListener("mouseup", onDragEnd);
+      window.removeEventListener("touchmove", onTouchMove);
+      window.removeEventListener("touchend", onDragEnd);
+    };
+  }, [isDragging]);
+
+  const handleDragStart = (e: React.MouseEvent | React.TouchEvent) => {
+    const target = e.target as HTMLElement;
+    
+    // Prevent dragging on interior buttons, inputs, forms, but allow the main toggle-button
+    if (
+      target.closest("button:not(.toggle-button)") ||
+      target.closest("input") ||
+      target.closest("form")
+    ) {
+      return;
+    }
+
+    const clientX = "touches" in e ? e.touches[0].clientX : e.clientX;
+    const clientY = "touches" in e ? e.touches[0].clientY : e.clientY;
+
+    setIsDragging(true);
+    hasMovedRef.current = false;
+    dragStartRef.current = {
+      x: clientX,
+      y: clientY,
+      posX: position.x,
+      posY: position.y,
+    };
+  };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
@@ -148,18 +224,31 @@ export function ChatbotWidget() {
   };
 
   return (
-    <div ref={widgetRef} className="fixed bottom-6 right-6 z-50 flex flex-col items-end">
+    <div
+      ref={widgetRef}
+      style={{
+        transform: `translate(${position.x}px, ${position.y}px)`,
+        touchAction: "none",
+      }}
+      className="fixed bottom-6 right-6 z-50 flex flex-col items-end"
+    >
       {/* Chatbox Panel */}
       {isOpen && (
         <Card className="mb-4 flex flex-col border border-border bg-card/95 backdrop-blur-sm shadow-2xl rounded-2xl w-[380px] max-w-[calc(100vw-3rem)] h-[500px] min-h-0 overflow-hidden transition-all duration-300 animate-in fade-in slide-in-from-bottom-5 zoom-in-95">
-          <CardHeader className="flex flex-row items-center justify-between border-b border-border/60 pb-3 pt-4 px-4 bg-muted/20">
+          {/* Header serves as a drag handle */}
+          <CardHeader
+            onMouseDown={handleDragStart}
+            onTouchStart={handleDragStart}
+            className="flex flex-row items-center justify-between border-b border-border/60 pb-3 pt-4 px-4 bg-muted/20 cursor-grab active:cursor-grabbing select-none"
+          >
             <div className="flex items-center gap-2.5">
               <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 overflow-hidden">
                 <LadyAvatar className="h-7 w-7" />
               </div>
               <div>
-                <CardTitle className="text-sm font-semibold text-card-foreground">
+                <CardTitle className="text-sm font-semibold text-card-foreground flex items-center gap-1.5">
                   Shakti AI
+                  <GripHorizontal className="h-3.5 w-3.5 text-muted-foreground/50 shrink-0" />
                 </CardTitle>
                 <p className="text-[10px] text-muted-foreground">
                   Ask about audits & facilities
@@ -168,6 +257,7 @@ export function ChatbotWidget() {
             </div>
             <div className="flex items-center gap-1">
               <button
+                type="button"
                 onClick={handleResetChat}
                 title="Reset Chat"
                 className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors animate-in fade-in duration-200"
@@ -175,6 +265,7 @@ export function ChatbotWidget() {
                 <RefreshCw className="h-3.5 w-3.5" />
               </button>
               <button
+                type="button"
                 onClick={() => setIsOpen(false)}
                 title="Close"
                 className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
@@ -298,10 +389,19 @@ export function ChatbotWidget() {
         </Card>
       )}
 
-      {/* Floating Toggle Button */}
+      {/* Floating Toggle Button serves as a drag handle when closed */}
       <button
-        onClick={() => setIsOpen(!isOpen)}
-        className="relative flex h-14 w-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-2xl transition-all duration-300 hover:scale-110 active:scale-95 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 hover:shadow-primary/30 hover:shadow-lg overflow-hidden"
+        type="button"
+        onMouseDown={handleDragStart}
+        onTouchStart={handleDragStart}
+        onClick={(e) => {
+          if (hasMovedRef.current) {
+            hasMovedRef.current = false;
+            return;
+          }
+          setIsOpen(!isOpen);
+        }}
+        className="toggle-button relative flex h-14 w-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-2xl transition-all duration-300 hover:scale-110 active:scale-95 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 hover:shadow-primary/30 hover:shadow-lg overflow-hidden cursor-grab active:cursor-grabbing"
       >
         {!isOpen && (
           <span className="absolute -inset-0.5 -z-10 rounded-full bg-primary/40 animate-ping opacity-75" />
@@ -315,4 +415,3 @@ export function ChatbotWidget() {
     </div>
   );
 }
-

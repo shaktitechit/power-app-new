@@ -24,7 +24,7 @@ import { PUMP_AUDIT_EXCEL_FIELDS } from "./pump-audit-record-excel";
 import { TRANSFORMER_AUDIT_EXCEL_FIELDS } from "./transformer-audit-record-excel";
 import { UTILITY_BILLING_RECORD_EXCEL_FIELDS } from "./utility-billing-record-excel";
 import { UTILITY_TARIFF_EXCEL_FIELDS } from "./utility-tariff-excel";
-import { humanizeNestedKey } from "@/components/portal/shared/audits/_components/shared/audit-snapshot-table-utils";
+import { humanizeNestedKey } from "@/components/portal/lib/audit-snapshot-table-utils";
 
 const fieldsToMap = (fields: { key: string; label: string }[]) =>
   Object.fromEntries(fields.map((field) => [field.key, field.label]));

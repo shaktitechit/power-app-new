@@ -5,7 +5,7 @@ import {
   canViewFacilityManagementTabs,
   canDeleteAuditRecords,
 } from "@/components/portal/lib/authRoles";
-import { useEffect, useMemo, useState, type ComponentProps } from "react";
+import { useEffect, useMemo, useState, useRef, type ComponentProps } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { useParams } from "@/components/portal/hooks/useParams";
 import Link from "next/link";
@@ -141,6 +141,31 @@ export default function FacilityWorkspacePage() {
     isUtilityAccountComingSoonSlug(auditTypeSlug);
 
   const [editOpen, setEditOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [dynHeight, setDynHeight] = useState<string>("calc(100vh - 12rem)");
+
+  useEffect(() => {
+    const updateHeight = () => {
+      if (containerRef.current) {
+        const top = containerRef.current.getBoundingClientRect().top;
+        const remaining = window.innerHeight - top - 16; // minus 16px padding
+        setDynHeight(`${Math.max(remaining, 300)}px`);
+      }
+    };
+    updateHeight();
+    window.addEventListener("resize", updateHeight);
+    
+    // Watch body size for any layout shifts
+    const observer = new ResizeObserver(updateHeight);
+    if (document.body) observer.observe(document.body);
+
+    const timer = setTimeout(updateHeight, 150);
+    return () => {
+      window.removeEventListener("resize", updateHeight);
+      observer.disconnect();
+      clearTimeout(timer);
+    };
+  }, []);
   const [editFacilityOpen, setEditFacilityOpen] = useState(false);
   const [editFacilityInitialStep, setEditFacilityInitialStep] = useState<1 | 2 | 3>(1);
   const [editBudgetOpen, setEditBudgetOpen] = useState(false);
@@ -432,7 +457,11 @@ export default function FacilityWorkspacePage() {
 
   return (
     <DashboardLayout title={facility.name} subtitle={`${facility.city}`}>
-      <div className="-mx-4 -mb-4 flex h-[calc(100dvh-3.5rem-2rem)] flex-col overflow-hidden sm:-mx-6 sm:-mb-6 sm:h-[calc(100dvh-4rem-3rem)]">
+      <div
+        ref={containerRef}
+        style={{ height: dynHeight }}
+        className="-mx-4 -mb-4 flex flex-col overflow-hidden sm:-mx-6 sm:-mb-6"
+      >
         <div className="shrink-0 border-b border-border px-4 pb-4 sm:px-6">
           <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <Link

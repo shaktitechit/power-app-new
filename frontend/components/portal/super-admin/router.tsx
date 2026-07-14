@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 
 // Shared page components — super-admin has access to all pages
 import Analytics from "@/components/portal/shared/analytics";
-import Audits from "@/components/portal/shared/audits";
+import Audits from "@/components/portal/shared/audit-lab";
 import Dashboard from "@/components/portal/shared/dashboard";
 import Enquiries from "@/components/portal/shared/enquiries";
 import EnquiryDetails from "@/components/portal/shared/enquiries/[enquiryId]";

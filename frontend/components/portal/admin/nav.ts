@@ -15,7 +15,7 @@ export const navItems: NavItem[] = [
   { title: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { title: "Facilities", href: "/facilities", icon: Building2 },
   { title: "Enquiries", href: "/enquiries", icon: MessageSquare },
-  { title: "Audits", href: "/audits", icon: ClipboardList },
+  { title: "Audit Lab", href: "/audits", icon: ClipboardList },
   { title: "Analytics", href: "/analytics", icon: BarChart3 },
   { title: "Reports", href: "/reports", icon: FileText },
   { title: "Users", href: "/users", icon: Users },

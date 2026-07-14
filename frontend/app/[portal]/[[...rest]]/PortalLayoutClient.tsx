@@ -22,7 +22,7 @@ interface PortalLayoutClientProps {
 }
 
 export default function PortalLayoutClient({ children }: PortalLayoutClientProps) {
-  const [isCollapsed, setIsCollapsed] = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState(true); // default collapsed
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const [title, setTitle] = useState("Dashboard");
   const [subtitle, setSubtitle] = useState("");
@@ -30,6 +30,8 @@ export default function PortalLayoutClient({ children }: PortalLayoutClientProps
 
   // Resolve the correct nav items for this user's role
   const navItems = getNavItemsForRole(user?.role);
+
+  const handleToggle = () => setIsCollapsed((prev) => !prev);
 
   return (
     <PortalLayoutContext.Provider value={{ setTitle, setSubtitle }}>
@@ -39,7 +41,7 @@ export default function PortalLayoutClient({ children }: PortalLayoutClientProps
           navItems={navItems}
           isCollapsed={isCollapsed}
           isMobileOpen={isMobileOpen}
-          onToggle={() => setIsCollapsed(!isCollapsed)}
+          onToggle={handleToggle}
           onMobileClose={() => setIsMobileOpen(false)}
           userRole={user?.role}
         />
@@ -54,6 +56,9 @@ export default function PortalLayoutClient({ children }: PortalLayoutClientProps
             title={title}
             subtitle={subtitle}
             onMenuClick={() => setIsMobileOpen(true)}
+            isCollapsed={isCollapsed}
+            onSidebarToggle={handleToggle}
+            userRole={user?.role}
           />
           <main className="min-w-0 flex-1 overflow-x-auto p-4 sm:p-6">
             {children}

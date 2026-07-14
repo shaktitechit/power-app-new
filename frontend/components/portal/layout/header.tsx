@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { User, ChevronDown, Menu, Clock } from "lucide-react";
+import { User, ChevronDown, Menu, Clock, PanelLeft } from "lucide-react";
 import { Button } from "@/components/portal/ui/button";
 import {
   DropdownMenu,
@@ -12,7 +12,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/portal/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/portal/ui/avatar";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { useAppSelector, useAppDispatch } from "@/store/hooks";
 import { useLogoutMutation } from "@/store/slices/userApiSlice";
 import { logout } from "@/store/slices/authSlice";
@@ -21,6 +21,9 @@ import { socket } from "@/components/portal/lib/socket";
 import { NotificationDropdown } from "./notification-dropdown";
 import { RecentActivityDropdown } from "./recent-activity-dropdown";
 import { TeamPresenceDropdown } from "./team-presence-dropdown";
+import { getNavItemsForRole } from "./nav-utils";
+import { cn } from "@/components/portal/lib/utils";
+import Link from "next/link";
 
 const getCookie = (name: string) => {
   if (typeof document === "undefined") return null;
@@ -40,6 +43,12 @@ interface HeaderProps {
   subtitle?: string;
   onMenuClick?: () => void;
   isFullscreen?: boolean;
+  /** Whether the desktop sidebar is currently collapsed (icons-only). */
+  isCollapsed?: boolean;
+  /** Callback to toggle the sidebar collapsed state. */
+  onSidebarToggle?: () => void;
+  /** Current user's role — used to resolve nav items for the control panel. */
+  userRole?: string;
 }
 
 export function Header({
@@ -47,7 +56,19 @@ export function Header({
   subtitle,
   onMenuClick,
   isFullscreen = false,
+  isCollapsed = true,
+  onSidebarToggle,
+  userRole,
 }: HeaderProps) {
+  const pathname = usePathname();
+  const navItems = getNavItemsForRole(userRole);
+
+  const getRolePrefix = (role?: string) => {
+    if (!role) return "";
+    return `/${role.replace("_", "-")}`;
+  };
+  const rolePrefix = getRolePrefix(userRole);
+  const resolveHref = (href?: string) => (href ? `${rolePrefix}${href}` : "");
   const user = useAppSelector((state) => state.auth.user);
   const presenceMap = usePresenceMap();
   const status = (user?._id && presenceMap[user._id]) || "offline";
@@ -252,38 +273,53 @@ export function Header({
   );
 
   return (
-    <header className="sticky top-0 z-30 flex h-14 min-w-0 items-center justify-between gap-2 border-b border-border bg-background/95 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/60 sm:h-16 sm:gap-3 sm:px-6">
-      {/* Left: title & subtitle & controls (mobile) */}
-      <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
-        {!isFullscreen && (
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={onMenuClick}
-            className="shrink-0 text-muted-foreground hover:text-foreground lg:hidden"
-          >
-            <Menu className="h-5 w-5" />
-            <span className="sr-only">Open menu</span>
-          </Button>
-        )}
-
-        <div className="min-w-0 flex flex-col">
-          <h1 className="truncate text-base font-semibold text-foreground sm:text-sm">
-            {title}
-          </h1>
-
-          {subtitle && (
-            <p className="hidden truncate text-sm text-muted-foreground sm:block">
-              {subtitle}
-            </p>
+    <div className="sticky top-0 z-30">
+      {/* ── Main header bar ── */}
+      <header className="flex h-14 min-w-0 items-center justify-between gap-2 border-b border-border bg-background/95 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/60 sm:h-16 sm:gap-3 sm:px-6">
+        {/* Left: sidebar toggle (desktop) + mobile menu + title */}
+        <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
+          {/* Desktop sidebar panel toggle */}
+          {!isFullscreen && (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={onSidebarToggle}
+              className="hidden shrink-0 text-muted-foreground hover:text-foreground lg:flex"
+              aria-label={isCollapsed ? "Expand navigation" : "Collapse navigation"}
+            >
+              <PanelLeft className="h-5 w-5" />
+            </Button>
           )}
 
-          {/* Controls on mobile (in subtitle space) */}
-          <div className="flex items-center gap-1.5 mt-0 sm:hidden">
-            {controls}
+          {/* Mobile hamburger */}
+          {!isFullscreen && (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={onMenuClick}
+              className="shrink-0 text-muted-foreground hover:text-foreground lg:hidden"
+            >
+              <Menu className="h-5 w-5" />
+              <span className="sr-only">Open menu</span>
+            </Button>
+          )}
+
+          <div className="min-w-0 flex flex-col">
+            <h1 className="truncate text-base font-semibold text-foreground sm:text-sm">
+              {title}
+            </h1>
+            {subtitle && (
+              <p className="hidden truncate text-sm text-muted-foreground sm:block">
+                {subtitle}
+              </p>
+            )}
+
+            {/* Controls on mobile (in subtitle space) */}
+            <div className="flex items-center gap-1.5 mt-0 sm:hidden">
+              {controls}
+            </div>
           </div>
         </div>
-      </div>
 
       {/* Right: Controls (desktop) + User dropdown */}
       <div className="flex shrink-0 flex-nowrap items-center justify-end gap-1.5 sm:gap-3 md:gap-4">
@@ -356,5 +392,69 @@ export function Header({
         </DropdownMenu>
       </div>
     </header>
+
+      {/* ── Nav control panel — visible only when sidebar is collapsed (desktop) ── */}
+      {!isFullscreen && (
+        <div
+          className={cn(
+            "hidden lg:flex items-center gap-1 overflow-x-auto border-b border-border/60 bg-background/90 px-3 backdrop-blur transition-all duration-300",
+            !isCollapsed
+              ? "h-0 overflow-hidden border-b-0 py-0 opacity-0 pointer-events-none"
+              : "h-10 py-1 opacity-100",
+          )}
+          aria-hidden={!isCollapsed}
+        >
+          {navItems.map((item) => {
+            const Icon = item.icon;
+            if (item.children?.length) {
+              // For accordion groups — show first child or the group title
+              return item.children.map((child) => {
+                const ChildIcon = child.icon;
+                const href = resolveHref(child.href);
+                const active =
+                  pathname === href || pathname.startsWith(`${href}/`);
+                return (
+                  <Link
+                    key={child.href}
+                    href={href}
+                    className={cn(
+                      "flex shrink-0 items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-colors whitespace-nowrap",
+                      active
+                        ? "bg-primary/10 text-primary"
+                        : "text-muted-foreground hover:bg-accent hover:text-foreground",
+                    )}
+                  >
+                    <ChildIcon className="h-3.5 w-3.5 shrink-0" />
+                    {child.title}
+                  </Link>
+                );
+              });
+            }
+            if (!item.href) return null;
+            const href = resolveHref(item.href);
+            const active =
+              pathname === href ||
+              pathname.startsWith(`${href}/`) ||
+              (item.href === "/facilities" &&
+                pathname.startsWith(resolveHref("/facility")));
+            return (
+              <Link
+                key={item.href}
+                href={href}
+                className={cn(
+                  "flex shrink-0 items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-colors whitespace-nowrap",
+                  active
+                    ? "bg-primary/10 text-primary"
+                    : "text-muted-foreground hover:bg-accent hover:text-foreground",
+                )}
+              >
+                <Icon className="h-3.5 w-3.5 shrink-0" />
+                {item.title}
+              </Link>
+            );
+          })}
+        </div>
+      )}
+    </div>
   );
 }
