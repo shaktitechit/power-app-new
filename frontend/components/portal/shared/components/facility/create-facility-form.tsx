@@ -253,7 +253,7 @@ export function CreateFacilityForm({
       { name: "", contact_number: "", email: "" },
     ] as ClientRepresentative[],
     facility_type: "",
-    audit_type: AUDIT_TYPE_OPTIONS[0],
+    audit_types: [AUDIT_TYPE_OPTIONS[0]] as string[],
     auditor_ids: [] as string[],
     closure_date: "",
     budget: {
@@ -281,7 +281,7 @@ export function CreateFacilityForm({
       start_date: getTodayLocalDateString(),
       client_representatives: [{ name: "", contact_number: "", email: "" }],
       facility_type: "",
-      audit_type: AUDIT_TYPE_OPTIONS[0],
+      audit_types: [AUDIT_TYPE_OPTIONS[0]],
       auditor_ids: [],
       closure_date: "",
       budget: { no_of_persons: "", no_planned_site_visits: "", tentative_budget: "", actual_budget: "" },
@@ -320,9 +320,9 @@ export function CreateFacilityForm({
             },
           ];
 
-    const preferredAuditRaw =
-      fromEnquiry.requested_audit_types?.find((t) => optionSet.has(t)) ??
-      AUDIT_TYPE_OPTIONS[0];
+    const preferredAudits = (fromEnquiry.requested_audit_types ?? []).filter(
+      (t) => optionSet.has(t),
+    );
 
     setFormData((prev) => ({
       ...prev,
@@ -335,13 +335,10 @@ export function CreateFacilityForm({
         )
           ? clientRepresentativesMapped
           : [{ name: "", contact_number: "", email: "" }],
-      audit_type:
-        typeof preferredAuditRaw === "string" &&
-        AUDIT_TYPE_OPTIONS.includes(
-          preferredAuditRaw as (typeof AUDIT_TYPE_OPTIONS)[number],
-        )
-          ? (preferredAuditRaw as (typeof AUDIT_TYPE_OPTIONS)[number])
-          : AUDIT_TYPE_OPTIONS[0],
+      audit_types:
+        preferredAudits.length > 0
+          ? preferredAudits
+          : [AUDIT_TYPE_OPTIONS[0]],
       start_date: getTodayLocalDateString(),
     }));
   }, [open, fromEnquiry]);
@@ -349,8 +346,12 @@ export function CreateFacilityForm({
   // File upload logic removed
 
   const isFormValid = useMemo(() => {
-    return formData.name.trim().length > 0 && formData.city.trim().length > 0;
-  }, [formData.name, formData.city]);
+    return (
+      formData.name.trim().length > 0 &&
+      formData.city.trim().length > 0 &&
+      formData.audit_types.length > 0
+    );
+  }, [formData.name, formData.city, formData.audit_types]);
 
   const handleSubmit = async () => {
     setSubmitError("");
@@ -379,7 +380,7 @@ export function CreateFacilityForm({
       client_contact_number: primaryRep?.contact_number || undefined,
       client_email: primaryRep?.email || undefined,
       facility_type: formData.facility_type.trim(),
-      audit_type: formData.audit_type,
+      audit_types: formData.audit_types,
       auditor_ids: formData.auditor_ids,
       closure_date: formData.closure_date || undefined,
       budget: {
@@ -530,25 +531,44 @@ export function CreateFacilityForm({
                   disabled={isSavingFacility}
                 />
               </div>
-
-              <div className="space-y-2">
-                <Label>Audit Type</Label>
-                <Select
-                  value={formData.audit_type}
-                  onValueChange={(value) => updateField("audit_type", value)}
-                  disabled={isSavingFacility}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select audit type" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {AUDIT_TYPE_OPTIONS.map((type) => (
-                      <SelectItem key={type} value={type}>
-                        {type}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+              <div className="space-y-2 sm:col-span-2">
+                <Label>Audit Types <span className="text-destructive">*</span></Label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-1.5">
+                  {AUDIT_TYPE_OPTIONS.map((type) => {
+                    const isSelected = formData.audit_types.includes(type);
+                    return (
+                      <button
+                        key={type}
+                        type="button"
+                        onClick={() => {
+                          const nextTypes = isSelected
+                            ? formData.audit_types.filter((t) => t !== type)
+                            : [...formData.audit_types, type];
+                          updateField("audit_types", nextTypes);
+                        }}
+                        className={`flex items-center justify-between rounded-lg border-2 p-3.5 text-left transition-all duration-200 hover:bg-accent/40 ${
+                          isSelected
+                            ? "border-primary bg-primary/5 shadow-sm"
+                            : "border-muted/60 bg-background text-muted-foreground hover:text-foreground"
+                        }`}
+                        disabled={isSavingFacility}
+                      >
+                        <span className={`text-sm font-medium ${isSelected ? "text-foreground" : ""}`}>
+                          {type}
+                        </span>
+                        <div
+                          className={`flex h-5 w-5 shrink-0 items-center justify-center rounded border transition-all ${
+                            isSelected
+                              ? "border-primary bg-primary text-primary-foreground"
+                              : "border-muted-foreground/30"
+                          }`}
+                        >
+                          {isSelected && <Check className="h-3.5 w-3.5 stroke-[3]" />}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
 
               <div className="space-y-2">

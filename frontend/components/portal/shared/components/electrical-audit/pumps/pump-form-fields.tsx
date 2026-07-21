@@ -12,11 +12,36 @@ type Props = {
 
 export function PumpFormFields({ form, onChange, disabled = false }: Props) {
   const updateField = (key: keyof PumpFormState, value: any) => {
-    onChange((prev) => ({
-      ...prev,
-      [key]: value,
-    }));
+    onChange((prev) => {
+      const next = {
+        ...prev,
+        [key]: value,
+      };
+      if (key === "rated_flow_liters_per_hour") {
+        if (value === "") {
+          next.rated_flow_m3_per_hr = "";
+        } else {
+          const num = parseFloat(value);
+          if (!isNaN(num)) {
+            next.rated_flow_m3_per_hr = (num / 1000).toString();
+          }
+        }
+      } else if (key === "rated_flow_m3_per_hr") {
+        if (value === "") {
+          next.rated_flow_liters_per_hour = "";
+        } else {
+          const num = parseFloat(value);
+          if (!isNaN(num)) {
+            next.rated_flow_liters_per_hour = (num * 1000).toString();
+          }
+        }
+      }
+      return next;
+    });
   };
+
+  const isLphFilled = !!form.rated_flow_liters_per_hour && form.rated_flow_liters_per_hour !== "";
+  const isM3hrFilled = !!form.rated_flow_m3_per_hr && form.rated_flow_m3_per_hr !== "";
 
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -33,18 +58,19 @@ export function PumpFormFields({ form, onChange, disabled = false }: Props) {
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="make_model">Make / Model</Label>
+        <Label htmlFor="make_model">Make / Model *</Label>
         <Input
           id="make_model"
           value={form.make_model}
           onChange={(e) => updateField("make_model", e.target.value)}
           disabled={disabled}
           placeholder="e.g. Kirloskar"
+          required
         />
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="rated_power_kW_or_HP">Rated Power (kW/HP)</Label>
+        <Label htmlFor="rated_power_kW_or_HP">Rated Power (Motor) * (kW / HP)</Label>
         <Input
           id="rated_power_kW_or_HP"
           type="number"
@@ -52,25 +78,56 @@ export function PumpFormFields({ form, onChange, disabled = false }: Props) {
           value={form.rated_power_kW_or_HP}
           onChange={(e) => updateField("rated_power_kW_or_HP", e.target.value)}
           disabled={disabled}
-          placeholder="e.g. 15"
+          placeholder="e.g. 63"
+          required
         />
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="rated_flow_m3_per_hr">Rated Flow (m³/hr)</Label>
+        <Label htmlFor="rated_efficiency_motor_percent">Rated Efficiency (Motor) * (%)</Label>
+        <Input
+          id="rated_efficiency_motor_percent"
+          type="number"
+          step="any"
+          value={form.rated_efficiency_motor_percent}
+          onChange={(e) => updateField("rated_efficiency_motor_percent", e.target.value)}
+          disabled={disabled}
+          placeholder="e.g. 91"
+          required
+        />
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="rated_flow_liters_per_hour">Rated Flow (Liters/Hour)</Label>
+        <Input
+          id="rated_flow_liters_per_hour"
+          type="number"
+          step="any"
+          value={form.rated_flow_liters_per_hour}
+          onChange={(e) => updateField("rated_flow_liters_per_hour", e.target.value)}
+          disabled={disabled || isM3hrFilled}
+          placeholder="e.g. 25000"
+        />
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="rated_flow_m3_per_hr">Rated Flow * (m³/hr)</Label>
         <Input
           id="rated_flow_m3_per_hr"
           type="number"
           step="any"
           value={form.rated_flow_m3_per_hr}
           onChange={(e) => updateField("rated_flow_m3_per_hr", e.target.value)}
-          disabled={disabled}
-          placeholder="e.g. 120"
+          disabled={disabled || isLphFilled}
+          placeholder="e.g. 25"
+          required
         />
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="rated_head_m">Rated Head (m)</Label>
+        <Label htmlFor="rated_head_m">
+          Rated Head (m) <span className="text-[10px] text-amber-600 dark:text-amber-400 font-normal ml-1">(Should be in normal range)</span>
+        </Label>
         <Input
           id="rated_head_m"
           type="number"
@@ -83,7 +140,9 @@ export function PumpFormFields({ form, onChange, disabled = false }: Props) {
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="rated_speed_RPM">Rated Speed (RPM)</Label>
+        <Label htmlFor="rated_speed_RPM">
+          Rated Speed (RPM) <span className="text-[10px] text-amber-600 dark:text-amber-400 font-normal ml-1">(Should be in normal range)</span>
+        </Label>
         <Input
           id="rated_speed_RPM"
           type="number"
@@ -96,7 +155,7 @@ export function PumpFormFields({ form, onChange, disabled = false }: Props) {
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="number_of_stages">Number of Stages</Label>
+        <Label htmlFor="number_of_stages">No. of Stages</Label>
         <Input
           id="number_of_stages"
           type="number"

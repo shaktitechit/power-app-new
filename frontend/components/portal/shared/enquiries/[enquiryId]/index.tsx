@@ -651,8 +651,12 @@ export default function EnquiryDetailPage() {
                   {enquiry.name}
                 </h1>
                 <EnquiryStatusPill status={enquiry.enquiry_status} />
-              </div>
-              <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1.5">
+                {enquiry.enquiry_number && (
+                  <span className="font-mono text-xs rounded-md bg-muted px-2 py-0.5 border border-border text-muted-foreground">
+                    {enquiry.enquiry_number}
+                  </span>
+                )}
+              </div>              <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1.5">
                 <span>{enquiry.city}</span>
                 {enquiry.address && (
                   <>
@@ -812,11 +816,17 @@ export default function EnquiryDetailPage() {
                   <CardContent className="space-y-3.5">
                     <div className="grid grid-cols-2 gap-4">
                       <div>
+                        <p className="text-xs font-medium text-muted-foreground">Enquiry Number</p>
+                        <p className="text-sm font-mono mt-0.5">{enquiry.enquiry_number || "—"}</p>
+                      </div>
+                      <div>
                         <p className="text-xs font-medium text-muted-foreground">Expected Value</p>
                         <p className="text-sm font-semibold text-primary mt-0.5">
                           {enquiry.expected_value != null ? formatInr(enquiry.expected_value) : "—"}
                         </p>
                       </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
                       <div>
                         <p className="text-xs font-medium text-muted-foreground">Next Follow-up</p>
                         <p className="text-sm font-medium mt-0.5">

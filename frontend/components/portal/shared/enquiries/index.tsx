@@ -154,7 +154,8 @@ export default function EnquiriesPage() {
   const [filterStatus, setFilterStatus] = useState("all");
   const [filterAssignedTo, setFilterAssignedTo] = useState("all");
   const [filterAssignedAdmin, setFilterAssignedAdmin] = useState("all");
-  const [filterFollowUpRange, setFilterFollowUpRange] = useState("today");
+  const [filterFollowUpRange, setFilterFollowUpRange] = useState("all");
+
   const [filterFollowUpFrom, setFilterFollowUpFrom] = useState("");
   const [filterFollowUpTo, setFilterFollowUpTo] = useState("");
   const [filterCreatedAtRange, setFilterCreatedAtRange] = useState("all");
@@ -224,6 +225,7 @@ export default function EnquiriesPage() {
 
   const handleExportExcel = () => {
     const wsData = filtered.map((row) => ({
+      "Enquiry Number": row.enquiry_number ?? "",
       "Name/Organisation": row.name ?? "",
       City: row.city ?? "",
       Address: row.address ?? "",
@@ -381,7 +383,12 @@ export default function EnquiriesPage() {
             <p className="truncate text-sm font-medium text-foreground sm:text-base">
               {row.name}
             </p>
-            <p className="truncate text-xs text-muted-foreground sm:text-sm">
+            {row.enquiry_number && (
+              <span className="inline-block mt-0.5 px-1.5 py-0.2 text-[10px] font-mono font-semibold bg-secondary rounded text-muted-foreground">
+                {row.enquiry_number}
+              </span>
+            )}
+            <p className="truncate text-xs text-muted-foreground sm:text-sm mt-0.5">
               {row.city}
             </p>
           </div>
@@ -497,25 +504,33 @@ export default function EnquiriesPage() {
             className="bg-input pl-9"
           />
         </div>
-
-        <div className="flex w-full sm:w-auto items-center gap-2">
+        <div className="flex w-full sm:w-auto items-center gap-2 flex-wrap sm:flex-nowrap">
           <Button
             variant="outline"
             onClick={() => setPreviewOpen(true)}
             className="w-full sm:w-auto gap-2"
           >
             <FileSpreadsheet className="h-4 w-4 text-emerald-600" />
-            Preview & Export
+            Preview
           </Button>
-          {canCreateEnquiry ? (
+          <Button
+            variant="outline"
+            onClick={handleExportExcel}
+            className="w-full sm:w-auto gap-2"
+            disabled={filtered.length === 0}
+          >
+            <Download className="h-4 w-4 text-primary" />
+            Export Excel
+          </Button>
+          {canCreateEnquiry && (
             <Button
               onClick={() => setCreateOpen(true)}
-              className="w-full sm:w-auto"
+              className="w-full sm:w-auto whitespace-nowrap"
             >
               <Plus className="mr-2 h-4 w-4" />
               Create enquiry
             </Button>
-          ) : null}
+          )}
         </div>
       </div>
 
@@ -791,6 +806,7 @@ export default function EnquiriesPage() {
             <table className="w-full text-sm border-collapse">
               <thead className="bg-muted sticky top-0 z-10">
                 <tr className="border-b">
+                  <th className="p-2.5 text-left font-medium border-r whitespace-nowrap">Enquiry Number</th>
                   <th className="p-2.5 text-left font-medium border-r whitespace-nowrap">Name/Organisation</th>
                   <th className="p-2.5 text-left font-medium border-r whitespace-nowrap">City</th>
                   <th className="p-2.5 text-left font-medium border-r whitespace-nowrap">Address</th>
@@ -807,6 +823,7 @@ export default function EnquiriesPage() {
               <tbody className="divide-y">
                 {filtered.map((row, idx) => (
                   <tr key={row._id ?? idx} className="hover:bg-muted/30">
+                    <td className="p-2 border-r whitespace-nowrap font-mono">{row.enquiry_number ?? "—"}</td>
                     <td className="p-2 border-r whitespace-nowrap font-medium">{row.name ?? "—"}</td>
                     <td className="p-2 border-r whitespace-nowrap">{row.city ?? "—"}</td>
                     <td className="p-2 border-r max-w-xs truncate">{row.address ?? "—"}</td>
@@ -838,7 +855,7 @@ export default function EnquiriesPage() {
                 ))}
                 {filtered.length === 0 && (
                   <tr>
-                    <td colSpan={11} className="p-8 text-center text-muted-foreground">
+                    <td colSpan={12} className="p-8 text-center text-muted-foreground">
                       No data to preview
                     </td>
                   </tr>

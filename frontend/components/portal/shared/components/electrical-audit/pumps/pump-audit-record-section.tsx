@@ -83,19 +83,26 @@ type PumpAuditFormState = {
   suction_head_m: string;
   discharge_static_head_m: string;
   delivery_pipe_diameter_inches: string;
+  pipe_friction_head_m: string;
   tank_or_sump_capacity: string;
   time_to_fill_tank_minutes: string;
+  actual_flow_calculated_m3_per_hr: string;
+  actual_flow_measured_m3_per_hr: string;
   actual_flow_m3_per_hr: string;
 
+  number_of_phases: string;
   voltage_V: string;
   current_A: string;
   power_factor: string;
   input_power_kW: string;
   operating_hours_per_day: string;
+  operating_days_per_year: string;
   daily_energy_consumption_kWh: string;
 
   total_dynamic_head_m: string;
   hydraulic_output_power_kW: string;
+  input_power_to_pump_kW: string;
+  pump_efficiency_percent: string;
   overall_pump_set_efficiency_percent: string;
   motor_loading_percent: string;
   specific_energy_consumption_kWh_per_m3: string;
@@ -141,42 +148,78 @@ const toNumber = (value: string) => {
 };
 
 const formatAutoValue = (value: number) => {
-  return Number.isFinite(value) && value !== 0 ? value.toFixed(2) : "";
+  return Number.isFinite(value) && value !== 0 ? value.toFixed(3) : "";
 };
 
 function calculatePumpAutoFields(
   form: PumpAuditFormState,
   ratedPowerkWOrHP: number,
+  ratedEfficiencyMotorPercent: number,
 ) {
   const suctionHead = toNumber(form.suction_head_m);
   const dischargeStaticHead = toNumber(form.discharge_static_head_m);
-  const actualFlow = toNumber(form.actual_flow_m3_per_hr);
-  const dailyEnergy = toNumber(form.daily_energy_consumption_kWh);
-  const inputPower = toNumber(form.input_power_kW);
+  const pipeFrictionHead = toNumber(form.pipe_friction_head_m);
+  const tankCapacity = toNumber(form.tank_or_sump_capacity);
+  const timeToFill = toNumber(form.time_to_fill_tank_minutes);
+  const actualFlowMeasured = toNumber(form.actual_flow_measured_m3_per_hr);
 
-  const totalDynamicHead = suctionHead + dischargeStaticHead;
+  const voltage = toNumber(form.voltage_V);
+  const current = toNumber(form.current_A);
+  const powerFactor = toNumber(form.power_factor);
+  const operatingHours = toNumber(form.operating_hours_per_day);
+  const operatingDays = toNumber(form.operating_days_per_year || "365");
 
-  const hydraulicOutputPower =
-    (actualFlow * totalDynamicHead * 1000 * 9.81) / 3600000;
+  // 1. TDH
+  const totalDynamicHead = suctionHead + dischargeStaticHead + pipeFrictionHead;
 
-  const overallPumpSetEfficiency =
-    inputPower > 0 ? (hydraulicOutputPower / inputPower) * 100 : 0;
+  // 2. Actual Flow Calculated
+  const actualFlowCalculated = timeToFill > 0 ? (tankCapacity * 0.06) / timeToFill : 0;
 
-  const motorLoading =
-    ratedPowerkWOrHP > 0 ? (inputPower / ratedPowerkWOrHP) * 100 : 0;
+  // 3. Input Power Measured (kW)
+  let inputPower = 0;
+  if (form.number_of_phases === "1-Phase") {
+    inputPower = (voltage * current * powerFactor) / 1000;
+  } else {
+    // 3-Phase
+    inputPower = (1.73205 * voltage * current * powerFactor) / 1000;
+  }
 
-  const specificEnergyConsumption = actualFlow > 0 ? inputPower / actualFlow : 0;
+  // 4. Daily Energy Consumption
+  const dailyEnergy = inputPower * operatingHours;
 
-  const annualEnergyConsumption = dailyEnergy * 365;
+  // 5. Hydraulic Output Power
+  const hydraulicOutputPower = (actualFlowMeasured * totalDynamicHead * 9.81) / 3600;
+
+  // 6. Input Power to Pump
+  const motorEfficiencyFraction = (ratedEfficiencyMotorPercent > 0 ? ratedEfficiencyMotorPercent : 100) / 100;
+  const inputPowerToPump = inputPower * motorEfficiencyFraction;
+
+  // 7. Pump Efficiency (%)
+  const pumpEfficiency = inputPowerToPump > 0 ? (hydraulicOutputPower / inputPowerToPump) * 100 : 0;
+
+  // 8. Overall Pump Set Efficiency
+  const overallPumpSetEfficiency = inputPower > 0 ? (hydraulicOutputPower / inputPower) * 100 : 0;
+
+  // 9. Motor Loading (%)
+  const motorLoading = ratedPowerkWOrHP > 0 ? (inputPowerToPump / ratedPowerkWOrHP) * 100 : 0;
+
+  // 10. Specific Energy Consumption (kWh/m³)
+  const specificEnergyConsumption = actualFlowMeasured > 0 ? inputPower / actualFlowMeasured : 0;
+
+  // 11. Annual Energy Consumption
+  const annualEnergyConsumption = dailyEnergy * operatingDays;
 
   return {
     total_dynamic_head_m: formatAutoValue(totalDynamicHead),
+    actual_flow_calculated_m3_per_hr: formatAutoValue(actualFlowCalculated),
+    input_power_kW: formatAutoValue(inputPower),
+    daily_energy_consumption_kWh: formatAutoValue(dailyEnergy),
     hydraulic_output_power_kW: formatAutoValue(hydraulicOutputPower),
+    input_power_to_pump_kW: formatAutoValue(inputPowerToPump),
+    pump_efficiency_percent: formatAutoValue(pumpEfficiency),
     overall_pump_set_efficiency_percent: formatAutoValue(overallPumpSetEfficiency),
     motor_loading_percent: formatAutoValue(motorLoading),
-    specific_energy_consumption_kWh_per_m3: formatAutoValue(
-      specificEnergyConsumption,
-    ),
+    specific_energy_consumption_kWh_per_m3: formatAutoValue(specificEnergyConsumption),
     annual_energy_consumption_kWh: formatAutoValue(annualEnergyConsumption),
   };
 }
@@ -188,19 +231,26 @@ const createEmptyForm = (): PumpAuditFormState => ({
   suction_head_m: "",
   discharge_static_head_m: "",
   delivery_pipe_diameter_inches: "",
+  pipe_friction_head_m: "",
   tank_or_sump_capacity: "",
   time_to_fill_tank_minutes: "",
+  actual_flow_calculated_m3_per_hr: "",
+  actual_flow_measured_m3_per_hr: "",
   actual_flow_m3_per_hr: "",
 
+  number_of_phases: "3-Phase",
   voltage_V: "",
   current_A: "",
   power_factor: "",
   input_power_kW: "",
   operating_hours_per_day: "",
+  operating_days_per_year: "365",
   daily_energy_consumption_kWh: "",
 
   total_dynamic_head_m: "",
   hydraulic_output_power_kW: "",
+  input_power_to_pump_kW: "",
+  pump_efficiency_percent: "",
   overall_pump_set_efficiency_percent: "",
   motor_loading_percent: "",
   specific_energy_consumption_kWh_per_m3: "",
@@ -228,22 +278,29 @@ function recordToForm(record: any): PumpAuditFormState {
     discharge_static_head_m: record.discharge_static_head_m?.toString() || "",
     delivery_pipe_diameter_inches:
       record.delivery_pipe_diameter_inches?.toString() || "",
+    pipe_friction_head_m: record.pipe_friction_head_m?.toString() || "",
     tank_or_sump_capacity: record.tank_or_sump_capacity?.toString() || "",
     time_to_fill_tank_minutes:
       record.time_to_fill_tank_minutes?.toString() || "",
+    actual_flow_calculated_m3_per_hr: record.actual_flow_calculated_m3_per_hr?.toString() || "",
+    actual_flow_measured_m3_per_hr: record.actual_flow_measured_m3_per_hr?.toString() || "",
     actual_flow_m3_per_hr: record.actual_flow_m3_per_hr?.toString() || "",
 
+    number_of_phases: record.number_of_phases || "3-Phase",
     voltage_V: record.voltage_V?.toString() || "",
     current_A: record.current_A?.toString() || "",
     power_factor: record.power_factor?.toString() || "",
     input_power_kW: record.input_power_kW?.toString() || "",
     operating_hours_per_day: record.operating_hours_per_day?.toString() || "",
+    operating_days_per_year: record.operating_days_per_year?.toString() || "365",
     daily_energy_consumption_kWh:
       record.daily_energy_consumption_kWh?.toString() || "",
 
     total_dynamic_head_m: record.total_dynamic_head_m?.toString() || "",
     hydraulic_output_power_kW:
       record.hydraulic_output_power_kW?.toString() || "",
+    input_power_to_pump_kW: record.input_power_to_pump_kW?.toString() || "",
+    pump_efficiency_percent: record.pump_efficiency_percent?.toString() || "",
     overall_pump_set_efficiency_percent:
       record.overall_pump_set_efficiency_percent?.toString() || "",
     motor_loading_percent: record.motor_loading_percent?.toString() || "",
@@ -286,6 +343,9 @@ export function PumpAuditRecordSection({
     skip: !pumpId,
   });
   const ratedPowerkWOrHP = Number(pumpData?.data?.rated_power_kW_or_HP) || 0;
+  const ratedEfficiencyMotorPercent = Number(pumpData?.data?.rated_efficiency_motor_percent) || 100;
+  const ratedFlowM3PerHour = Number(pumpData?.data?.rated_flow_m3_per_hr) || 0;
+
   const { data, isLoading } = useGetPumpAuditRecordsQuery({
     facility_id: facilityId,
     utility_account_id: utilityAccountId,
@@ -321,7 +381,7 @@ export function PumpAuditRecordSection({
     const emptyForm = createEmptyForm();
     return {
       ...emptyForm,
-      ...calculatePumpAutoFields(emptyForm, ratedPowerkWOrHP),
+      ...calculatePumpAutoFields(emptyForm, ratedPowerkWOrHP, ratedEfficiencyMotorPercent),
     };
   });
   const [excelImporting, setExcelImporting] = useState(false);
@@ -339,16 +399,16 @@ export function PumpAuditRecordSection({
       }
       setForm({
         ...mappedForm,
-        ...calculatePumpAutoFields(mappedForm, ratedPowerkWOrHP),
+        ...calculatePumpAutoFields(mappedForm, ratedPowerkWOrHP, ratedEfficiencyMotorPercent),
       });
     } else {
       const emptyForm = createEmptyForm();
       setForm({
         ...emptyForm,
-        ...calculatePumpAutoFields(emptyForm, ratedPowerkWOrHP),
+        ...calculatePumpAutoFields(emptyForm, ratedPowerkWOrHP, ratedEfficiencyMotorPercent),
       });
     }
-  }, [latestRecord, ratedPowerkWOrHP, initialEditing, auditStepLocked]);
+  }, [latestRecord, ratedPowerkWOrHP, ratedEfficiencyMotorPercent, initialEditing, auditStepLocked]);
 
   const updateForm = (
     key: keyof PumpAuditFormState,
@@ -363,6 +423,7 @@ export function PumpAuditRecordSection({
       const calculatedFields = calculatePumpAutoFields(
         updatedForm,
         ratedPowerkWOrHP,
+        ratedEfficiencyMotorPercent,
       );
 
       return {
@@ -379,14 +440,19 @@ export function PumpAuditRecordSection({
       suction_head_m: form.suction_head_m,
       discharge_static_head_m: form.discharge_static_head_m,
       delivery_pipe_diameter_inches: form.delivery_pipe_diameter_inches,
+      pipe_friction_head_m: form.pipe_friction_head_m,
       tank_or_sump_capacity: form.tank_or_sump_capacity,
       time_to_fill_tank_minutes: form.time_to_fill_tank_minutes,
-      actual_flow_m3_per_hr: form.actual_flow_m3_per_hr,
+      actual_flow_calculated_m3_per_hr: form.actual_flow_calculated_m3_per_hr,
+      actual_flow_measured_m3_per_hr: form.actual_flow_measured_m3_per_hr,
+      actual_flow_m3_per_hr: form.actual_flow_measured_m3_per_hr,
+      number_of_phases: form.number_of_phases,
       voltage_V: form.voltage_V,
       current_A: form.current_A,
       power_factor: form.power_factor,
       input_power_kW: form.input_power_kW,
       operating_hours_per_day: form.operating_hours_per_day,
+      operating_days_per_year: form.operating_days_per_year,
       daily_energy_consumption_kWh: form.daily_energy_consumption_kWh,
       control_valve_throttling: form.control_valve_throttling,
       vfd_installed: form.vfd_installed,
@@ -428,7 +494,7 @@ export function PumpAuditRecordSection({
         }
         return {
           ...next,
-          ...calculatePumpAutoFields(next, ratedPowerkWOrHP),
+          ...calculatePumpAutoFields(next, ratedPowerkWOrHP, ratedEfficiencyMotorPercent),
         };
       });
       toast.success("Form filled from Excel.");
@@ -449,13 +515,13 @@ export function PumpAuditRecordSection({
       const mappedForm = recordToForm(latestRecord);
       setForm({
         ...mappedForm,
-        ...calculatePumpAutoFields(mappedForm, ratedPowerkWOrHP),
+        ...calculatePumpAutoFields(mappedForm, ratedPowerkWOrHP, ratedEfficiencyMotorPercent),
       });
     } else {
       const emptyForm = createEmptyForm();
       setForm({
         ...emptyForm,
-        ...calculatePumpAutoFields(emptyForm, ratedPowerkWOrHP),
+        ...calculatePumpAutoFields(emptyForm, ratedPowerkWOrHP, ratedEfficiencyMotorPercent),
       });
     }
   };
@@ -488,20 +554,27 @@ export function PumpAuditRecordSection({
       discharge_static_head_m: form.discharge_static_head_m || undefined,
       delivery_pipe_diameter_inches:
         form.delivery_pipe_diameter_inches || undefined,
+      pipe_friction_head_m: form.pipe_friction_head_m || undefined,
       tank_or_sump_capacity: form.tank_or_sump_capacity || undefined,
       time_to_fill_tank_minutes: form.time_to_fill_tank_minutes || undefined,
-      actual_flow_m3_per_hr: form.actual_flow_m3_per_hr || undefined,
+      actual_flow_calculated_m3_per_hr: form.actual_flow_calculated_m3_per_hr || undefined,
+      actual_flow_measured_m3_per_hr: form.actual_flow_measured_m3_per_hr || undefined,
+      actual_flow_m3_per_hr: form.actual_flow_measured_m3_per_hr || undefined,
 
+      number_of_phases: form.number_of_phases || undefined,
       voltage_V: form.voltage_V || undefined,
       current_A: form.current_A || undefined,
       power_factor: form.power_factor || undefined,
       input_power_kW: form.input_power_kW || undefined,
       operating_hours_per_day: form.operating_hours_per_day || undefined,
+      operating_days_per_year: form.operating_days_per_year || undefined,
       daily_energy_consumption_kWh:
         form.daily_energy_consumption_kWh || undefined,
 
       total_dynamic_head_m: form.total_dynamic_head_m || undefined,
       hydraulic_output_power_kW: form.hydraulic_output_power_kW || undefined,
+      input_power_to_pump_kW: form.input_power_to_pump_kW || undefined,
+      pump_efficiency_percent: form.pump_efficiency_percent || undefined,
       overall_pump_set_efficiency_percent:
         form.overall_pump_set_efficiency_percent || undefined,
       motor_loading_percent: form.motor_loading_percent || undefined,
@@ -659,24 +732,27 @@ export function PumpAuditRecordSection({
         </CardHeader>
 
         <CardContent className="space-y-6">
+          {/* Hydraulic Parameters */}
           <div className="rounded-xl border p-4">
             <h4 className="mb-4 text-base font-semibold text-foreground">
               Hydraulic Parameters
             </h4>
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
               <div className="space-y-2">
-                <Label>Suction Head (m)</Label>
+                <Label>Suction Head (below ground) * (m)</Label>
                 <Input
                   type="number"
                   value={form.suction_head_m}
                   onChange={(e) => updateForm("suction_head_m", e.target.value)}
                   disabled={!form.isEditing}
                   className={getInputClass(!form.isEditing)}
+                  placeholder="e.g. 0"
+                  required
                 />
               </div>
 
               <div className="space-y-2">
-                <Label>Discharge Static Head (m)</Label>
+                <Label>Discharge / Static Head * (m)</Label>
                 <Input
                   type="number"
                   value={form.discharge_static_head_m}
@@ -685,6 +761,8 @@ export function PumpAuditRecordSection({
                   }
                   disabled={!form.isEditing}
                   className={getInputClass(!form.isEditing)}
+                  placeholder="e.g. 48.76"
+                  required
                 />
               </div>
 
@@ -698,11 +776,26 @@ export function PumpAuditRecordSection({
                   }
                   disabled={!form.isEditing}
                   className={getInputClass(!form.isEditing)}
+                  placeholder="e.g. 2.5"
                 />
               </div>
 
               <div className="space-y-2">
-                <Label>Tank / Sump Capacity</Label>
+                <Label>Pipe friction Head (m)</Label>
+                <Input
+                  type="number"
+                  value={form.pipe_friction_head_m}
+                  onChange={(e) =>
+                    updateForm("pipe_friction_head_m", e.target.value)
+                  }
+                  disabled={!form.isEditing}
+                  className={getInputClass(!form.isEditing)}
+                  placeholder="e.g. 1.2"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Water Tank / Sump Capacity (Liters)</Label>
                 <Input
                   type="number"
                   value={form.tank_or_sump_capacity}
@@ -711,11 +804,12 @@ export function PumpAuditRecordSection({
                   }
                   disabled={!form.isEditing}
                   className={getInputClass(!form.isEditing)}
+                  placeholder="e.g. 50000"
                 />
               </div>
 
               <div className="space-y-2">
-                <Label>Time to Fill Tank (minutes)</Label>
+                <Label>Time to Fill Tank (field measurement) (min)</Label>
                 <Input
                   type="number"
                   value={form.time_to_fill_tank_minutes}
@@ -724,53 +818,115 @@ export function PumpAuditRecordSection({
                   }
                   disabled={!form.isEditing}
                   className={getInputClass(!form.isEditing)}
+                  placeholder="e.g. 120"
                 />
               </div>
 
               <div className="space-y-2">
-                <Label>Actual Flow (m³/hr)</Label>
+                <div className="flex items-center justify-between">
+                  <Label>Actual Flow (calculated) (m³/hr)</Label>
+                  {ratedFlowM3PerHour > 0 && toNumber(form.actual_flow_calculated_m3_per_hr) > 0 && (
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
+                      toNumber(form.actual_flow_calculated_m3_per_hr) >= ratedFlowM3PerHour * 0.8 &&
+                      toNumber(form.actual_flow_calculated_m3_per_hr) <= ratedFlowM3PerHour * 1.2
+                        ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400"
+                        : "bg-amber-100 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400"
+                    }`}>
+                      {toNumber(form.actual_flow_calculated_m3_per_hr) >= ratedFlowM3PerHour * 0.8 &&
+                      toNumber(form.actual_flow_calculated_m3_per_hr) <= ratedFlowM3PerHour * 1.2
+                        ? "Within ±20%"
+                        : "Outside ±20%"}
+                    </span>
+                  )}
+                </div>
                 <Input
                   type="number"
-                  value={form.actual_flow_m3_per_hr}
+                  value={form.actual_flow_calculated_m3_per_hr}
+                  disabled
+                  className={autoInputClass}
+                  placeholder="Auto"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label>Actual Flow (measured) * (m³/hr)</Label>
+                  {ratedFlowM3PerHour > 0 && toNumber(form.actual_flow_measured_m3_per_hr) > 0 && (
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
+                      toNumber(form.actual_flow_measured_m3_per_hr) >= ratedFlowM3PerHour * 0.8 &&
+                      toNumber(form.actual_flow_measured_m3_per_hr) <= ratedFlowM3PerHour * 1.2
+                        ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400"
+                        : "bg-amber-100 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400"
+                    }`}>
+                      {toNumber(form.actual_flow_measured_m3_per_hr) >= ratedFlowM3PerHour * 0.8 &&
+                      toNumber(form.actual_flow_measured_m3_per_hr) <= ratedFlowM3PerHour * 1.2
+                        ? "Within ±20%"
+                        : "Outside ±20%"}
+                    </span>
+                  )}
+                </div>
+                <Input
+                  type="number"
+                  value={form.actual_flow_measured_m3_per_hr}
                   onChange={(e) =>
-                    updateForm("actual_flow_m3_per_hr", e.target.value)
+                    updateForm("actual_flow_measured_m3_per_hr", e.target.value)
                   }
                   disabled={!form.isEditing}
                   className={getInputClass(!form.isEditing)}
+                  placeholder="e.g. 260"
+                  required
                 />
               </div>
             </div>
           </div>
 
+          {/* Electrical Parameters */}
           <div className="rounded-xl border p-4">
             <h4 className="mb-4 text-base font-semibold text-foreground">
-              Electrical Parameters
+              Electrical Measurements (Field)
             </h4>
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
               <div className="space-y-2">
-                <Label>Voltage (V)</Label>
+                <Label>No of Phases *</Label>
+                <select
+                  value={form.number_of_phases}
+                  onChange={(e) => updateForm("number_of_phases", e.target.value)}
+                  disabled={!form.isEditing}
+                  className={selectClass}
+                >
+                  <option value="3-Phase">3-Phase</option>
+                  <option value="1-Phase">1-Phase</option>
+                </select>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Voltage (V) *</Label>
                 <Input
                   type="number"
                   value={form.voltage_V}
                   onChange={(e) => updateForm("voltage_V", e.target.value)}
                   disabled={!form.isEditing}
                   className={getInputClass(!form.isEditing)}
+                  placeholder="e.g. 415"
+                  required
                 />
               </div>
 
               <div className="space-y-2">
-                <Label>Current (A)</Label>
+                <Label>Current (A) *</Label>
                 <Input
                   type="number"
                   value={form.current_A}
                   onChange={(e) => updateForm("current_A", e.target.value)}
                   disabled={!form.isEditing}
                   className={getInputClass(!form.isEditing)}
+                  placeholder="e.g. 89"
+                  required
                 />
               </div>
 
               <div className="space-y-2">
-                <Label>Power Factor</Label>
+                <Label>Power Factor *</Label>
                 <Input
                   type="number"
                   step="0.01"
@@ -778,22 +934,31 @@ export function PumpAuditRecordSection({
                   onChange={(e) => updateForm("power_factor", e.target.value)}
                   disabled={!form.isEditing}
                   className={getInputClass(!form.isEditing)}
+                  placeholder="e.g. 0.8"
+                  required
                 />
               </div>
 
               <div className="space-y-2">
-                <Label>Input Power (kW)</Label>
+                <Label>Input Power (measured) (kW)</Label>
                 <Input
                   type="number"
                   value={form.input_power_kW}
-                  onChange={(e) => updateForm("input_power_kW", e.target.value)}
-                  disabled={!form.isEditing}
-                  className={getInputClass(!form.isEditing)}
+                  disabled
+                  className={autoInputClass}
+                  placeholder="Auto"
                 />
               </div>
 
               <div className="space-y-2">
-                <Label>Operating Hours / Day</Label>
+                <div className="flex items-center justify-between">
+                  <Label>Operating Hours / Day *</Label>
+                  {toNumber(form.operating_hours_per_day) > 24 && (
+                    <span className="text-[10px] text-destructive font-medium bg-destructive/10 px-1 py-0.5 rounded">
+                      Max 24 hrs
+                    </span>
+                  )}
+                </div>
                 <Input
                   type="number"
                   value={form.operating_hours_per_day}
@@ -801,37 +966,65 @@ export function PumpAuditRecordSection({
                     updateForm("operating_hours_per_day", e.target.value)
                   }
                   disabled={!form.isEditing}
-                  className={getInputClass(!form.isEditing)}
+                  className={`${getInputClass(!form.isEditing)} ${
+                    toNumber(form.operating_hours_per_day) > 24 ? "border-destructive text-destructive focus:ring-destructive focus:border-destructive" : ""
+                  }`}
+                  placeholder="e.g. 6"
+                  required
                 />
               </div>
 
               <div className="space-y-2">
-                <Label>Daily Energy Consumption (kWh)</Label>
+                <div className="flex items-center justify-between">
+                  <Label>Operating days per year *</Label>
+                  {toNumber(form.operating_days_per_year) > 365 && (
+                    <span className="text-[10px] text-destructive font-medium bg-destructive/10 px-1 py-0.5 rounded">
+                      Max 365 days
+                    </span>
+                  )}
+                </div>
+                <Input
+                  type="number"
+                  value={form.operating_days_per_year}
+                  onChange={(e) =>
+                    updateForm("operating_days_per_year", e.target.value)
+                  }
+                  disabled={!form.isEditing}
+                  className={`${getInputClass(!form.isEditing)} ${
+                    toNumber(form.operating_days_per_year) > 365 ? "border-destructive text-destructive focus:ring-destructive focus:border-destructive" : ""
+                  }`}
+                  placeholder="e.g. 365"
+                  required
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Daily Energy Consumption (kWh/day)</Label>
                 <Input
                   type="number"
                   value={form.daily_energy_consumption_kWh}
-                  onChange={(e) =>
-                    updateForm("daily_energy_consumption_kWh", e.target.value)
-                  }
-                  disabled={!form.isEditing}
-                  className={getInputClass(!form.isEditing)}
+                  disabled
+                  className={autoInputClass}
+                  placeholder="Auto"
                 />
               </div>
             </div>
           </div>
 
+          {/* Performance Parameters */}
           <div className="rounded-xl border p-4">
             <h4 className="mb-4 text-base font-semibold text-foreground">
-              Performance
+              Key Performance Indicators (Calculated)
             </h4>
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
               <div className="space-y-2">
-                <Label>Total Dynamic Head (m)</Label>
+                <Label>Total Dynamic Head (TDH) (m)</Label>
                 <Input
                   type="number"
                   value={form.total_dynamic_head_m}
                   disabled
                   className={autoInputClass}
+                  placeholder="Auto"
                 />
               </div>
 
@@ -842,6 +1035,29 @@ export function PumpAuditRecordSection({
                   value={form.hydraulic_output_power_kW}
                   disabled
                   className={autoInputClass}
+                  placeholder="Auto"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Input Power to Pump (kW)</Label>
+                <Input
+                  type="number"
+                  value={form.input_power_to_pump_kW}
+                  disabled
+                  className={autoInputClass}
+                  placeholder="Auto"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Pump Efficiency (%)</Label>
+                <Input
+                  type="number"
+                  value={form.pump_efficiency_percent}
+                  disabled
+                  className={autoInputClass}
+                  placeholder="Auto"
                 />
               </div>
 
@@ -852,6 +1068,7 @@ export function PumpAuditRecordSection({
                   value={form.overall_pump_set_efficiency_percent}
                   disabled
                   className={autoInputClass}
+                  placeholder="Auto"
                 />
               </div>
 
@@ -862,6 +1079,7 @@ export function PumpAuditRecordSection({
                   value={form.motor_loading_percent}
                   disabled
                   className={autoInputClass}
+                  placeholder="Auto"
                 />
               </div>
 
@@ -872,27 +1090,30 @@ export function PumpAuditRecordSection({
                   value={form.specific_energy_consumption_kWh_per_m3}
                   disabled
                   className={autoInputClass}
+                  placeholder="Auto"
                 />
               </div>
 
               <div className="space-y-2">
-                <Label>Annual Energy Consumption (kWh)</Label>
+                <Label>Annual Energy Consumption (kWh/yr)</Label>
                 <Input
                   type="number"
                   value={form.annual_energy_consumption_kWh}
                   disabled
                   className={autoInputClass}
+                  placeholder="Auto"
                 />
               </div>
 
               <div className="space-y-2">
-                <Label>Audit Date</Label>
+                <Label>Audit Date *</Label>
                 <Input
                   type="date"
                   value={form.audit_date}
                   onChange={(e) => updateForm("audit_date", e.target.value)}
                   disabled={!form.isEditing}
                   className={getInputClass(!form.isEditing)}
+                  required
                 />
               </div>
             </div>

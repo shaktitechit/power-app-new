@@ -25,6 +25,8 @@ export interface AssignedAuditor {
 export interface Facility {
   _id: string;
   owner_user_id: string;
+  audit_number?: string;
+  enquiry_number?: string;
   name: string;
   city: string;
   address?: string;
@@ -95,6 +97,7 @@ export interface CreateFacilityRequest {
   }[];
   facility_type?: string;
   audit_type?: string;
+  audit_types?: string[];
   status?: "active" | "inactive";
   closure_date?: string;
   auditor_ids?: string[];
@@ -106,6 +109,7 @@ export interface CreateFacilityRequest {
     tentative_budget?: number | null;
     actual_budget?: number | null;
   };
+  enquiry_number?: string;
 }
 
 export interface UpdateFacilityRequest {
@@ -124,6 +128,7 @@ export interface UpdateFacilityRequest {
   }[];
   facility_type?: string;
   audit_type?: string;
+  audit_types?: string[];
   status?: "active" | "inactive";
   closure_date?: string;
   auditor_ids?: string[];
@@ -136,6 +141,7 @@ export interface UpdateFacilityRequest {
     tentative_budget?: number | null;
     actual_budget?: number | null;
   };
+  enquiry_number?: string;
 }
 
 export interface CreateFacilityResponse {
@@ -221,11 +227,17 @@ const buildFacilityFormData = (
   if (data.audit_type !== undefined) {
     formData.append("audit_type", data.audit_type);
   }
+  if (data.audit_types !== undefined) {
+    formData.append("audit_types", JSON.stringify(data.audit_types));
+  }
   if (data.status !== undefined) {
     formData.append("status", data.status);
   }
   if (data.closure_date !== undefined) {
     formData.append("closure_date", data.closure_date);
+  }
+  if (data.enquiry_number !== undefined) {
+    formData.append("enquiry_number", data.enquiry_number);
   }
 
   if (data.auditor_ids !== undefined) {

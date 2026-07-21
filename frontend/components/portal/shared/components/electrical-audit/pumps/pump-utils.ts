@@ -13,6 +13,8 @@ export type PumpFormState = {
   pump_tag_number: string;
   make_model: string;
   rated_power_kW_or_HP: string;
+  rated_efficiency_motor_percent: string;
+  rated_flow_liters_per_hour: string;
   rated_flow_m3_per_hr: string;
   rated_head_m: string;
   rated_speed_RPM: string;
@@ -28,6 +30,8 @@ export const createEmptyForm = (): PumpFormState => ({
   pump_tag_number: "",
   make_model: "",
   rated_power_kW_or_HP: "",
+  rated_efficiency_motor_percent: "",
+  rated_flow_liters_per_hour: "",
   rated_flow_m3_per_hr: "",
   rated_head_m: "",
   rated_speed_RPM: "",
@@ -43,6 +47,8 @@ export const pumpToForm = (pump: Pump): PumpFormState => ({
   pump_tag_number: pump.pump_tag_number || "",
   make_model: pump.make_model || "",
   rated_power_kW_or_HP: pump.rated_power_kW_or_HP?.toString() || "",
+  rated_efficiency_motor_percent: pump.rated_efficiency_motor_percent?.toString() || "",
+  rated_flow_liters_per_hour: pump.rated_flow_liters_per_hour?.toString() || "",
   rated_flow_m3_per_hr: pump.rated_flow_m3_per_hr?.toString() || "",
   rated_head_m: pump.rated_head_m?.toString() || "",
   rated_speed_RPM: pump.rated_speed_RPM?.toString() || "",
@@ -63,6 +69,8 @@ export const buildPumpPayload = (
     pump_tag_number: form.pump_tag_number,
     make_model: form.make_model || undefined,
     rated_power_kW_or_HP: form.rated_power_kW_or_HP !== "" ? Number(form.rated_power_kW_or_HP) : undefined,
+    rated_efficiency_motor_percent: form.rated_efficiency_motor_percent !== "" ? Number(form.rated_efficiency_motor_percent) : undefined,
+    rated_flow_liters_per_hour: form.rated_flow_liters_per_hour !== "" ? Number(form.rated_flow_liters_per_hour) : undefined,
     rated_flow_m3_per_hr: form.rated_flow_m3_per_hr !== "" ? Number(form.rated_flow_m3_per_hr) : undefined,
     rated_head_m: form.rated_head_m !== "" ? Number(form.rated_head_m) : undefined,
     rated_speed_RPM: form.rated_speed_RPM !== "" ? Number(form.rated_speed_RPM) : undefined,

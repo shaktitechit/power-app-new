@@ -10,6 +10,16 @@ const facilitySchema = new mongoose.Schema(
       required: true,
     },
 
+    audit_number: {
+      type: String,
+      unique: true,
+      sparse: true,
+    },
+
+    enquiry_number: {
+      type: String,
+    },
+
     name: {
       type: String,
       required: true,
@@ -160,6 +170,33 @@ const facilitySchema = new mongoose.Schema(
     },
   },
 );
+
+facilitySchema.pre("save", async function() {
+  if (this.isNew && !this.audit_number) {
+    const date = this.start_date || new Date();
+    const yyyy = date.getFullYear();
+    const mm = String(date.getMonth() + 1).padStart(2, "0");
+    const dd = String(date.getDate()).padStart(2, "0");
+    const dateStr = `${yyyy}${mm}${dd}`;
+    const prefix = `SPL/${dateStr}/`;
+
+    const latestFacility = await this.constructor.findOne({
+      audit_number: new RegExp(`^SPL\\/${dateStr}\\/`)
+    }).sort({ audit_number: -1 }).exec();
+
+    let nextSerial = 1;
+    if (latestFacility && latestFacility.audit_number) {
+      const parts = latestFacility.audit_number.split("/");
+      const lastPart = parts[parts.length - 1];
+      const parsedSerial = parseInt(lastPart, 10);
+      if (!isNaN(parsedSerial)) {
+        nextSerial = parsedSerial + 1;
+      }
+    }
+
+    this.audit_number = `${prefix}${String(nextSerial).padStart(3, "0")}`;
+  }
+});
 
 facilitySchema.plugin(softDeletePlugin);
 

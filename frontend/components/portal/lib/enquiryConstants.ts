@@ -10,6 +10,7 @@ export const ENQUIRY_STATUS_OPTIONS: { value: EnquiryStatus; label: string }[] =
     { value: "contacted", label: "Contacted" },
     { value: "in_discussion", label: "In discussion" },
     { value: "quoted", label: "Quoted" },
+    { value: "eoq_uploaded", label: "EOQ Uploaded" },
     { value: "negotiation", label: "Negotiation" },
   ];
 

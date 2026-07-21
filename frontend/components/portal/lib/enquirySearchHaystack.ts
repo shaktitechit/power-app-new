@@ -43,6 +43,7 @@ export function enquirySearchHaystack(enquiry: Enquiry): string {
 
   const parts = [
     enquiry.name,
+    enquiry.enquiry_number,
     enquiry.city,
     enquiry.address,
     enquiry.client_representative,

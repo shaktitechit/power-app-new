@@ -5,15 +5,20 @@ export type PumpAuditExcelFormState = {
   suction_head_m: string;
   discharge_static_head_m: string;
   delivery_pipe_diameter_inches: string;
+  pipe_friction_head_m: string;
   tank_or_sump_capacity: string;
   time_to_fill_tank_minutes: string;
+  actual_flow_calculated_m3_per_hr: string;
+  actual_flow_measured_m3_per_hr: string;
   actual_flow_m3_per_hr: string;
 
+  number_of_phases: string;
   voltage_V: string;
   current_A: string;
   power_factor: string;
   input_power_kW: string;
   operating_hours_per_day: string;
+  operating_days_per_year: string;
   daily_energy_consumption_kWh: string;
 
   total_dynamic_head_m: string;
@@ -36,24 +41,29 @@ export const PUMP_AUDIT_EXCEL_FIELDS: {
   key: keyof PumpAuditExcelFormState;
   label: string;
 }[] = [
-  { key: "suction_head_m", label: "Suction Head (m)" },
-  { key: "discharge_static_head_m", label: "Discharge Static Head (m)" },
+  { key: "suction_head_m", label: "Suction Head (below ground) (m)" },
+  { key: "discharge_static_head_m", label: "Discharge / Static Head (m)" },
   {
     key: "delivery_pipe_diameter_inches",
     label: "Delivery Pipe Diameter (inches)",
   },
-  { key: "tank_or_sump_capacity", label: "Tank or Sump Capacity" },
+  { key: "pipe_friction_head_m", label: "Pipe friction Head (m)" },
+  { key: "tank_or_sump_capacity", label: "Water Tank / Sump Capacity (Liters)" },
   { key: "time_to_fill_tank_minutes", label: "Time to Fill Tank (minutes)" },
-  { key: "actual_flow_m3_per_hr", label: "Actual Flow (m³/hr)" },
+  { key: "actual_flow_calculated_m3_per_hr", label: "Actual Flow (calculated) (m³/hr)" },
+  { key: "actual_flow_measured_m3_per_hr", label: "Actual Flow (measured) (m³/hr)" },
+  { key: "actual_flow_m3_per_hr", label: "Actual Flow (m³/hr) [Measured fallback]" },
 
+  { key: "number_of_phases", label: "No of Phases (1-Phase or 3-Phase)" },
   { key: "voltage_V", label: "Voltage (V)" },
   { key: "current_A", label: "Current (A)" },
   { key: "power_factor", label: "Power Factor" },
-  { key: "input_power_kW", label: "Input Power (kW)" },
+  { key: "input_power_kW", label: "Input Power (measured) (kW)" },
   { key: "operating_hours_per_day", label: "Operating Hours / Day" },
+  { key: "operating_days_per_year", label: "Operating days per year" },
   {
     key: "daily_energy_consumption_kWh",
-    label: "Daily Energy Consumption (kWh)",
+    label: "Daily Energy Consumption (kWh/day)",
   },
 
   {

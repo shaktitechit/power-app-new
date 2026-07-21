@@ -14,43 +14,50 @@ export interface PumpAuditRecord {
   facility_id: string;
   utility_account_id: string;
 
-  // ðŸ’§ Hydraulic Parameters
+  // 💧 Hydraulic Parameters
   suction_head_m?: number;
   discharge_static_head_m?: number;
   delivery_pipe_diameter_inches?: number;
+  pipe_friction_head_m?: number;
   tank_or_sump_capacity?: number;
   time_to_fill_tank_minutes?: number;
+  actual_flow_calculated_m3_per_hr?: number;
+  actual_flow_measured_m3_per_hr?: number;
   actual_flow_m3_per_hr?: number;
 
-  // âš¡ Electrical Parameters
+  // ⚡ Electrical Parameters
+  number_of_phases?: string;
   voltage_V?: number;
   current_A?: number;
   power_factor?: number;
   input_power_kW?: number;
   operating_hours_per_day?: number;
+  operating_days_per_year?: number;
   daily_energy_consumption_kWh?: number;
 
-  // ðŸ“Š Performance
+  // 📊 Performance
   total_dynamic_head_m?: number;
   hydraulic_output_power_kW?: number;
+  input_power_to_pump_kW?: number;
+  pump_efficiency_percent?: number;
   overall_pump_set_efficiency_percent?: number;
   motor_loading_percent?: number;
   specific_energy_consumption_kWh_per_m3?: number;
   annual_energy_consumption_kWh?: number;
 
-  // âš™ï¸ Operational Observations
+  // ⚙️ Operational Observations
   control_valve_throttling?: boolean;
   vfd_installed?: boolean;
   pump_condition?: "good" | "moderate" | "poor";
   leakages_observed?: boolean;
   recommendations?: string;
 
-  // ðŸ“‚ Documents
+  // 📂 Documents
   documents: PumpAuditRecordDocument[];
 
   is_completed?: boolean;
 
-  // ðŸ” Audit metadata
+  // 🔍 Audit metadata
   audit_date?: string;
   auditor_id?: string;
 
@@ -68,19 +75,26 @@ export interface CreatePumpAuditRecordRequest {
   suction_head_m?: number | string;
   discharge_static_head_m?: number | string;
   delivery_pipe_diameter_inches?: number | string;
+  pipe_friction_head_m?: number | string;
   tank_or_sump_capacity?: number | string;
   time_to_fill_tank_minutes?: number | string;
+  actual_flow_calculated_m3_per_hr?: number | string;
+  actual_flow_measured_m3_per_hr?: number | string;
   actual_flow_m3_per_hr?: number | string;
 
+  number_of_phases?: string;
   voltage_V?: number | string;
   current_A?: number | string;
   power_factor?: number | string;
   input_power_kW?: number | string;
   operating_hours_per_day?: number | string;
+  operating_days_per_year?: number | string;
   daily_energy_consumption_kWh?: number | string;
 
   total_dynamic_head_m?: number | string;
   hydraulic_output_power_kW?: number | string;
+  input_power_to_pump_kW?: number | string;
+  pump_efficiency_percent?: number | string;
   overall_pump_set_efficiency_percent?: number | string;
   motor_loading_percent?: number | string;
   specific_energy_consumption_kWh_per_m3?: number | string;
@@ -97,6 +111,7 @@ export interface CreatePumpAuditRecordRequest {
 
   documents?: File[];
   captions?: string[];
+  is_completed?: boolean;
 }
 
 export interface UpdatePumpAuditRecordRequest {
@@ -109,19 +124,26 @@ export interface UpdatePumpAuditRecordRequest {
   suction_head_m?: number | string;
   discharge_static_head_m?: number | string;
   delivery_pipe_diameter_inches?: number | string;
+  pipe_friction_head_m?: number | string;
   tank_or_sump_capacity?: number | string;
   time_to_fill_tank_minutes?: number | string;
+  actual_flow_calculated_m3_per_hr?: number | string;
+  actual_flow_measured_m3_per_hr?: number | string;
   actual_flow_m3_per_hr?: number | string;
 
+  number_of_phases?: string;
   voltage_V?: number | string;
   current_A?: number | string;
   power_factor?: number | string;
   input_power_kW?: number | string;
   operating_hours_per_day?: number | string;
+  operating_days_per_year?: number | string;
   daily_energy_consumption_kWh?: number | string;
 
   total_dynamic_head_m?: number | string;
   hydraulic_output_power_kW?: number | string;
+  input_power_to_pump_kW?: number | string;
+  pump_efficiency_percent?: number | string;
   overall_pump_set_efficiency_percent?: number | string;
   motor_loading_percent?: number | string;
   specific_energy_consumption_kWh_per_m3?: number | string;
@@ -138,7 +160,7 @@ export interface UpdatePumpAuditRecordRequest {
 
   documents?: File[];
   captions?: string[];
-    is_completed?: boolean;
+  is_completed?: boolean;
 
   existing_documents?: PumpAuditRecordDocument[];
 }
@@ -206,6 +228,13 @@ const buildPumpAuditRecordFormData = (
     );
   }
 
+  if (data.pipe_friction_head_m !== undefined) {
+    formData.append(
+      "pipe_friction_head_m",
+      String(data.pipe_friction_head_m)
+    );
+  }
+
   if (data.tank_or_sump_capacity !== undefined) {
     formData.append(
       "tank_or_sump_capacity",
@@ -220,11 +249,29 @@ const buildPumpAuditRecordFormData = (
     );
   }
 
+  if (data.actual_flow_calculated_m3_per_hr !== undefined) {
+    formData.append(
+      "actual_flow_calculated_m3_per_hr",
+      String(data.actual_flow_calculated_m3_per_hr)
+    );
+  }
+
+  if (data.actual_flow_measured_m3_per_hr !== undefined) {
+    formData.append(
+      "actual_flow_measured_m3_per_hr",
+      String(data.actual_flow_measured_m3_per_hr)
+    );
+  }
+
   if (data.actual_flow_m3_per_hr !== undefined) {
     formData.append(
       "actual_flow_m3_per_hr",
       String(data.actual_flow_m3_per_hr)
     );
+  }
+
+  if (data.number_of_phases !== undefined) {
+    formData.append("number_of_phases", String(data.number_of_phases));
   }
 
   if (data.voltage_V !== undefined) {
@@ -250,6 +297,13 @@ const buildPumpAuditRecordFormData = (
     );
   }
 
+  if (data.operating_days_per_year !== undefined) {
+    formData.append(
+      "operating_days_per_year",
+      String(data.operating_days_per_year)
+    );
+  }
+
   if (data.daily_energy_consumption_kWh !== undefined) {
     formData.append(
       "daily_energy_consumption_kWh",
@@ -268,6 +322,20 @@ const buildPumpAuditRecordFormData = (
     formData.append(
       "hydraulic_output_power_kW",
       String(data.hydraulic_output_power_kW)
+    );
+  }
+
+  if (data.input_power_to_pump_kW !== undefined) {
+    formData.append(
+      "input_power_to_pump_kW",
+      String(data.input_power_to_pump_kW)
+    );
+  }
+
+  if (data.pump_efficiency_percent !== undefined) {
+    formData.append(
+      "pump_efficiency_percent",
+      String(data.pump_efficiency_percent)
     );
   }
 

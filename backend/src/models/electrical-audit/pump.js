@@ -34,6 +34,17 @@ const pumpSchema = new mongoose.Schema(
       min: 0,
     },
 
+    rated_efficiency_motor_percent: {
+      type: Number,
+      min: 0,
+      max: 100,
+    },
+
+    rated_flow_liters_per_hour: {
+      type: Number,
+      min: 0,
+    },
+
     rated_flow_m3_per_hr: {
       type: Number,
       min: 0,

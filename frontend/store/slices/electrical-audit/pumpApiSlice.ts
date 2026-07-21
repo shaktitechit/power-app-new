@@ -16,6 +16,8 @@ export interface Pump {
   pump_tag_number: string;
   make_model?: string;
   rated_power_kW_or_HP?: number;
+  rated_efficiency_motor_percent?: number;
+  rated_flow_liters_per_hour?: number;
   rated_flow_m3_per_hr?: number;
   rated_head_m?: number;
   rated_speed_RPM?: number;
@@ -40,6 +42,8 @@ export interface CreatePumpRequest {
   pump_tag_number: string;
   make_model?: string;
   rated_power_kW_or_HP?: number | string;
+  rated_efficiency_motor_percent?: number | string;
+  rated_flow_liters_per_hour?: number | string;
   rated_flow_m3_per_hr?: number | string;
   rated_head_m?: number | string;
   rated_speed_RPM?: number | string;
@@ -62,6 +66,8 @@ export interface UpdatePumpRequest {
   pump_tag_number?: string;
   make_model?: string;
   rated_power_kW_or_HP?: number | string;
+  rated_efficiency_motor_percent?: number | string;
+  rated_flow_liters_per_hour?: number | string;
   rated_flow_m3_per_hr?: number | string;
   rated_head_m?: number | string;
   rated_speed_RPM?: number | string;
@@ -129,6 +135,20 @@ const buildPumpFormData = (
     formData.append(
       "rated_power_kW_or_HP",
       String(data.rated_power_kW_or_HP)
+    );
+  }
+
+  if (data.rated_efficiency_motor_percent !== undefined) {
+    formData.append(
+      "rated_efficiency_motor_percent",
+      String(data.rated_efficiency_motor_percent)
+    );
+  }
+
+  if (data.rated_flow_liters_per_hour !== undefined) {
+    formData.append(
+      "rated_flow_liters_per_hour",
+      String(data.rated_flow_liters_per_hour)
     );
   }
 

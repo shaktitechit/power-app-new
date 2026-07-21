@@ -90,7 +90,6 @@ export function FacilityInformationTab({
               <p className="text-sm text-muted-foreground">{facility?.city || "-"}</p>
             </div>
           </div>
-
           <div className="grid gap-3 text-sm">
             <div className="flex justify-between gap-3">
               <span className="text-muted-foreground">Audit Type</span>
@@ -99,7 +98,23 @@ export function FacilityInformationTab({
               </span>
             </div>
 
-            <div className="flex justify-between gap-3">
+            {facility?.audit_number ? (
+              <div className="flex justify-between gap-3">
+                <span className="text-muted-foreground">Audit Number</span>
+                <span className="font-mono text-xs text-right text-foreground">
+                  {facility.audit_number}
+                </span>
+              </div>
+            ) : null}
+
+            {facility?.enquiry_number ? (
+              <div className="flex justify-between gap-3">
+                <span className="text-muted-foreground">Enquiry Number</span>
+                <span className="font-mono text-xs text-right text-foreground">
+                  {facility.enquiry_number}
+                </span>
+              </div>
+            ) : null}            <div className="flex justify-between gap-3">
               <span className="text-muted-foreground">Audit Date</span>
               <span className="text-right text-foreground">
                 {facility?.audit_date

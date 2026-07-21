@@ -109,6 +109,8 @@ export function PumpDisplayCard({
           <CardContent className="grid grid-cols-2 gap-x-4 gap-y-3 pb-6 pt-0 md:grid-cols-3">
             <DisplayField label="Make / Model" value={pump.make_model} />
             <DisplayField label="Rated Power (kW/HP)" value={pump.rated_power_kW_or_HP} />
+            <DisplayField label="Rated Efficiency (Motor) (%)" value={pump.rated_efficiency_motor_percent} />
+            <DisplayField label="Rated Flow (Liters/Hour)" value={pump.rated_flow_liters_per_hour} />
             <DisplayField label="Rated Flow (m³/hr)" value={pump.rated_flow_m3_per_hr} />
             <DisplayField label="Rated Head (m)" value={pump.rated_head_m} />
             <DisplayField label="Rated Speed (RPM)" value={pump.rated_speed_RPM} />

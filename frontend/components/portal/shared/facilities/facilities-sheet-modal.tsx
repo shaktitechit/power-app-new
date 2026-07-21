@@ -29,6 +29,8 @@ interface FacilitiesSheetModalProps {
 
 const COLUMNS: SheetColumn[] = [
   { key: "name", label: "Facility Name", width: 220 },
+  { key: "audit_number", label: "Audit Number", width: 150 },
+  { key: "enquiry_number", label: "Enquiry Number", width: 150 },
   { key: "city", label: "City", width: 120 },
   { key: "address", label: "Address", width: 260 },
   { key: "facility_type", label: "Facility Type", width: 150 },
@@ -217,6 +219,8 @@ export function FacilitiesSheetModal({
 
       return {
         name: f.name || "—",
+        audit_number: f.audit_number || "—",
+        enquiry_number: f.enquiry_number || "—",
         city: f.city || "—",
         address: f.address || "—",
         facility_type: f.facility_type || "—",

@@ -11,7 +11,8 @@
     "start": "node backend/src/index.js",
     "seed": "node backend/src/seeder.js",
     "migrate:utility-datasheets": "node backend/src/scripts/migrateUtilityAccountDataSheets.js",
-    "migrate:soft-delete-indexes": "node backend/src/scripts/migrateSoftDeleteUniqueIndexes.js"
+    "migrate:soft-delete-indexes": "node backend/src/scripts/migrateSoftDeleteUniqueIndexes.js",
+    "migrate:backfill-numbers": "node backend/src/scripts/backfillNumbers.js"
   },
   "author": "Ajit Kumar",
   "license": "ISC",

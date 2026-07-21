@@ -28,18 +28,36 @@ export const createFacilityService = async ({ user, body, files, io }) => {
     client_email,
     facility_type,
     audit_type,
+    audit_types,
     status,
     start_date,
     closure_date,
     auditor_ids,
     client_representatives,
     budget: budgetRaw,
+    enquiry_number,
   } = body;
 
   if (!name || !city) {
     const error = new Error("Name and city are required");
     error.statusCode = 400;
     throw error;
+  }
+
+  // Parse audit types
+  let selectedAuditTypes = [];
+  if (audit_types) {
+    try {
+      selectedAuditTypes = typeof audit_types === "string" ? JSON.parse(audit_types) : audit_types;
+    } catch {
+      selectedAuditTypes = [audit_types];
+    }
+  } else if (audit_type) {
+    selectedAuditTypes = [audit_type];
+  }
+
+  if (!Array.isArray(selectedAuditTypes) || selectedAuditTypes.length === 0) {
+    selectedAuditTypes = ["Electrical Energy Audit"];
   }
 
   const parsedAuditorIds = parseAuditorIds(auditor_ids);
@@ -57,11 +75,12 @@ export const createFacilityService = async ({ user, body, files, io }) => {
         },
       ]
       : [];
-  const facilityId = new mongoose.Types.ObjectId();
+
+  const baseFacilityId = new mongoose.Types.ObjectId();
   const uploadedDocuments = await uploadAuditDocuments(
     files,
     "facilities",
-    facilityId,
+    baseFacilityId,
   );
 
   let captions = [];
@@ -98,84 +117,93 @@ export const createFacilityService = async ({ user, body, files, io }) => {
     };
   }
 
-  const facility = await Facility.create({
-    _id: facilityId,
-    owner_user_id: user._id,
-    created_by: user._id,
-    name,
-    city,
-    address,
-    client_representative,
-    client_contact_number,
-    client_email,
-    client_representatives: fallbackClientRepresentatives,
-    facility_type: facility_type !== undefined && facility_type !== null
-      ? String(facility_type).trim()
-      : "",
-    audit_type,
-    status,
-    start_date,
-    closure_date,
-    auditor_id: resolveAuditorId(user, body) || parsedAuditorIds[0] || undefined,
-    documents: uploadedDocuments,
-    ...(parsedBudget !== undefined && { budget: parsedBudget }),
-  });
+  const createdFacilities = [];
 
-  if (parsedAuditorIds.length > 0) {
-    const facilityAuditorDocs = parsedAuditorIds.map((auditorId) => ({
-      facility_id: facility._id,
-      user_id: auditorId,
-      assigned_by: user._id,
-    }));
+  for (const currentAuditType of selectedAuditTypes) {
+    const facilityId = new mongoose.Types.ObjectId();
+    const facility = await Facility.create({
+      _id: facilityId,
+      owner_user_id: user._id,
+      created_by: user._id,
+      name,
+      city,
+      address,
+      client_representative,
+      client_contact_number,
+      client_email,
+      client_representatives: fallbackClientRepresentatives,
+      facility_type: facility_type !== undefined && facility_type !== null
+        ? String(facility_type).trim()
+        : "",
+      audit_type: currentAuditType,
+      status,
+      start_date,
+      closure_date,
+      enquiry_number: enquiry_number ? String(enquiry_number).trim() : undefined,
+      auditor_id: resolveAuditorId(user, body) || parsedAuditorIds[0] || undefined,
+      documents: uploadedDocuments,
+      ...(parsedBudget !== undefined && { budget: parsedBudget }),
+    });
 
-    await FacilityAuditor.insertMany(facilityAuditorDocs, { ordered: false });
+    if (parsedAuditorIds.length > 0) {
+      const facilityAuditorDocs = parsedAuditorIds.map((auditorId) => ({
+        facility_id: facility._id,
+        user_id: auditorId,
+        assigned_by: user._id,
+      }));
 
-    for (const auditorId of parsedAuditorIds) {
-      await createNotification(io, {
-        recipient: auditorId,
-        sender: user._id,
-        title: "New Facility Assignment",
-        message: `You have been assigned to facility: ${facility.name}`,
-        type: "facility",
-        referenceId: facility._id,
+      await FacilityAuditor.insertMany(facilityAuditorDocs, { ordered: false });
+
+      for (const auditorId of parsedAuditorIds) {
+        await createNotification(io, {
+          recipient: auditorId,
+          sender: user._id,
+          title: "New Facility Assignment",
+          message: `You have been assigned to facility: ${facility.name} (${currentAuditType})`,
+          type: "facility",
+          referenceId: facility._id,
+        });
+      }
+
+      await createRecentActivity({
+        actor: user,
+        action: "assigned",
+        entity_type: "facility",
+        entity_id: facility._id,
+        entity_name: facility.name,
+        facility_id: facility._id,
+        message: `${user?.name || "User"} assigned auditors to facility "${facility.name}"`,
+        meta: {
+          auditor_ids: parsedAuditorIds,
+        },
       });
     }
 
     await createRecentActivity({
       actor: user,
-      action: "assigned",
+      action: "created",
       entity_type: "facility",
       entity_id: facility._id,
       entity_name: facility.name,
       facility_id: facility._id,
-      message: `${user?.name || "User"} assigned auditors to facility "${facility.name}"`,
+      message: buildActivityMessage({
+        actorName: user?.name || "User",
+        action: "created",
+        entityLabel: "facility",
+        entityName: facility.name,
+      }),
       meta: {
-        auditor_ids: parsedAuditorIds,
+        city: facility.city,
+        facility_type: facility.facility_type,
+        assigned_auditors_count: parsedAuditorIds.length,
       },
     });
+
+    createdFacilities.push(facility);
   }
 
-  await createRecentActivity({
-    actor: user,
-    action: "created",
-    entity_type: "facility",
-    entity_id: facility._id,
-    entity_name: facility.name,
-    facility_id: facility._id,
-    message: buildActivityMessage({
-      actorName: user?.name || "User",
-      action: "created",
-      entityLabel: "facility",
-      entityName: facility.name,
-    }),
-    meta: {
-      city: facility.city,
-      facility_type: facility.facility_type,
-      assigned_auditors_count: parsedAuditorIds.length,
-    },
-  });
-
-  return facility;
+  // Return the first one for type compatibility or single responses
+  return createdFacilities[0];
 };
 
 export const createFacilityFromEnquiryService = async ({ user, enquiryId, body, files, io }) => {
@@ -223,6 +251,7 @@ export const createFacilityFromEnquiryService = async ({ user, enquiryId, body, 
     client_email,
     facility_type,
     audit_type,
+    audit_types,
     status,
     start_date,
     closure_date,
@@ -235,6 +264,22 @@ export const createFacilityFromEnquiryService = async ({ user, enquiryId, body, 
     const error = new Error("Name and city are required");
     error.statusCode = 400;
     throw error;
+  }
+
+  // Parse audit types
+  let selectedAuditTypes = [];
+  if (audit_types) {
+    try {
+      selectedAuditTypes = typeof audit_types === "string" ? JSON.parse(audit_types) : audit_types;
+    } catch {
+      selectedAuditTypes = [audit_types];
+    }
+  } else if (audit_type) {
+    selectedAuditTypes = [audit_type];
+  }
+
+  if (!Array.isArray(selectedAuditTypes) || selectedAuditTypes.length === 0) {
+    selectedAuditTypes = ["Electrical Energy Audit"];
   }
 
   const parsedAuditorIds = parseAuditorIds(auditor_ids);
@@ -252,8 +297,9 @@ export const createFacilityFromEnquiryService = async ({ user, enquiryId, body, 
         },
       ]
       : [];
-  const facilityId = new mongoose.Types.ObjectId();
-  const uploadedDocuments = await uploadAuditDocuments(files, "facilities", facilityId);
+
+  const baseFacilityId = new mongoose.Types.ObjectId();
+  const uploadedDocuments = await uploadAuditDocuments(files, "facilities", baseFacilityId);
 
   let captions = [];
   if (body?.captions) {
@@ -289,91 +335,101 @@ export const createFacilityFromEnquiryService = async ({ user, enquiryId, body, 
     };
   }
 
-  const facility = await Facility.create({
-    _id: facilityId,
-    owner_user_id: user._id,
-    created_by: user._id,
-    name,
-    city,
-    address,
-    client_representative,
-    client_contact_number,
-    client_email,
-    client_representatives: fallbackClientRepresentatives,
-    facility_type:
-      facility_type !== undefined && facility_type !== null
-        ? String(facility_type).trim()
-        : "",
-    audit_type,
-    status,
-    start_date,
-    closure_date,
-    auditor_id: resolveAuditorId(user, body) || parsedAuditorIds[0] || undefined,
-    documents: uploadedDocuments,
-    ...(parsedBudget !== undefined && { budget: parsedBudget }),
-  });
+  const createdFacilities = [];
 
-  enquiry.is_converted_to_facility = true;
-  enquiry.converted_facility_id = facility._id;
-  await enquiry.save();
+  for (const currentAuditType of selectedAuditTypes) {
+    const facilityId = new mongoose.Types.ObjectId();
+    const facility = await Facility.create({
+      _id: facilityId,
+      owner_user_id: user._id,
+      created_by: user._id,
+      name,
+      city,
+      address,
+      client_representative,
+      client_contact_number,
+      client_email,
+      client_representatives: fallbackClientRepresentatives,
+      facility_type:
+        facility_type !== undefined && facility_type !== null
+          ? String(facility_type).trim()
+          : "",
+      audit_type: currentAuditType,
+      status,
+      start_date,
+      closure_date,
+      enquiry_number: enquiry.enquiry_number,
+      auditor_id: resolveAuditorId(user, body) || parsedAuditorIds[0] || undefined,
+      documents: uploadedDocuments,
+      ...(parsedBudget !== undefined && { budget: parsedBudget }),
+    });
 
-  if (parsedAuditorIds.length > 0) {
-    const facilityAuditorDocs = parsedAuditorIds.map((auditorId) => ({
-      facility_id: facility._id,
-      user_id: auditorId,
-      assigned_by: user._id,
-    }));
+    if (parsedAuditorIds.length > 0) {
+      const facilityAuditorDocs = parsedAuditorIds.map((auditorId) => ({
+        facility_id: facility._id,
+        user_id: auditorId,
+        assigned_by: user._id,
+      }));
 
-    await FacilityAuditor.insertMany(facilityAuditorDocs, { ordered: false });
+      await FacilityAuditor.insertMany(facilityAuditorDocs, { ordered: false });
 
-    // Send notifications to assigned auditors if io is available
-    if (io) {
-      for (const auditorId of parsedAuditorIds) {
-        await createNotification(io, {
-          recipient: auditorId,
-          sender: user._id,
-          title: "New Facility Assignment",
-          message: `You have been assigned to facility: ${facility.name}`,
-          type: "facility",
-          referenceId: facility._id,
-        });
+      // Send notifications to assigned auditors if io is available
+      if (io) {
+        for (const auditorId of parsedAuditorIds) {
+          await createNotification(io, {
+            recipient: auditorId,
+            sender: user._id,
+            title: "New Facility Assignment",
+            message: `You have been assigned to facility: ${facility.name} (${currentAuditType})`,
+            type: "facility",
+            referenceId: facility._id,
+          });
+        }
       }
+
+      await createRecentActivity({
+        actor: user,
+        action: "assigned",
+        entity_type: "facility",
+        entity_id: facility._id,
+        entity_name: facility.name,
+        facility_id: facility._id,
+        message: `${user?.name || "User"} assigned auditors to facility "${facility.name}"`,
+        meta: {
+          auditor_ids: parsedAuditorIds,
+        },
+      });
     }
 
     await createRecentActivity({
       actor: user,
-      action: "assigned",
+      action: "created",
       entity_type: "facility",
       entity_id: facility._id,
       entity_name: facility.name,
       facility_id: facility._id,
-      message: `${user?.name || "User"} assigned auditors to facility "${facility.name}"`,
+      message: buildActivityMessage({
+        actorName: user?.name || "User",
+        action: "created",
+        entityLabel: "facility",
+        entityName: facility.name,
+      }),
       meta: {
-        auditor_ids: parsedAuditorIds,
+        city: facility.city,
+        facility_type: facility.facility_type,
+        assigned_auditors_count: parsedAuditorIds.length,
+        from_enquiry_id: enquiry._id?.toString(),
       },
     });
+
+    createdFacilities.push(facility);
   }
 
-  await createRecentActivity({
-    actor: user,
-    action: "created",
-    entity_type: "facility",
-    entity_id: facility._id,
-    entity_name: facility.name,
-    facility_id: facility._id,
-    message: buildActivityMessage({
-      actorName: user?.name || "User",
-      action: "created",
-      entityLabel: "facility",
-      entityName: facility.name,
-    }),
-    meta: {
-      city: facility.city,
-      facility_type: facility.facility_type,
-      assigned_auditors_count: parsedAuditorIds.length,
-      from_enquiry_id: enquiry._id?.toString(),
-    },
-  });
+  // Link the enquiry to the first created facility
+  const primaryFacility = createdFacilities[0];
+  enquiry.is_converted_to_facility = true;
+  enquiry.converted_facility_id = primaryFacility._id;
+  await enquiry.save();
 
   await createRecentActivity({
     actor: user,
@@ -384,11 +440,11 @@ export const createFacilityFromEnquiryService = async ({ user, enquiryId, body, 
     message: `${user?.name || "User"} linked enquiry "${enquiry.name}" to new facility`,
     meta: {
       enquiry_id: enquiry._id?.toString(),
-      facility_id: facility._id?.toString(),
+      facility_id: primaryFacility._id?.toString(),
     },
   });
 
-  return facility;
+  return primaryFacility;
 };
 
 export const getFacilitiesService = async (user) => {
@@ -538,6 +594,7 @@ export const updateFacilityService = async ({ user, facilityId, body, files, io 
     client_representatives,
     budget: budgetRaw,
     removed_document_ids,
+    enquiry_number,
   } = body;
 
   const facility = await resolveAccessibleFacility(user, facilityId);
@@ -612,6 +669,9 @@ export const updateFacilityService = async ({ user, facilityId, body, files, io 
   }
   if (audit_type !== undefined) {
     facility.audit_type = audit_type;
+  }
+  if (enquiry_number !== undefined) {
+    facility.enquiry_number = enquiry_number ? String(enquiry_number).trim() : undefined;
   }
   facility.status = status ?? facility.status;
   facility.start_date = start_date ?? facility.start_date;

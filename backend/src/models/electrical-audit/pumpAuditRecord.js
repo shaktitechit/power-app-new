@@ -27,24 +27,31 @@ const pumpAuditRecordSchema = new mongoose.Schema(
     suction_head_m: { type: Number, min: 0 },
     discharge_static_head_m: { type: Number, min: 0 },
     delivery_pipe_diameter_inches: { type: Number, min: 0 },
+    pipe_friction_head_m: { type: Number, min: 0 },
 
     tank_or_sump_capacity: { type: Number, min: 0 },
     time_to_fill_tank_minutes: { type: Number, min: 0 },
 
-    actual_flow_m3_per_hr: { type: Number, min: 0 },
+    actual_flow_calculated_m3_per_hr: { type: Number, min: 0 },
+    actual_flow_measured_m3_per_hr: { type: Number, min: 0 },
+    actual_flow_m3_per_hr: { type: Number, min: 0 }, // fallback or alias for measured
 
     // ⚡ Electrical Parameters
+    number_of_phases: { type: String, enum: ["1-Phase", "3-Phase"] },
     voltage_V: { type: Number, min: 0 },
     current_A: { type: Number, min: 0 },
     power_factor: { type: Number, min: 0, max: 1 },
     input_power_kW: { type: Number, min: 0 },
 
     operating_hours_per_day: { type: Number, min: 0 },
+    operating_days_per_year: { type: Number, min: 0, max: 365 },
     daily_energy_consumption_kWh: { type: Number, min: 0 },
 
     // 📊 Performance
     total_dynamic_head_m: { type: Number, min: 0 },
     hydraulic_output_power_kW: { type: Number, min: 0 },
+    input_power_to_pump_kW: { type: Number, min: 0 },
+    pump_efficiency_percent: { type: Number, min: 0, max: 100 },
     overall_pump_set_efficiency_percent: {
       type: Number,
       min: 0,

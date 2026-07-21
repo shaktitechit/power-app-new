@@ -13,6 +13,7 @@ export type EnquiryStatus =
   | "contacted"
   | "in_discussion"
   | "quoted"
+  | "eoq_uploaded"
   | "negotiation"
   | "won"
   | "lost"
@@ -26,6 +27,7 @@ export type RequestedAuditType =
 
 export interface Enquiry {
   _id: string;
+  enquiry_number?: string;
   name: string;
   city: string;
   address?: string;
@@ -106,6 +108,7 @@ export interface GetEnquiriesQueryArgs {
 }
 
 export interface CreateEnquiryRequest {
+  enquiry_number?: string;
   name: string;
   city: string;
   address?: string;
@@ -124,6 +127,7 @@ export interface CreateEnquiryRequest {
 
 export interface UpdateEnquiryRequest {
   id: string;
+  enquiry_number?: string;
   name?: string;
   city?: string;
   address?: string;

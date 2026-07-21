@@ -13,19 +13,17 @@ import { isAdmin } from "../../services/authorization/index.js";
 import { createNotification } from "../../services/notificationService.js";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-
 export const ENQUIRY_STATUSES = [
   "new",
   "contacted",
   "in_discussion",
   "quoted",
+  "eoq_uploaded",
   "negotiation",
   "won",
   "lost",
   "dropped",
 ];
-
-
 export const AUDIT_TYPES = [
   "Electrical Energy Audit",
   "Electrical Safety Audit",

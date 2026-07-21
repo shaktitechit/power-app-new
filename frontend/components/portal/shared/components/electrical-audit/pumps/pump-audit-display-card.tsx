@@ -109,15 +109,20 @@ export function PumpAuditDisplayCard({
         </CardHeader>
         <CardContent className="space-y-4 pb-4 pt-0">
           <div className="grid grid-cols-2 gap-x-3 gap-y-3 md:grid-cols-3">
-            <DisplayField label="Actual Flow (m³/hr)" value={record.actual_flow_m3_per_hr} />
+            <DisplayField label="Actual Flow (measured) (m³/hr)" value={record.actual_flow_measured_m3_per_hr || record.actual_flow_m3_per_hr} />
+            <DisplayField label="Actual Flow (calculated) (m³/hr)" value={record.actual_flow_calculated_m3_per_hr} />
             <DisplayField label="Total Dynamic Head (m)" value={record.total_dynamic_head_m} />
-            <DisplayField label="Input Power (kW)" value={record.input_power_kW} />
-            <DisplayField label="Pump Set Efficiency (%)" value={record.overall_pump_set_efficiency_percent} />
+            <DisplayField label="No. of Phases" value={record.number_of_phases} />
+            <DisplayField label="Input Power (measured) (kW)" value={record.input_power_kW} />
+            <DisplayField label="Input Power to Pump (kW)" value={record.input_power_to_pump_kW} />
+            <DisplayField label="Pump Efficiency (%)" value={record.pump_efficiency_percent} />
+            <DisplayField label="Overall Pump Set Efficiency (%)" value={record.overall_pump_set_efficiency_percent} />
             <DisplayField label="Motor Loading (%)" value={record.motor_loading_percent} />
             <DisplayField label="Specific Energy (kWh/m³)" value={record.specific_energy_consumption_kWh_per_m3} />
             <DisplayField label="Annual Energy (kWh)" value={record.annual_energy_consumption_kWh} />
             <DisplayField label="Suction Head (m)" value={record.suction_head_m} />
             <DisplayField label="Discharge Static Head (m)" value={record.discharge_static_head_m} />
+            <DisplayField label="Pipe Friction Head (m)" value={record.pipe_friction_head_m} />
             <DisplayField label="Delivery Pipe Dia (in)" value={record.delivery_pipe_diameter_inches} />
             <DisplayField label="Tank Capacity (L)" value={record.tank_or_sump_capacity} />
             <DisplayField label="Time to Fill Tank (min)" value={record.time_to_fill_tank_minutes} />
@@ -125,6 +130,7 @@ export function PumpAuditDisplayCard({
             <DisplayField label="Current (A)" value={record.current_A} />
             <DisplayField label="Power Factor" value={record.power_factor} />
             <DisplayField label="Operating Hours/Day" value={record.operating_hours_per_day} />
+            <DisplayField label="Operating Days/Year" value={record.operating_days_per_year} />
             <DisplayField label="Daily Energy (kWh)" value={record.daily_energy_consumption_kWh} />
             <DisplayField label="Hydraulic Output (kW)" value={record.hydraulic_output_power_kW} />
             <DisplayField label="Valve Throttling?" value={record.control_valve_throttling} />

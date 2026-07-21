@@ -162,6 +162,11 @@ export default function DashboardPage() {
                         <h3 className="line-clamp-2 text-sm font-semibold leading-snug text-foreground group-hover:text-primary sm:text-base">
                           {facility.name}
                         </h3>
+                        {facility.audit_number && (
+                          <p className="mt-0.5 font-mono text-[10px] text-muted-foreground/75">
+                            {facility.audit_number}
+                          </p>
+                        )}
                         <p className="mt-1 truncate text-xs text-muted-foreground sm:text-sm">
                           {facility.city || "Unknown city"}
                         </p>
@@ -188,6 +193,11 @@ export default function DashboardPage() {
                             {auditClosed ? "Audit closed" : "Audit open"}
                           </span>
                         </span>
+                        {facility.audit_type && (
+                          <span className="inline-flex rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-medium leading-none text-blue-700 dark:bg-blue-500/10 dark:text-blue-400 sm:text-xs">
+                            {facility.audit_type}
+                          </span>
+                        )}
                       </div>
                     </div>
 

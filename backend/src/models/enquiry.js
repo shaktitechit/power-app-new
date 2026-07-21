@@ -4,6 +4,12 @@ import { softDeletePlugin } from "./plugins/softDelete.js";
 
 const enquirySchema = new mongoose.Schema({
 
+    enquiry_number: {
+        type: String,
+        unique: true,
+        sparse: true,
+    },
+
     name: {
         type: String,
         required: true,
@@ -74,6 +80,7 @@ const enquirySchema = new mongoose.Schema({
             "contacted",
             "in_discussion",
             "quoted",
+            "eoq_uploaded",
             "negotiation",
             "won",
             "lost",
@@ -126,6 +133,33 @@ const enquirySchema = new mongoose.Schema({
         createdAt: "created_at",
         updatedAt: "updated_at",
     },
+});
+
+enquirySchema.pre("save", async function() {
+    if (this.isNew && !this.enquiry_number) {
+        const date = this.created_at || new Date();
+        const yyyy = date.getFullYear();
+        const mm = String(date.getMonth() + 1).padStart(2, "0");
+        const dd = String(date.getDate()).padStart(2, "0");
+        const dateStr = `${yyyy}${mm}${dd}`;
+        const prefix = `ENQ-SPL/${dateStr}/`;
+
+        const latestEnquiry = await this.constructor.findOne({
+            enquiry_number: new RegExp(`^ENQ-SPL\\/${dateStr}\\/`)
+        }).sort({ enquiry_number: -1 }).exec();
+
+        let nextSerial = 1;
+        if (latestEnquiry && latestEnquiry.enquiry_number) {
+            const parts = latestEnquiry.enquiry_number.split("/");
+            const lastPart = parts[parts.length - 1];
+            const parsedSerial = parseInt(lastPart, 10);
+            if (!isNaN(parsedSerial)) {
+                nextSerial = parsedSerial + 1;
+            }
+        }
+
+        this.enquiry_number = `${prefix}${String(nextSerial).padStart(3, "0")}`;
+    }
 });
 
 enquirySchema.plugin(softDeletePlugin);

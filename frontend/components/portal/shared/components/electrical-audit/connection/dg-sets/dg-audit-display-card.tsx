@@ -108,56 +108,58 @@ export function DGAuditDisplayCard({
           </div>
         </CardHeader>
         <CardContent className="grid grid-cols-2 gap-x-3 gap-y-3 pb-4 pt-0 md:grid-cols-3">
-          <DisplayField
-            label="Measured kW Output"
-            value={record.measured_kW_output}
-          />
-          <DisplayField
-            label="Measured kVA Output"
-            value={record.measured_kVA_output}
-          />
+          <DisplayField label="Voltage L-L (V)" value={record.measured_voltage_LL} />
+          <DisplayField label="Current Avg (A)" value={record.measured_current_avg} />
+          <DisplayField label="Measured kW Output" value={record.measured_kW_output} />
+          <DisplayField label="Measured kVA Output" value={record.measured_kVA_output} />
           <DisplayField label="Power Factor" value={record.power_factor} />
           <DisplayField label="Frequency (Hz)" value={record.frequency_Hz} />
-          <DisplayField
-            label="Avg Loading (%)"
-            value={record.average_loading_percent}
-          />
-          <DisplayField
-            label="Load Factor (%)"
-            value={record.load_factor_percent}
-          />
-          <DisplayField
-            label="Units Generated / Year (kWh)"
-            value={record.units_generated_per_year_kWh}
-          />
-          <DisplayField
-            label="Specific Fuel Cons. (L/kWh)"
-            value={record.specific_fuel_consumption_l_per_kWh}
-          />
-          <DisplayField
-            label="DG Cost / kWh (Rs)"
-            value={record.dg_cost_per_kWh_rs}
-          />
-          <DisplayField
-            label="Grid Cost / kWh (Rs)"
-            value={record.grid_cost_per_kWh_rs}
-          />
-          <DisplayField
-            label="Calculated Efficiency (%)"
-            value={record.calculated_efficiency_percent}
-          />
-          <DisplayField
-            label="Efficiency Deviation (%)"
-            value={record.efficiency_deviation_percent}
-          />
-          <DisplayField
-            label="Air/Fuel Filter"
-            value={formatFilterCondition(record.air_fuel_filter_condition)}
-          />
-          <DisplayField
-            label="Smoke / Vibration"
-            value={record.visible_smoke_or_abnormal_vibration}
-          />
+          <DisplayField label="No. of Phases" value={record.number_of_phase} />
+
+          <DisplayField label="Max Load Observed (kW)" value={record.max_load_observed_kW} />
+          <DisplayField label="Min Load Observed (kW)" value={record.min_load_observed_kW} />
+          <DisplayField label="Avg Loading (%)" value={record.average_loading_percent} />
+          <DisplayField label="Load Factor (%)" value={record.load_factor_percent} />
+          <DisplayField label="Idle Running?" value={record.idle_running_observed} />
+          <DisplayField label="Parallel Operation?" value={record.parallel_operation} />
+
+          <DisplayField label="Annual Fuel (L)" value={record.annual_fuel_consumption_liters} />
+          <DisplayField label="Units Generated/Yr (kWh)" value={record.units_generated_per_year_kWh} />
+          <DisplayField label="Total Working Hours/Yr" value={record.total_working_hours_per_year} />
+          <DisplayField label="Units Generated/Hr (kWh)" value={record.units_generated_per_hour_kWh} />
+          <DisplayField label="Fuel Consumption/Hr (L)" value={record.fuel_consumption_per_hour_liters} />
+
+          <DisplayField label="Fuel Cons. Test (LPH)" value={record.fuel_consumption_during_test_lph} />
+          <DisplayField label="Units Gen. Test (kWh)" value={record.units_generated_during_test_kWh} />
+          <DisplayField label="Test Duration (hrs)" value={record.time_duration_of_the_test_hours} />
+          <DisplayField label="Units/Hr Test (kWh)" value={record.units_generated_per_hour_kWh_during_test} />
+          <DisplayField label="Fuel/Hr Test (L)" value={record.fuel_consumption_per_hour_liters_during_test} />
+          <DisplayField label="SFC Test (L/kWh)" value={record.specific_fuel_consumption_l_per_kWh_during_test} />
+
+          <DisplayField label="Specific Fuel Cons. (L/kWh)" value={record.specific_fuel_consumption_l_per_kWh} />
+          <DisplayField label="Manufacturer SFC (L/kWh)" value={record.manufacturer_sfc_l_per_kWh} />
+          <DisplayField label="SFC Deviation (%)" value={record.sfc_deviation_percent} />
+          <DisplayField label="SFC Dev. Test (%)" value={record.sfc_deviation_percent_during_test} />
+
+          <DisplayField label="Fuel Cost (Rs/L)" value={record.fuel_cost_rs_per_liter} />
+          <DisplayField label="Annual Fuel Cost (Rs)" value={record.annual_fuel_cost_rs} />
+          <DisplayField label="DG Cost/kWh (Rs)" value={record.dg_cost_per_kWh_rs} />
+          <DisplayField label="Grid Cost/kWh (Rs)" value={record.grid_cost_per_kWh_rs} />
+
+          <DisplayField label="Calculated Efficiency (%)" value={record.calculated_efficiency_percent} />
+          <DisplayField label="Manufacturer Eff. (%)" value={record.manufacturer_efficiency_percent} />
+          <DisplayField label="Efficiency Deviation (%)" value={record.efficiency_deviation_percent} />
+
+          <DisplayField label="Exhaust Temp (°C)" value={record.exhaust_temperature_C} />
+          <DisplayField label="Cooling Water Temp (°C)" value={record.cooling_water_temperature_C} />
+          <DisplayField label="Lube Oil Pressure (bar)" value={record.lube_oil_pressure_bar} />
+          <DisplayField label="Lube Oil Cons. (L/yr)" value={record.lube_oil_consumption_liters_per_year} />
+
+          <DisplayField label="Total Operating Hours" value={record.total_operating_hours} />
+          <DisplayField label="Hours Since Overhaul" value={record.hours_since_last_overhaul} />
+
+          <DisplayField label="Air/Fuel Filter" value={formatFilterCondition(record.air_fuel_filter_condition)} />
+          <DisplayField label="Smoke / Vibration" value={record.visible_smoke_or_abnormal_vibration} />
           <div className="min-w-0 space-y-0.5 md:col-span-3">
             <p className="truncate text-[11px] leading-tight text-muted-foreground">
               Remarks
