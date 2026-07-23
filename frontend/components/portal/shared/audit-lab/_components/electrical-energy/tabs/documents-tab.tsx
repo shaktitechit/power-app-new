@@ -57,6 +57,11 @@ export function DocumentsTab({ utilityAccounts, activeAccountIndex }: DocumentsT
       doc: any,
     ) => {
       if (!doc || !doc.fileUrl) return;
+      const fileUrl = doc.fileUrl;
+      const fileType = doc.fileType || (fileUrl.endsWith(".pdf") ? "pdf" : "image");
+      const isPdf = fileType.toLowerCase().includes("pdf") || fileUrl.toLowerCase().endsWith(".pdf");
+      if (isPdf) return;
+
       const acc = nest.utility_account as any;
       const accNum = acc?.account_number || "unspecified";
       const accLabel = acc?.account_number
@@ -68,9 +73,9 @@ export function DocumentsTab({ utilityAccounts, activeAccountIndex }: DocumentsT
         accountNumber: accNum,
         sectionName,
         entityName,
-        fileName: doc.fileName || doc.fileUrl.split("/").pop() || "Document",
-        fileUrl: doc.fileUrl,
-        fileType: doc.fileType || (doc.fileUrl.endsWith(".pdf") ? "pdf" : "image"),
+        fileName: doc.fileName || fileUrl.split("/").pop() || "Document",
+        fileUrl: fileUrl,
+        fileType: "image",
         caption: doc.caption || "",
         uploadedAt: doc.uploadedAt,
       });

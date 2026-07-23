@@ -54,7 +54,7 @@ export function DocumentPreviewModal({ open, onClose, document: doc }: DocumentP
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-4xl w-[95vw] !max-h-[92vh] h-[92vh] flex flex-col p-0 !overflow-hidden border border-border/80 shadow-2xl rounded-xl gap-0 bg-background">
+      <DialogContent className="!max-w-7xl sm:!max-w-7xl w-[95vw] !max-h-[92vh] h-[92vh] flex flex-col p-0 !overflow-hidden border border-border/80 shadow-2xl rounded-xl gap-0 bg-background">
 
         {/* ── Header ── */}
         <DialogHeader className="px-5 py-3 border-b border-border/50 bg-muted/20 shrink-0">
