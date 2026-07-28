@@ -40,6 +40,7 @@ import ElectricalEnergyLab from "./_components/electrical-energy";
 import ElectricalSafetyLab from "./_components/electrical-safety";
 import LighteningArresterLab from "./_components/lightening-arresters-audit";
 import ThermalLab from "./_components/thermal-audit";
+import { ChatbotWidget } from "./chatbot-widget";
 
 /** Returns true if the facility audit is closed. */
 function isFacilityClosed(facility: Facility): boolean {
@@ -308,6 +309,7 @@ export default function AuditLabPage() {
           )}
         </div>
       </div>
+      <ChatbotWidget />
     </DashboardLayout>
   );
 }

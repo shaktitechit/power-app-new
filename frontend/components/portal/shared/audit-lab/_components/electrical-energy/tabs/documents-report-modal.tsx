@@ -1,19 +1,20 @@
 "use client";
 
-import { useRef } from "react";
+import { useRef, useState, useEffect } from "react";
 import { Button } from "@/components/portal/ui/button";
 import { Badge } from "@/components/portal/ui/badge";
+import { Input } from "@/components/portal/ui/input";
+import { Label } from "@/components/portal/ui/label";
 import {
   FileText,
   Download,
   X,
-  FolderOpen,
-  Layers,
-  Calendar,
-  Image as ImageIcon,
   FileDown,
 } from "lucide-react";
-import { toSameOriginFileManagementUrl } from "@/components/portal/lib/fileManagementUrls";
+import {
+  fetchFileManagementAsDataUrl,
+  toFileManagementContentUrl,
+} from "@/components/portal/lib/fileManagementUrls";
 import type { DocumentPreviewItem } from "./document-preview-modal";
 
 export interface DocumentReportItem extends DocumentPreviewItem {
@@ -30,25 +31,24 @@ interface DocumentsReportModalProps {
   title?: string;
 }
 
-export function DocumentsReportModal({
-  open,
-  onClose,
-  documents,
-  title = "Documents Report",
-}: DocumentsReportModalProps) {
-  const printRef = useRef<HTMLDivElement>(null);
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
 
-  if (!open) return null;
+function isPdfDocument(doc: DocumentReportItem) {
+  return doc.fileType.toLowerCase().includes("pdf") || doc.fileName.toLowerCase().endsWith(".pdf");
+}
 
-  const isPdf = (doc: DocumentReportItem) =>
-    doc.fileType.toLowerCase().includes("pdf") || doc.fileName.toLowerCase().endsWith(".pdf");
-
-  // Chunk documents into pages: 4 images per page, 1 PDF per page
+function buildDocumentPages(documents: DocumentReportItem[]) {
   const pages: { type: "images" | "pdf"; items: DocumentReportItem[] }[] = [];
   let currentImages: DocumentReportItem[] = [];
 
   documents.forEach((doc) => {
-    if (isPdf(doc)) {
+    if (isPdfDocument(doc)) {
       if (currentImages.length > 0) {
         pages.push({ type: "images", items: currentImages });
         currentImages = [];
@@ -67,26 +67,57 @@ export function DocumentsReportModal({
     pages.push({ type: "images", items: currentImages });
   }
 
+  return pages;
+}
+
+export function DocumentsReportModal({
+  open,
+  onClose,
+  documents,
+  title = "Documents Report",
+}: DocumentsReportModalProps) {
+  const printRef = useRef<HTMLDivElement>(null);
+  const [reportTitle, setReportTitle] = useState(title);
+  const [downloadingWord, setDownloadingWord] = useState(false);
+
+  useEffect(() => {
+    if (open) {
+      setReportTitle(title);
+    }
+  }, [open, title]);
+
+  if (!open) return null;
+
+  const pages = buildDocumentPages(documents);
+  const safeTitle = reportTitle.trim() || "Documents Report";
+
   const handlePrint = () => {
     window.print();
   };
 
-  const handleDownloadDoc = () => {
-    const getAbsoluteUrl = (url: string) => {
-      if (!url) return "";
-      const resolved = toSameOriginFileManagementUrl(url);
-      if (resolved.startsWith("http://") || resolved.startsWith("https://")) {
-        return resolved;
-      }
-      const origin = window.location.origin.replace(/\/$/, "");
-      const path = resolved.startsWith("/") ? resolved : `/${resolved}`;
-      return `${origin}${path}`;
-    };
+  const handleDownloadDoc = async () => {
+    setDownloadingWord(true);
+    try {
+      const imageDataUrls = new Map<string, string>();
+      await Promise.all(
+        documents
+          .filter((doc) => !isPdfDocument(doc))
+          .map(async (doc) => {
+            const dataUrl = await fetchFileManagementAsDataUrl(doc.fileUrl);
+            if (dataUrl) {
+              imageDataUrls.set(doc.fileUrl, dataUrl);
+            }
+          }),
+      );
+
+      const resolveImageSrc = (doc: DocumentReportItem) =>
+        imageDataUrls.get(doc.fileUrl) ||
+        `[Image unavailable: ${doc.fileName}]`;
 
     let htmlContent = `
 <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
 <head>
-  <title>${title}</title>
+  <title>${escapeHtml(safeTitle)}</title>
   <!--[if gte mso 9]>
   <xml>
     <w:WordDocument>
@@ -168,9 +199,9 @@ export function DocumentsReportModal({
 </head>
 <body>
   <div class="Section1">
-    <h1>${title}</h1>
+    <h1>${escapeHtml(safeTitle)}</h1>
     <p style="text-align: center; font-size: 10pt; color: #6b7280; margin-bottom: 30pt;">
-      Generated on ${new Date().toLocaleDateString(undefined, { dateStyle: "long" })}
+      Generated on ${escapeHtml(new Date().toLocaleDateString(undefined, { dateStyle: "long" }))} · ${documents.length} document(s)
     </p>
 `;
 
@@ -183,14 +214,14 @@ export function DocumentsReportModal({
         const doc = page.items[0];
         htmlContent += `
           <div style="margin-bottom: 20pt;">
-            <p style="font-size: 8pt; color: #9ca3af; text-transform: uppercase; margin: 0;">${doc.sectionName} — ${doc.entityName}</p>
-            <h2>${doc.fileName}</h2>
-            <p class="meta">${doc.accountLabel}</p>
+            <p style="font-size: 8pt; color: #9ca3af; text-transform: uppercase; margin: 0;">${escapeHtml(doc.sectionName)} — ${escapeHtml(doc.entityName)}</p>
+            <h2>${escapeHtml(doc.fileName)}</h2>
+            <p class="meta">${escapeHtml(doc.accountLabel)}</p>
             <div style="background-color: #f3f4f6; border: 1px solid #e5e7eb; padding: 20pt; text-align: center; margin: 15pt 0;">
               <p style="font-size: 12pt; color: #ef4444; font-weight: bold; margin: 0;">[PDF Document Reference]</p>
-              <p style="font-size: 9pt; color: #4b5563; margin-top: 5pt;">PDF files cannot be directly embedded. Please refer to: ${doc.fileName}</p>
+              <p style="font-size: 9pt; color: #4b5563; margin-top: 5pt;">PDF files cannot be directly embedded. Please refer to: ${escapeHtml(doc.fileName)}</p>
             </div>
-            <p class="caption"><strong>Caption:</strong> ${doc.caption || "No caption provided."}</p>
+            <p class="caption"><strong>Caption:</strong> ${escapeHtml(doc.caption || "No caption provided.")}</p>
             ${doc.uploadedAt ? `<p style="font-size: 8pt; color: #9ca3af;">File Date: ${new Date(doc.uploadedAt).toLocaleDateString()}</p>` : ""}
           </div>
         `;
@@ -206,16 +237,19 @@ export function DocumentsReportModal({
           for (let j = 0; j < 2; j++) {
             const doc = page.items[i + j];
             if (doc) {
-              const proxiedUrl = getAbsoluteUrl(doc.fileUrl);
+              const imageSrc = resolveImageSrc(doc);
+              const imageMarkup = imageSrc.startsWith("data:")
+                ? `<img src="${imageSrc}" alt="${escapeHtml(doc.fileName)}" style="max-height: 120pt;" />`
+                : `<p style="font-size: 8pt; color: #9ca3af; font-style: italic;">${escapeHtml(imageSrc)}</p>`;
               htmlContent += `
                 <td>
                   <div class="grid-item">
                     <div class="image-container">
-                      <img src="${proxiedUrl}" alt="${doc.fileName}" style="max-height: 120pt;" />
+                      ${imageMarkup}
                     </div>
-                    <h4>${doc.fileName}</h4>
-                    <p class="meta" style="font-size: 7.5pt;">${doc.sectionName} · ${doc.entityName}</p>
-                    <p class="caption" style="font-size: 7.5pt; margin-top: 3pt;">${doc.caption || "No caption provided."}</p>
+                    <h4>${escapeHtml(doc.fileName)}</h4>
+                    <p class="meta" style="font-size: 7.5pt;">${escapeHtml(doc.sectionName)} · ${escapeHtml(doc.entityName)}</p>
+                    <p class="caption" style="font-size: 7.5pt; margin-top: 3pt;">${escapeHtml(doc.caption || "No caption provided.")}</p>
                   </div>
                 </td>
               `;
@@ -245,63 +279,83 @@ export function DocumentsReportModal({
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `${title.replace(/\s+/g, "_")}.doc`;
+    a.download = `${safeTitle.replace(/\s+/g, "_")}.doc`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
+    } finally {
+      setDownloadingWord(false);
+    }
   };
 
   return (
     <div id="print-modal-root" className="fixed inset-0 z-50 flex flex-col bg-neutral-100 dark:bg-neutral-950 text-foreground print:bg-white">
       {/* ── Word-style Ribbon / Toolbar ── */}
-      <header className="print:hidden flex shrink-0 items-center justify-between border-b border-border bg-white dark:bg-zinc-900 shadow-sm px-4 py-3 sm:px-6">
-        <div className="flex min-w-0 items-center gap-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400">
-            <FileDown className="h-5 w-5" />
+      <header className="print:hidden flex shrink-0 flex-col gap-3 border-b border-border bg-white dark:bg-zinc-900 shadow-sm px-4 py-3 sm:px-6">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400">
+              <FileDown className="h-5 w-5" />
+            </div>
+            <div className="min-w-0">
+              <h2 className="truncate text-sm font-extrabold tracking-tight text-neutral-800 dark:text-neutral-100">
+                Document Report Preview
+              </h2>
+              <p className="text-[11px] text-muted-foreground font-mono">
+                {documents.length} selected · {pages.length} page(s)
+              </p>
+            </div>
           </div>
-          <div className="min-w-0">
-            <h2 className="truncate text-sm font-extrabold tracking-tight text-neutral-800 dark:text-neutral-100">
-              {title}.docx
-            </h2>
-            <p className="text-[11px] text-muted-foreground font-mono">
-              Word Document Preview · {pages.length} pages
-            </p>
+          <div className="flex items-center gap-3">
+            <Badge variant="outline" className="text-[10px] bg-muted/40 font-mono">
+              A4 Print Layout
+            </Badge>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="gap-1.5 h-8 text-xs border-blue-200 hover:bg-blue-50 hover:text-blue-600 dark:border-zinc-700 dark:hover:bg-zinc-800"
+              onClick={() => void handleDownloadDoc()}
+              disabled={documents.length === 0 || downloadingWord}
+            >
+              <FileText className="h-3.5 w-3.5" />
+              {downloadingWord ? "Preparing..." : "Download Word Doc"}
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              className="gap-1.5 h-8 text-xs bg-blue-600 hover:bg-blue-700 dark:bg-blue-600 dark:hover:bg-blue-700 text-white font-medium"
+              onClick={handlePrint}
+              disabled={documents.length === 0}
+            >
+              <Download className="h-3.5 w-3.5" />
+              Print / Save PDF
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 hover:bg-neutral-200 dark:hover:bg-zinc-800"
+              onClick={onClose}
+              aria-label="Close"
+            >
+              <X className="h-4 w-4" />
+            </Button>
           </div>
         </div>
-        <div className="flex items-center gap-3">
-          <Badge variant="outline" className="text-[10px] bg-muted/40 font-mono">
-            A4 Print Layout
-          </Badge>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="gap-1.5 h-8 text-xs border-blue-200 hover:bg-blue-50 hover:text-blue-600 dark:border-zinc-700 dark:hover:bg-zinc-800"
-            onClick={handleDownloadDoc}
-          >
-            <FileText className="h-3.5 w-3.5" />
-            Download Word Doc
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            className="gap-1.5 h-8 text-xs bg-blue-600 hover:bg-blue-700 dark:bg-blue-600 dark:hover:bg-blue-700 text-white font-medium"
-            onClick={handlePrint}
-          >
-            <Download className="h-3.5 w-3.5" />
-            Print / Save PDF
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8 hover:bg-neutral-200 dark:hover:bg-zinc-800"
-            onClick={onClose}
-            aria-label="Close"
-          >
-            <X className="h-4 w-4" />
-          </Button>
+
+        <div className="flex flex-col gap-1.5 sm:max-w-xl">
+          <Label htmlFor="documents-report-title" className="text-[10px] uppercase font-bold tracking-widest text-muted-foreground">
+            Report Header / Title
+          </Label>
+          <Input
+            id="documents-report-title"
+            value={reportTitle}
+            onChange={(e) => setReportTitle(e.target.value)}
+            placeholder="Enter a custom header for the downloaded document..."
+            className="h-9 text-sm"
+          />
         </div>
       </header>
 
@@ -312,13 +366,20 @@ export function DocumentsReportModal({
       >
         {documents.length === 0 ? (
           <div className="text-center py-16 text-muted-foreground text-sm bg-white dark:bg-zinc-950 p-8 rounded-lg shadow-sm border border-border">
-            No documents to display.
+            No documents selected for export.
           </div>
         ) : (
-          pages.map((page, idx) => {
+          <>
+            <div className="hidden print:block w-[794px] max-w-full text-center mb-8">
+              <h1 className="text-2xl font-bold text-blue-900">{safeTitle}</h1>
+              <p className="text-xs text-neutral-500 mt-2">
+                Generated on {new Date().toLocaleDateString(undefined, { dateStyle: "long" })} · {documents.length} document(s)
+              </p>
+            </div>
+          {pages.map((page, idx) => {
             if (page.type === "pdf") {
               const doc = page.items[0];
-              const proxiedUrl = toSameOriginFileManagementUrl(doc.fileUrl);
+              const proxiedUrl = toFileManagementContentUrl(doc.fileUrl);
 
               return (
                 <div
@@ -328,7 +389,7 @@ export function DocumentsReportModal({
                 >
                   {/* Word Page Header */}
                   <div className="flex justify-between items-center text-[10px] text-neutral-400 dark:text-neutral-500 uppercase tracking-widest border-b border-neutral-100 dark:border-neutral-900 pb-3 mb-6">
-                    <div>{doc.sectionName} — {doc.entityName}</div>
+                    <div>{safeTitle}</div>
                     <div>Account: {doc.accountNumber}</div>
                   </div>
 
@@ -376,7 +437,7 @@ export function DocumentsReportModal({
 
                   {/* Word Page Footer */}
                   <div className="flex justify-between items-center text-[10px] text-neutral-400 dark:text-neutral-500 border-t border-neutral-100 dark:border-neutral-900 pt-3 mt-6">
-                    <div>Confidential - Energy Audit Lab Report</div>
+                    <div>{safeTitle}</div>
                     <div>Page {idx + 1} of {pages.length}</div>
                   </div>
                 </div>
@@ -391,14 +452,14 @@ export function DocumentsReportModal({
                 >
                   {/* Word Page Header */}
                   <div className="flex justify-between items-center text-[10px] text-neutral-400 dark:text-neutral-500 uppercase tracking-widest border-b border-neutral-100 dark:border-neutral-900 pb-3 mb-6">
-                    <div>Images Gallery Sheet</div>
+                    <div>{safeTitle}</div>
                     <div>Page {idx + 1} of {pages.length}</div>
                   </div>
 
                   {/* Page Content: 2x2 Grid */}
                   <div className="grid grid-cols-2 gap-6 flex-1 min-h-0 py-4">
                     {page.items.map((doc, docIdx) => {
-                      const proxiedUrl = toSameOriginFileManagementUrl(doc.fileUrl);
+                      const proxiedUrl = toFileManagementContentUrl(doc.fileUrl);
                       return (
                         <div
                           key={docIdx}
@@ -434,13 +495,14 @@ export function DocumentsReportModal({
 
                   {/* Word Page Footer */}
                   <div className="flex justify-between items-center text-[10px] text-neutral-400 dark:text-neutral-500 border-t border-neutral-100 dark:border-neutral-900 pt-3 mt-6">
-                    <div>Confidential - Energy Audit Lab Report</div>
+                    <div>{safeTitle}</div>
                     <div>Page {idx + 1} of {pages.length}</div>
                   </div>
                 </div>
               );
             }
-          })
+          })}
+          </>
         )}
       </main>
 

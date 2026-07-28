@@ -1,10 +1,12 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import { Card, CardContent } from "@/components/portal/ui/card";
 import { Input } from "@/components/portal/ui/input";
 import { Badge } from "@/components/portal/ui/badge";
 import { Button } from "@/components/portal/ui/button";
+import { Checkbox } from "@/components/portal/ui/checkbox";
+import { Label } from "@/components/portal/ui/label";
 import {
   FileText,
   Download,
@@ -15,31 +17,37 @@ import {
   FileDown,
 } from "lucide-react";
 import type { FacilityAuditEnergyUtilityNest } from "@/store/slices/auditApiSlice";
-import { toSameOriginFileManagementUrl } from "@/components/portal/lib/fileManagementUrls";
+import { toFileManagementContentUrl } from "@/components/portal/lib/fileManagementUrls";
 import { DocumentPreviewModal } from "./document-preview-modal";
-import { DocumentsReportModal } from "./documents-report-modal";
+import { DocumentsReportModal, type DocumentReportItem } from "./documents-report-modal";
+import type {
+  AuditDocumentEntityType,
+  AuditDocumentItem,
+  StoredAuditDocument,
+} from "../lib/audit-document-types";
+import { useAuditDocumentActions } from "../lib/use-audit-document-actions";
 
-interface DocumentItem {
-  accountLabel: string;
-  accountNumber: string;
-  sectionName: string;
-  entityName: string;
-  fileName: string;
-  fileUrl: string;
-  fileType: "image" | "pdf" | string;
-  caption?: string;
-  uploadedAt?: string | Date;
+function getDocumentKey(item: AuditDocumentItem): string {
+  return `${item.entityType}-${item.entityId}-${item.docIndex}-${item.fileUrl}`;
 }
 
 interface DocumentsTabProps {
+  facilityId: string;
   utilityAccounts: FacilityAuditEnergyUtilityNest[];
   activeAccountIndex: number;
 }
 
-export function DocumentsTab({ utilityAccounts, activeAccountIndex }: DocumentsTabProps) {
+export function DocumentsTab({
+  facilityId,
+  utilityAccounts,
+  activeAccountIndex,
+}: DocumentsTabProps) {
   const [searchQuery, setSearchQuery] = useState("");
-  const [previewDoc, setPreviewDoc] = useState<DocumentItem | null>(null);
+  const [previewDoc, setPreviewDoc] = useState<AuditDocumentItem | null>(null);
   const [reportOpen, setReportOpen] = useState(false);
+  const [reportHeader, setReportHeader] = useState("Audit Documents Report");
+  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
+  const { updateCaption, deleteDocument, isSaving } = useAuditDocumentActions(facilityId);
 
   const targetAccounts = useMemo(() => {
     return activeAccountIndex === -1
@@ -48,15 +56,19 @@ export function DocumentsTab({ utilityAccounts, activeAccountIndex }: DocumentsT
   }, [utilityAccounts, activeAccountIndex]);
 
   const allDocuments = useMemo(() => {
-    const list: DocumentItem[] = [];
+    const list: AuditDocumentItem[] = [];
 
     const push = (
       nest: FacilityAuditEnergyUtilityNest,
       sectionName: string,
       entityName: string,
-      doc: any,
+      entityType: AuditDocumentEntityType,
+      entityId: string,
+      sourceDocuments: StoredAuditDocument[],
+      docIndex: number,
+      doc: StoredAuditDocument,
     ) => {
-      if (!doc || !doc.fileUrl) return;
+      if (!doc?.fileUrl || !entityId) return;
       const fileUrl = doc.fileUrl;
       const fileType = doc.fileType || (fileUrl.endsWith(".pdf") ? "pdf" : "image");
       const isPdf = fileType.toLowerCase().includes("pdf") || fileUrl.toLowerCase().endsWith(".pdf");
@@ -74,10 +86,15 @@ export function DocumentsTab({ utilityAccounts, activeAccountIndex }: DocumentsT
         sectionName,
         entityName,
         fileName: doc.fileName || fileUrl.split("/").pop() || "Document",
-        fileUrl: fileUrl,
+        fileUrl,
         fileType: "image",
         caption: doc.caption || "",
         uploadedAt: doc.uploadedAt,
+        entityType,
+        entityId,
+        docIndex,
+        docId: doc._id,
+        sourceDocuments,
       });
     };
 
@@ -85,79 +102,85 @@ export function DocumentsTab({ utilityAccounts, activeAccountIndex }: DocumentsT
       nest: FacilityAuditEnergyUtilityNest,
       sectionName: string,
       entityName: string,
-      docs: any[] | undefined,
-    ) => docs?.forEach((d) => push(nest, sectionName, entityName, d));
+      entityType: AuditDocumentEntityType,
+      entity: { _id?: string; documents?: StoredAuditDocument[] } | null | undefined,
+    ) => {
+      if (!entity?._id || !entity.documents?.length) return;
+      entity.documents.forEach((doc, docIndex) =>
+        push(nest, sectionName, entityName, entityType, entity._id!, entity.documents!, docIndex, doc),
+      );
+    };
 
     targetAccounts.forEach((nest) => {
       const acc = nest.utility_account as any;
       const accLabel = acc?.account_number ? `Account: ${acc.account_number}` : "Account";
 
-      eachDoc(nest, "Utility Account", accLabel, acc?.documents);
+      eachDoc(nest, "Utility Account", accLabel, "utility_account", acc);
 
       nest.tariffs?.forEach((t: any) =>
-        eachDoc(nest, "Tariff", t.tariff_name || t.tariff_type || "Tariff", t.documents),
+        eachDoc(nest, "Tariff", t.tariff_name || t.tariff_type || "Tariff", "tariff", t),
       );
       nest.billing_records?.forEach((b: any) =>
-        eachDoc(nest, "Billing", b.billing_period || b.billing_month || "Billing Record", b.documents),
+        eachDoc(nest, "Billing", b.billing_period || b.billing_month || "Billing Record", "billing", b),
       );
 
       nest.solar_plants?.forEach((sp: any) => {
         const name = sp.plant_name || "Solar Plant";
-        eachDoc(nest, "Solar Plants", name, sp.documents);
+        eachDoc(nest, "Solar Plants", name, "solar_plant", sp);
         sp.solar_generation_records?.forEach((sgr: any) =>
-          eachDoc(nest, "Solar – Generation Records", `${name} / Gen Record`, sgr.documents),
+          eachDoc(nest, "Solar – Generation Records", `${name} / Gen Record`, "solar_generation_record", sgr),
         );
       });
 
       nest.dg_sets?.forEach((dg: any) => {
         const name = dg.dg_number ? `DG Set: ${dg.dg_number}` : "DG Set";
-        eachDoc(nest, "DG Sets", name, dg.documents);
+        eachDoc(nest, "DG Sets", name, "dg_set", dg);
         dg.dg_audit_records?.forEach((rec: any) =>
-          eachDoc(nest, "DG – Audit Records", `${name} / Audit`, rec.documents),
+          eachDoc(nest, "DG – Audit Records", `${name} / Audit`, "dg_audit_record", rec),
         );
       });
 
       nest.transformers?.forEach((t: any) => {
         const name = t.transformer_tag || "Transformer";
-        eachDoc(nest, "Transformers", name, t.documents);
+        eachDoc(nest, "Transformers", name, "transformer", t);
         t.transformer_audit_records?.forEach((rec: any) =>
-          eachDoc(nest, "Transformer – Audit Records", `${name} / Audit`, rec.documents),
+          eachDoc(nest, "Transformer – Audit Records", `${name} / Audit`, "transformer_audit_record", rec),
         );
       });
 
       nest.pumps?.forEach((p: any) => {
         const name = p.pump_tag_number || "Pump";
-        eachDoc(nest, "Pumps", name, p.documents);
+        eachDoc(nest, "Pumps", name, "pump", p);
         p.pump_audit_records?.forEach((rec: any) =>
-          eachDoc(nest, "Pump – Audit Records", `${name} / Audit`, rec.documents),
+          eachDoc(nest, "Pump – Audit Records", `${name} / Audit`, "pump_audit_record", rec),
         );
       });
 
       nest.hvac_audits?.forEach((h: any) =>
-        eachDoc(nest, "HVAC", h.hvac_asset_id ? `HVAC: ${h.hvac_asset_id}` : "HVAC Audit", h.documents),
+        eachDoc(nest, "HVAC", h.hvac_asset_id ? `HVAC: ${h.hvac_asset_id}` : "HVAC Audit", "hvac", h),
       );
       nest.ac_audit_records?.forEach((ac: any) =>
-        eachDoc(nest, "AC", ac.ac_asset_id ? `AC: ${ac.ac_asset_id}` : "AC Audit", ac.documents),
+        eachDoc(nest, "AC", ac.ac_asset_id ? `AC: ${ac.ac_asset_id}` : "AC Audit", "ac", ac),
       );
       nest.lighting_audits?.forEach((l: any) =>
-        eachDoc(nest, "Lighting", l.lighting_db_name || l.location || "Lighting Audit", l.documents),
+        eachDoc(nest, "Lighting", l.lighting_db_name || l.location || "Lighting Audit", "lighting", l),
       );
       nest.fan_audit_records?.forEach((f: any) =>
-        eachDoc(nest, "Fan", f.fan_location || f.fan_asset_id || "Fan Audit", f.documents),
+        eachDoc(nest, "Fan", f.fan_location || f.fan_asset_id || "Fan Audit", "fan", f),
       );
       nest.lux_measurements?.forEach((lux: any) =>
-        eachDoc(nest, "Lux", lux.room_name || lux.location || "Lux Measurement", lux.documents),
+        eachDoc(nest, "Lux", lux.room_name || lux.location || "Lux Measurement", "lux", lux),
       );
       nest.misc_load_audits?.forEach((m: any) =>
-        eachDoc(nest, "Misc", m.equipment_name || "Misc Load", m.documents),
+        eachDoc(nest, "Misc", m.equipment_name || "Misc Load", "misc", m),
       );
 
       const nestAny = nest as any;
       nestAny.street_light_audits?.forEach((s: any) =>
-        eachDoc(nest, "Street Light", s.street_light_location || "Street Light", s.documents),
+        eachDoc(nest, "Street Light", s.street_light_location || "Street Light", "street_light", s),
       );
       nestAny.ups_audits?.forEach((u: any) =>
-        eachDoc(nest, "UPS", u.ups_tag_asset_id ? `UPS: ${u.ups_tag_asset_id}` : "UPS Audit", u.documents),
+        eachDoc(nest, "UPS", u.ups_tag_asset_id ? `UPS: ${u.ups_tag_asset_id}` : "UPS Audit", "ups", u),
       );
     });
 
@@ -177,8 +200,52 @@ export function DocumentsTab({ utilityAccounts, activeAccountIndex }: DocumentsT
     );
   }, [allDocuments, searchQuery]);
 
+  useEffect(() => {
+    setSelectedKeys((prev) => {
+      const validKeys = new Set(filteredDocuments.map(getDocumentKey));
+      const next = new Set<string>();
+      prev.forEach((key) => {
+        if (validKeys.has(key)) next.add(key);
+      });
+      if (next.size === 0 && filteredDocuments.length > 0) {
+        filteredDocuments.forEach((doc) => next.add(getDocumentKey(doc)));
+      }
+      return next;
+    });
+  }, [filteredDocuments]);
+
+  const selectedDocuments = useMemo(
+    () => filteredDocuments.filter((doc) => selectedKeys.has(getDocumentKey(doc))),
+    [filteredDocuments, selectedKeys],
+  );
+
+  const allSelected =
+    filteredDocuments.length > 0 && selectedKeys.size === filteredDocuments.length;
+  const hasSelection = selectedKeys.size > 0;
+
+  const toggleDocument = useCallback((key: string) => {
+    setSelectedKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+  }, []);
+
+  const toggleAllDocuments = useCallback(() => {
+    setSelectedKeys((prev) => {
+      if (filteredDocuments.length > 0 && prev.size === filteredDocuments.length) {
+        return new Set();
+      }
+      return new Set(filteredDocuments.map(getDocumentKey));
+    });
+  }, [filteredDocuments]);
+
   const groupedData = useMemo(() => {
-    const tree: Record<string, { label: string; sections: Record<string, DocumentItem[]> }> = {};
+    const tree: Record<string, { label: string; sections: Record<string, AuditDocumentItem[]> }> = {};
     filteredDocuments.forEach((doc) => {
       if (!tree[doc.accountNumber]) {
         tree[doc.accountNumber] = { label: doc.accountLabel, sections: {} };
@@ -191,37 +258,85 @@ export function DocumentsTab({ utilityAccounts, activeAccountIndex }: DocumentsT
     return tree;
   }, [filteredDocuments]);
 
-  const isPdf = (item: DocumentItem) =>
+  const isPdf = (item: AuditDocumentItem) =>
     item.fileType.toLowerCase().includes("pdf") || item.fileName.toLowerCase().endsWith(".pdf");
+
+  const handleUpdateCaption = useCallback(
+    async (item: AuditDocumentItem, caption: string) => {
+      const updatedCaption = await updateCaption(item, caption);
+      setPreviewDoc((prev) =>
+        prev && prev.fileUrl === item.fileUrl ? { ...prev, caption: updatedCaption ?? caption.trim() } : prev,
+      );
+      return updatedCaption ?? caption.trim();
+    },
+    [updateCaption],
+  );
+
+  const handleDeleteDocument = useCallback(
+    async (item: AuditDocumentItem) => {
+      await deleteDocument(item);
+      setSelectedKeys((prev) => {
+        const next = new Set(prev);
+        next.delete(getDocumentKey(item));
+        return next;
+      });
+      setPreviewDoc(null);
+    },
+    [deleteDocument],
+  );
 
   return (
     <div className="space-y-6">
       {/* Search bar */}
       <Card className="border border-border/80 bg-card/65 backdrop-blur shadow-sm">
-        <CardContent className="p-4 flex items-center justify-between gap-4">
-          <div className="relative flex-1 max-w-md">
-            <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search by filename, caption, section or account..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-9 bg-background/50 border-border/60 text-sm focus-visible:ring-primary"
-            />
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="text-xs text-muted-foreground font-semibold">
-              {filteredDocuments.length} document(s)
+        <CardContent className="p-4 space-y-4">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+            <div className="relative flex-1 max-w-md">
+              <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search by filename, caption, section or account..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-9 bg-background/50 border-border/60 text-sm focus-visible:ring-primary"
+              />
             </div>
-            <Button
-              variant="default"
-              size="sm"
-              className="h-8 text-xs gap-1.5 bg-primary hover:bg-primary/90 shrink-0"
-              disabled={filteredDocuments.length === 0}
-              onClick={() => setReportOpen(true)}
-            >
-              <FileDown className="h-3.5 w-3.5" />
-              Download Docs
-            </Button>
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="text-xs text-muted-foreground font-semibold">
+                {selectedKeys.size} of {filteredDocuments.length} selected
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 text-xs"
+                disabled={filteredDocuments.length === 0}
+                onClick={toggleAllDocuments}
+              >
+                {allSelected ? "Deselect All" : "Select All"}
+              </Button>
+              <Button
+                variant="default"
+                size="sm"
+                className="h-8 text-xs gap-1.5 bg-primary hover:bg-primary/90 shrink-0"
+                disabled={!hasSelection}
+                onClick={() => setReportOpen(true)}
+              >
+                <FileDown className="h-3.5 w-3.5" />
+                Download Selected
+              </Button>
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-1.5 max-w-xl">
+            <Label htmlFor="documents-default-header" className="text-[10px] uppercase font-bold tracking-widest text-muted-foreground">
+              Default Report Header
+            </Label>
+            <Input
+              id="documents-default-header"
+              value={reportHeader}
+              onChange={(e) => setReportHeader(e.target.value)}
+              placeholder="Custom header for downloaded Word / print report..."
+              className="h-9 text-sm bg-background/50 border-border/60"
+            />
           </div>
         </CardContent>
       </Card>
@@ -271,16 +386,31 @@ export function DocumentsTab({ utilityAccounts, activeAccountIndex }: DocumentsT
 
                 {/* Gallery grid */}
                 <div className="grid gap-4 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
-                  {items.map((item, idx) => {
+                  {items.map((item) => {
                     const isImg = !isPdf(item);
-                    const proxiedUrl = toSameOriginFileManagementUrl(item.fileUrl);
+                    const proxiedUrl = toFileManagementContentUrl(item.fileUrl);
+                    const itemKey = getDocumentKey(item);
+                    const isSelected = selectedKeys.has(itemKey);
                     return (
-                      <button
-                        key={idx}
-                        type="button"
-                        onClick={() => setPreviewDoc(item)}
-                        className="group flex flex-col items-stretch text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded-lg"
+                      <div
+                        key={itemKey}
+                        className={`group relative flex flex-col items-stretch rounded-lg transition-all duration-200 ${
+                          isSelected ? "ring-2 ring-primary/60 ring-offset-2 ring-offset-background" : ""
+                        }`}
                       >
+                        <div className="absolute left-2 top-2 z-10">
+                          <Checkbox
+                            checked={isSelected}
+                            onCheckedChange={() => toggleDocument(itemKey)}
+                            aria-label={`Select ${item.fileName}`}
+                            className="bg-background/90 border-border shadow-sm"
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setPreviewDoc(item)}
+                          className="flex flex-col items-stretch text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded-lg"
+                        >
                         {/* Thumbnail box */}
                         <div className="relative aspect-[4/3] w-full overflow-hidden rounded-lg border border-border/50 bg-muted/30 group-hover:border-primary/50 group-hover:shadow-md transition-all duration-200">
                           {isImg ? (
@@ -326,10 +456,11 @@ export function DocumentsTab({ utilityAccounts, activeAccountIndex }: DocumentsT
                             }}
                           >
                             <Download className="h-3 w-3" />
-                            Download
+                            View
                           </Button>
                         </div>
-                      </button>
+                        </button>
+                      </div>
                     );
                   })}
                 </div>
@@ -344,14 +475,17 @@ export function DocumentsTab({ utilityAccounts, activeAccountIndex }: DocumentsT
         open={!!previewDoc}
         onClose={() => setPreviewDoc(null)}
         document={previewDoc}
+        onUpdateCaption={handleUpdateCaption}
+        onDelete={handleDeleteDocument}
+        isSaving={isSaving}
       />
 
       {/* Full documents report / download modal */}
       <DocumentsReportModal
         open={reportOpen}
         onClose={() => setReportOpen(false)}
-        documents={filteredDocuments as any}
-        title="Audit Documents Report"
+        documents={selectedDocuments as DocumentReportItem[]}
+        title={reportHeader.trim() || "Audit Documents Report"}
       />
     </div>
   );

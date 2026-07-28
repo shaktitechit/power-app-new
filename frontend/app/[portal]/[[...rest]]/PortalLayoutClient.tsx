@@ -7,7 +7,6 @@ import { cn } from "@/components/portal/lib/utils";
 import { useAppSelector } from "@/store/hooks";
 import PresenceBootstrap from "@/components/portal/shared/components/presenceBootstrap";
 import { getNavItemsForRole } from "@/components/portal/layout/nav-utils";
-import { ChatbotWidget } from "@/components/portal/shared/components/chatbot-widget";
 
 export const PortalLayoutContext = createContext<{
   setTitle: (title: string) => void;
@@ -64,7 +63,6 @@ export default function PortalLayoutClient({ children }: PortalLayoutClientProps
             {children}
           </main>
         </div>
-        <ChatbotWidget />
       </div>
     </PortalLayoutContext.Provider>
   );

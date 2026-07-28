@@ -86,6 +86,7 @@ export default function ElectricalEnergyLab({
       <div className="w-full">
         {activeAccount && (
           <AccountSandboxExplorer
+            facilityId={facility._id}
             utilityAccounts={utilityAccounts}
             activeAccountIndex={activeAccountIndex}
             onSelectAccountIndex={setActiveAccountIndex}

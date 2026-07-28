@@ -59,12 +59,14 @@ const DATASHEET_TABS_CONFIG = [
 ] as const;
 
 interface AccountSandboxExplorerProps {
+  facilityId: string;
   utilityAccounts: FacilityAuditEnergyUtilityNest[];
   activeAccountIndex: number;
   onSelectAccountIndex: (index: number) => void;
 }
 
 export function AccountSandboxExplorer({
+  facilityId,
   utilityAccounts,
   activeAccountIndex,
   onSelectAccountIndex,
@@ -346,7 +348,11 @@ export function AccountSandboxExplorer({
 
           {/* DOCUMENTS TAB */}
           <TabsContent value="documents" className="space-y-4 outline-none">
-            <DocumentsTab utilityAccounts={utilityAccounts} activeAccountIndex={activeAccountIndex} />
+            <DocumentsTab
+              facilityId={facilityId}
+              utilityAccounts={utilityAccounts}
+              activeAccountIndex={activeAccountIndex}
+            />
           </TabsContent>
         </Tabs>
       </CardContent>

@@ -6,22 +6,41 @@ import { ACTIONS } from "../../constants/actions.js";
 import {
   redirectToViewUrl,
   redirectToDownloadUrl,
+  streamFileContent,
 } from "./file-management.controllers.js";
 
 const router = express.Router();
 
+// router.get(
+//   "/files/:fileId/view",
+//   protect,
+//   authorize(RESOURCES.FILE, ACTIONS.VIEW_DOCUMENT),
+//   redirectToViewUrl,
+// );
+
+// router.get(
+//   "/files/:fileId/download",
+//   protect,
+//   authorize(RESOURCES.FILE, ACTIONS.DOWNLOAD),
+//   redirectToDownloadUrl,
+// );
+
 router.get(
   "/files/:fileId/view",
   protect,
-  authorize(RESOURCES.FILE, ACTIONS.VIEW_DOCUMENT),
   redirectToViewUrl,
 );
 
 router.get(
   "/files/:fileId/download",
   protect,
-  authorize(RESOURCES.FILE, ACTIONS.DOWNLOAD),
   redirectToDownloadUrl,
+);
+
+router.get(
+  "/files/:fileId/content",
+  protect,
+  streamFileContent,
 );
 
 export default router;

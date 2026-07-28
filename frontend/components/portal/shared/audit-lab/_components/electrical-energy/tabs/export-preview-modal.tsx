@@ -1,11 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { Button } from "@/components/portal/ui/button";
 import { Badge } from "@/components/portal/ui/badge";
-import { Download, FileText, FileSpreadsheet, X } from "lucide-react";
+import { Checkbox } from "@/components/portal/ui/checkbox";
+import { Download, FileText, FileSpreadsheet, X, Printer } from "lucide-react";
 import type { SheetColumn, SheetRow } from "./data-table";
 import { calculateTariffKpi } from "./kpis/tarrif-kpi";
+import { calculateHvacKpi } from "./kpis/hvac-kpi";
 import { calculateBillingKpi } from "./kpis/billing-kpi";
 import { calculateAcKpi } from "./kpis/ac-kpi";
 import { calculateFanKpi } from "./kpis/fan-kpi";
@@ -41,20 +43,54 @@ export function ExportPreviewModal({
   rows,
 }: ExportPreviewModalProps) {
   const [downloading, setDownloading] = useState(false);
+  const [selectedIndices, setSelectedIndices] = useState<Set<number>>(new Set());
 
-  if (open) {
-    console.log("EXPORT MODAL PROPS:", { title, columns, rows });
-  }
+  useEffect(() => {
+    if (open) {
+      setSelectedIndices(new Set(rows.map((_, index) => index)));
+    }
+  }, [open, rows]);
+
+  const exportRows = useMemo(
+    () => rows.filter((_, index) => selectedIndices.has(index)),
+    [rows, selectedIndices],
+  );
+
+  const allSelected = rows.length > 0 && selectedIndices.size === rows.length;
+  const someSelected = selectedIndices.size > 0 && !allSelected;
+  const hasSelection = selectedIndices.size > 0;
+
+  const toggleRow = useCallback((index: number) => {
+    setSelectedIndices((prev) => {
+      const next = new Set(prev);
+      if (next.has(index)) {
+        next.delete(index);
+      } else {
+        next.add(index);
+      }
+      return next;
+    });
+  }, []);
+
+  const toggleAll = useCallback(() => {
+    setSelectedIndices((prev) => {
+      if (rows.length > 0 && prev.size === rows.length) {
+        return new Set();
+      }
+      return new Set(rows.map((_, index) => index));
+    });
+  }, [rows]);
 
   if (!open) return null;
 
   const handleDownload = async () => {
+    if (!hasSelection) return;
     setDownloading(true);
     try {
       if (type === "xls") {
-        await downloadXLS(title, columns, rows);
+        await downloadXLS(title, columns, exportRows);
       } else {
-        await downloadPDF(title, columns, rows);
+        await downloadPDF(title, columns, exportRows);
       }
     } finally {
       setDownloading(false);
@@ -62,10 +98,20 @@ export function ExportPreviewModal({
     }
   };
 
+  const handleDownloadWord = () => {
+    if (!hasSelection) return;
+    downloadWord(title, columns, exportRows);
+  };
+
+  const handlePrint = () => {
+    if (!hasSelection) return;
+    window.print();
+  };
+
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-background text-foreground">
+    <div id="export-preview-modal-root" className="fixed inset-0 z-50 flex flex-col bg-background text-foreground print:bg-white">
       {/* Header */}
-      <header className="flex shrink-0 items-center justify-between border-b border-border bg-muted/30 px-4 py-3 sm:px-6">
+      <header className="print:hidden flex shrink-0 items-center justify-between border-b border-border bg-muted/30 px-4 py-3 sm:px-6">
         <div className="flex min-w-0 items-center gap-3">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
             {type === "pdf" ? (
@@ -83,7 +129,7 @@ export function ExportPreviewModal({
         </div>
         <div className="flex items-center gap-3">
           <Badge variant="outline" className="text-[10px]">
-            {rows.length} rows · {columns.length} columns
+            {selectedIndices.size} of {rows.length} selected · {columns.length} columns
           </Badge>
           <Button
             type="button"
@@ -98,11 +144,24 @@ export function ExportPreviewModal({
       </header>
 
       {/* Preview Table */}
-      <main className="flex min-h-0 flex-1 flex-col overflow-y-auto p-4 sm:p-6">
-        <div className="overflow-x-auto rounded-lg border border-border">
+      <main className="flex min-h-0 flex-1 flex-col overflow-y-auto p-4 sm:p-6 print:p-0 print:overflow-visible">
+        <div className="hidden print:block print:px-6 print:pt-6 print:pb-3">
+          <h1 className="text-lg font-bold text-foreground">{title}</h1>
+          <p className="text-xs text-muted-foreground mt-1">
+            {selectedIndices.size} selected record(s) · Exported {new Date().toLocaleString()}
+          </p>
+        </div>
+        <div className="overflow-x-auto rounded-lg border border-border print:border-none print:overflow-visible">
           <table className="min-w-full text-xs text-left border-collapse">
-            <thead>
+            <thead className="print:table-header-group">
               <tr className={type === "pdf" ? "bg-red-50 dark:bg-red-950/20" : "bg-emerald-50 dark:bg-emerald-950/20"}>
+                <th className="print:hidden border border-border px-2 py-2 w-10 text-center">
+                  <Checkbox
+                    checked={allSelected ? true : someSelected ? "indeterminate" : false}
+                    onCheckedChange={toggleAll}
+                    aria-label="Select all rows"
+                  />
+                </th>
                 <th className="border border-border px-3 py-2 font-bold text-muted-foreground w-10 text-center">#</th>
                 {columns.map((col) => (
                   <th
@@ -118,15 +177,30 @@ export function ExportPreviewModal({
               {rows.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={columns.length + 1}
+                    colSpan={columns.length + 2}
                     className="border border-border px-3 py-8 text-center text-muted-foreground"
                   >
                     No records to export.
                   </td>
                 </tr>
               ) : (
-                rows.map((row, rIdx) => (
-                  <tr key={rIdx} className="hover:bg-muted/20 transition-colors">
+                rows.map((row, rIdx) => {
+                  const isSelected = selectedIndices.has(rIdx);
+                  return (
+                  <tr
+                    key={rIdx}
+                    data-export-selected={isSelected ? "true" : "false"}
+                    className={`export-preview-row hover:bg-muted/20 transition-colors ${
+                      isSelected ? "bg-primary/5" : "opacity-50 print:hidden"
+                    }`}
+                  >
+                    <td className="print:hidden border border-border px-2 py-2 text-center">
+                      <Checkbox
+                        checked={isSelected}
+                        onCheckedChange={() => toggleRow(rIdx)}
+                        aria-label={`Select row ${rIdx + 1}`}
+                      />
+                    </td>
                     <td className="border border-border px-3 py-2 text-center font-mono text-muted-foreground">
                       {rIdx + 1}
                     </td>
@@ -139,13 +213,14 @@ export function ExportPreviewModal({
                       </td>
                     ))}
                   </tr>
-                ))
+                );
+                })
               )}
             </tbody>
 
             {/* Averages/Summary Row for Tariff sheet */}
-            {(columns.some((c) => c.key === "basic_energy_charges_rs_per_unit") || title.toLowerCase().includes("tariff") || title.toLowerCase().includes("tarrif")) && rows.length > 0 && (() => {
-              const kpi = calculateTariffKpi(columns, rows);
+            {(columns.some((c) => c.key === "basic_energy_charges_rs_per_unit") || title.toLowerCase().includes("tariff") || title.toLowerCase().includes("tarrif")) && exportRows.length > 0 && (() => {
+              const kpi = calculateTariffKpi(columns, exportRows);
 
               return (
                 <tfoot className="bg-muted/30 border-t-2 border-double border-border font-bold text-foreground">
@@ -196,8 +271,8 @@ export function ExportPreviewModal({
             })()}
 
             {/* Averages/Summary Row for Billing sheet */}
-            {(columns.some((c) => c.key === "monthly_electricity_bill_rs") || title.toLowerCase().includes("billing")) && rows.length > 0 && (() => {
-              const kpi = calculateBillingKpi(columns, rows);
+            {(columns.some((c) => c.key === "monthly_electricity_bill_rs") || title.toLowerCase().includes("billing")) && exportRows.length > 0 && (() => {
+              const kpi = calculateBillingKpi(columns, exportRows);
 
               return (
                 <tfoot className="bg-muted/30 border-t-2 border-double border-border font-bold text-foreground">
@@ -278,8 +353,8 @@ export function ExportPreviewModal({
             })()}
 
             {/* Averages/Summary Row for HVAC sheet */}
-            {(columns.some((c) => c.key.includes("average_cooling_produced_TR")) || title.toLowerCase().includes("hvac")) && rows.length > 0 && (() => {
-              const kpi = calculateHvacKpi(columns, rows);
+            {(columns.some((c) => c.key.includes("average_cooling_produced_TR")) || title.toLowerCase().includes("hvac")) && exportRows.length > 0 && (() => {
+              const kpi = calculateHvacKpi(columns, exportRows);
 
               return (
                 <tfoot className="bg-muted/30 border-t-2 border-double border-border font-bold text-foreground">
@@ -338,8 +413,8 @@ export function ExportPreviewModal({
             })()}
 
             {/* Averages/Summary Row for AC sheet */}
-            {(columns.some((c) => c.key === "specific_power_kW_per_TR") || title.toLowerCase().includes("ac")) && rows.length > 0 && (() => {
-              const kpi = calculateAcKpi(columns, rows);
+            {(columns.some((c) => c.key === "specific_power_kW_per_TR") || title.toLowerCase().includes("ac")) && exportRows.length > 0 && (() => {
+              const kpi = calculateAcKpi(columns, exportRows);
 
               return (
                 <tfoot className="bg-muted/30 border-t-2 border-double border-border font-bold text-foreground">
@@ -392,8 +467,8 @@ export function ExportPreviewModal({
             })()}
 
             {/* Averages/Summary Row for Fan sheet */}
-            {(columns.some((c) => c.key === "loading_factor_percent") || title.toLowerCase().includes("fan")) && rows.length > 0 && (() => {
-              const kpi = calculateFanKpi(columns, rows);
+            {(columns.some((c) => c.key === "loading_factor_percent") || title.toLowerCase().includes("fan")) && exportRows.length > 0 && (() => {
+              const kpi = calculateFanKpi(columns, exportRows);
 
               return (
                 <tfoot className="bg-muted/30 border-t-2 border-double border-border font-bold text-foreground">
@@ -452,8 +527,8 @@ export function ExportPreviewModal({
             })()}
 
             {/* Averages/Summary Row for Lighting sheet */}
-            {(columns.some((c) => c.key === "annual_energy_kWh") || title.toLowerCase().includes("lighting")) && rows.length > 0 && (() => {
-              const kpi = calculateLightingKpi(columns, rows);
+            {(columns.some((c) => c.key === "annual_energy_kWh") || title.toLowerCase().includes("lighting")) && exportRows.length > 0 && (() => {
+              const kpi = calculateLightingKpi(columns, exportRows);
 
               return (
                 <tfoot className="bg-muted/30 border-t-2 border-double border-border font-bold text-foreground">
@@ -508,8 +583,8 @@ export function ExportPreviewModal({
             })()}
 
             {/* Averages/Summary Row for Lux sheet */}
-            {(columns.some((c) => c.key === "average_lux") || title.toLowerCase().includes("lux")) && rows.length > 0 && (() => {
-              const kpi = calculateLuxKpi(columns, rows);
+            {(columns.some((c) => c.key === "average_lux") || title.toLowerCase().includes("lux")) && exportRows.length > 0 && (() => {
+              const kpi = calculateLuxKpi(columns, exportRows);
 
               return (
                 <tfoot className="bg-muted/30 border-t-2 border-double border-border font-bold text-foreground">
@@ -564,8 +639,8 @@ export function ExportPreviewModal({
             })()}
 
             {/* Averages/Summary Row for Misc sheet */}
-            {(columns.some((c) => c.key === "load_factor_percent") || title.toLowerCase().includes("misc")) && rows.length > 0 && (() => {
-              const kpi = calculateMiscKpi(columns, rows);
+            {(columns.some((c) => c.key === "load_factor_percent") || title.toLowerCase().includes("misc")) && exportRows.length > 0 && (() => {
+              const kpi = calculateMiscKpi(columns, exportRows);
 
               return (
                 <tfoot className="bg-muted/30 border-t-2 border-double border-border font-bold text-foreground">
@@ -622,8 +697,8 @@ export function ExportPreviewModal({
             })()}
 
             {/* Averages/Summary Row for Street Light sheet */}
-            {(columns.some((c) => c.key === "annual_energy_kWh") || title.toLowerCase().includes("street light") || title.toLowerCase().includes("street-light")) && rows.length > 0 && (() => {
-              const kpi = calculateStreetLightKpi(columns, rows);
+            {(columns.some((c) => c.key === "annual_energy_kWh") || title.toLowerCase().includes("street light") || title.toLowerCase().includes("street-light")) && exportRows.length > 0 && (() => {
+              const kpi = calculateStreetLightKpi(columns, exportRows);
 
               return (
                 <tfoot className="bg-muted/30 border-t-2 border-double border-border font-bold text-foreground">
@@ -678,8 +753,8 @@ export function ExportPreviewModal({
             })()}
 
             {/* Averages/Summary Row for UPS sheet */}
-            {(columns.some((c) => c.key === "rated_capacity_kVA") || title.toLowerCase().includes("ups")) && rows.length > 0 && (() => {
-              const kpi = calculateUpsKpi(columns, rows);
+            {(columns.some((c) => c.key === "rated_capacity_kVA") || title.toLowerCase().includes("ups")) && exportRows.length > 0 && (() => {
+              const kpi = calculateUpsKpi(columns, exportRows);
 
               return (
                 <tfoot className="bg-muted/30 border-t-2 border-double border-border font-bold text-foreground">
@@ -738,8 +813,8 @@ export function ExportPreviewModal({
             })()}
 
             {/* Averages/Summary Row for Solar configuration sheet */}
-            {(columns.some((c) => c.key === "panel_rating_watt") || (title.toLowerCase().includes("solar") && (title.toLowerCase().includes("plant") || title.toLowerCase().includes("setup")))) && rows.length > 0 && (() => {
-              const kpi = calculateSolarKpi(columns, rows);
+            {(columns.some((c) => c.key === "panel_rating_watt") || (title.toLowerCase().includes("solar") && (title.toLowerCase().includes("plant") || title.toLowerCase().includes("setup")))) && exportRows.length > 0 && (() => {
+              const kpi = calculateSolarKpi(columns, exportRows);
 
               return (
                 <tfoot className="bg-muted/30 border-t-2 border-double border-border font-bold text-foreground">
@@ -794,8 +869,8 @@ export function ExportPreviewModal({
             })()}
 
             {/* Averages/Summary Row for Solar generation sheet */}
-            {(columns.some((c) => c.key === "solar_generation_kWh") || (title.toLowerCase().includes("solar") && title.toLowerCase().includes("generation"))) && rows.length > 0 && (() => {
-              const kpi = calculateSolarGenerationKpi(columns, rows);
+            {(columns.some((c) => c.key === "solar_generation_kWh") || (title.toLowerCase().includes("solar") && title.toLowerCase().includes("generation"))) && exportRows.length > 0 && (() => {
+              const kpi = calculateSolarGenerationKpi(columns, exportRows);
 
               return (
                 <tfoot className="bg-muted/30 border-t-2 border-double border-border font-bold text-foreground">
@@ -854,8 +929,8 @@ export function ExportPreviewModal({
             })()}
 
             {/* Averages/Summary Row for DG set configurations sheet */}
-            {(columns.some((c) => c.key === "rated_active_power_kW") || (title.toLowerCase().includes("dg") && (title.toLowerCase().includes("set") || title.toLowerCase().includes("setup")))) && rows.length > 0 && (() => {
-              const kpi = calculateDgSetKpi(columns, rows);
+            {(columns.some((c) => c.key === "rated_active_power_kW") || (title.toLowerCase().includes("dg") && (title.toLowerCase().includes("set") || title.toLowerCase().includes("setup")))) && exportRows.length > 0 && (() => {
+              const kpi = calculateDgSetKpi(columns, exportRows);
 
               return (
                 <tfoot className="bg-muted/30 border-t-2 border-double border-border font-bold text-foreground">
@@ -908,8 +983,8 @@ export function ExportPreviewModal({
             })()}
 
             {/* Averages/Summary Row for DG audit records sheet */}
-            {(columns.some((c) => c.key === "measured_kW_output") || (title.toLowerCase().includes("dg") && (title.toLowerCase().includes("record") || title.toLowerCase().includes("audit")))) && rows.length > 0 && (() => {
-              const kpi = calculateDgSetRecordKpi(columns, rows);
+            {(columns.some((c) => c.key === "measured_kW_output") || (title.toLowerCase().includes("dg") && (title.toLowerCase().includes("record") || title.toLowerCase().includes("audit")))) && exportRows.length > 0 && (() => {
+              const kpi = calculateDgSetRecordKpi(columns, exportRows);
 
               return (
                 <tfoot className="bg-muted/30 border-t-2 border-double border-border font-bold text-foreground">
@@ -972,8 +1047,8 @@ export function ExportPreviewModal({
             })()}
 
             {/* Averages/Summary Row for Pump configurations sheet */}
-            {(columns.some((c) => c.key === "rated_flow_m3_per_hr") || (title.toLowerCase().includes("pump") && (title.toLowerCase().includes("setup") || title.toLowerCase().includes("config")))) && rows.length > 0 && (() => {
-              const kpi = calculatePumpKpi(columns, rows);
+            {(columns.some((c) => c.key === "rated_flow_m3_per_hr") || (title.toLowerCase().includes("pump") && (title.toLowerCase().includes("setup") || title.toLowerCase().includes("config")))) && exportRows.length > 0 && (() => {
+              const kpi = calculatePumpKpi(columns, exportRows);
 
               return (
                 <tfoot className="bg-muted/30 border-t-2 border-double border-border font-bold text-foreground">
@@ -1026,8 +1101,8 @@ export function ExportPreviewModal({
             })()}
 
             {/* Averages/Summary Row for Pump audit records sheet */}
-            {(columns.some((c) => c.key === "suction_head_m") || (title.toLowerCase().includes("pump") && (title.toLowerCase().includes("record") || title.toLowerCase().includes("audit")))) && rows.length > 0 && (() => {
-              const kpi = calculatePumpRecordKpi(columns, rows);
+            {(columns.some((c) => c.key === "suction_head_m") || (title.toLowerCase().includes("pump") && (title.toLowerCase().includes("record") || title.toLowerCase().includes("audit")))) && exportRows.length > 0 && (() => {
+              const kpi = calculatePumpRecordKpi(columns, exportRows);
 
               return (
                 <tfoot className="bg-muted/30 border-t-2 border-double border-border font-bold text-foreground">
@@ -1094,8 +1169,8 @@ export function ExportPreviewModal({
             })()}
 
             {/* Averages/Summary Row for Transformer configurations sheet */}
-            {(columns.some((c) => c.key === "rated_LV_V") || (title.toLowerCase().includes("transformer") && (title.toLowerCase().includes("setup") || title.toLowerCase().includes("config") || title.toLowerCase().includes("transformers")))) && rows.length > 0 && (() => {
-              const kpi = calculateTransformerKpi(columns, rows);
+            {(columns.some((c) => c.key === "rated_LV_V") || (title.toLowerCase().includes("transformer") && (title.toLowerCase().includes("setup") || title.toLowerCase().includes("config") || title.toLowerCase().includes("transformers")))) && exportRows.length > 0 && (() => {
+              const kpi = calculateTransformerKpi(columns, exportRows);
 
               return (
                 <tfoot className="bg-muted/30 border-t-2 border-double border-border font-bold text-foreground">
@@ -1150,8 +1225,8 @@ export function ExportPreviewModal({
             })()}
 
             {/* Averages/Summary Row for Transformer audit records sheet */}
-            {(columns.some((c) => c.key === "power_factor_LT") || (title.toLowerCase().includes("transformer") && (title.toLowerCase().includes("record") || title.toLowerCase().includes("audit")))) && rows.length > 0 && (() => {
-              const kpi = calculateTransformerRecordKpi(columns, rows);
+            {(columns.some((c) => c.key === "power_factor_LT") || (title.toLowerCase().includes("transformer") && (title.toLowerCase().includes("record") || title.toLowerCase().includes("audit")))) && exportRows.length > 0 && (() => {
+              const kpi = calculateTransformerRecordKpi(columns, exportRows);
 
               return (
                 <tfoot className="bg-muted/30 border-t-2 border-double border-border font-bold text-foreground">
@@ -1213,21 +1288,46 @@ export function ExportPreviewModal({
       </main>
 
       {/* Footer */}
-      <footer className="shrink-0 border-t border-border bg-muted/20 px-4 py-3 sm:px-6">
+      <footer className="print:hidden shrink-0 border-t border-border bg-muted/20 px-4 py-3 sm:px-6">
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <p className="text-xs text-muted-foreground">
+            Select rows to include in export.{" "}
             {type === "pdf"
-              ? "The file will be downloaded as a formatted PDF document."
-              : "The file will be downloaded as an Excel (.xlsx) spreadsheet."}
+              ? "PDF and Excel downloads use the current selection."
+              : "Excel and PDF downloads use the current selection."}{" "}
+            Print and Word export include selected rows only.
           </p>
-          <div className="flex items-center gap-2 self-end md:self-auto">
+          <div className="flex flex-wrap items-center gap-2 self-end md:self-auto">
+            <Button variant="outline" size="sm" onClick={toggleAll} disabled={rows.length === 0}>
+              {allSelected ? "Deselect All" : "Select All"}
+            </Button>
             <Button variant="outline" size="sm" onClick={onClose}>
               Cancel
             </Button>
             <Button
+              variant="outline"
+              size="sm"
+              onClick={handleDownloadWord}
+              disabled={!hasSelection}
+              className="gap-2 border-blue-200 text-blue-700 hover:bg-blue-50 dark:border-blue-900 dark:text-blue-400 dark:hover:bg-blue-950/30"
+            >
+              <FileText className="h-4 w-4" />
+              Download Word
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handlePrint}
+              disabled={!hasSelection}
+              className="gap-2"
+            >
+              <Printer className="h-4 w-4" />
+              Print
+            </Button>
+            <Button
               size="sm"
               onClick={handleDownload}
-              disabled={downloading}
+              disabled={downloading || !hasSelection}
               className={
                 type === "pdf"
                   ? "bg-red-600 hover:bg-red-700 text-white gap-2"
@@ -1240,6 +1340,26 @@ export function ExportPreviewModal({
           </div>
         </div>
       </footer>
+
+      <style jsx global>{`
+        @media print {
+          body * {
+            visibility: hidden;
+          }
+          #export-preview-modal-root,
+          #export-preview-modal-root * {
+            visibility: visible;
+          }
+          #export-preview-modal-root {
+            position: absolute;
+            inset: 0;
+            overflow: visible;
+          }
+          #export-preview-modal-root .export-preview-row[data-export-selected="false"] {
+            display: none !important;
+          }
+        }
+      `}</style>
     </div>
   );
 }
@@ -1300,4 +1420,84 @@ async function downloadXLS(title: string, columns: SheetColumn[], rows: SheetRow
 
 function sanitizeFilename(name: string): string {
   return name.replace(/[^a-z0-9_\-\s]/gi, "_").replace(/\s+/g, "_");
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function downloadWord(title: string, columns: SheetColumn[], rows: SheetRow[]) {
+  const headerCells = columns
+    .map((col) => `<th style="border:1px solid #cbd5e1;padding:6pt;background:#eff6ff;font-weight:bold;">${escapeHtml(col.label)}</th>`)
+    .join("");
+
+  const bodyRows = rows
+    .map(
+      (row, index) => `
+      <tr>
+        <td style="border:1px solid #cbd5e1;padding:6pt;text-align:center;color:#64748b;">${index + 1}</td>
+        ${columns
+          .map(
+            (col) =>
+              `<td style="border:1px solid #cbd5e1;padding:6pt;">${escapeHtml(String(row[col.key] ?? "—"))}</td>`,
+          )
+          .join("")}
+      </tr>`,
+    )
+    .join("");
+
+  const htmlContent = `
+<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
+<head>
+  <meta charset="utf-8" />
+  <title>${escapeHtml(title)}</title>
+  <!--[if gte mso 9]>
+  <xml>
+    <w:WordDocument>
+      <w:View>Print</w:View>
+      <w:Zoom>100</w:Zoom>
+      <w:DoNotOptimizeForBrowser/>
+    </w:WordDocument>
+  </xml>
+  <![endif]-->
+  <style>
+    @page { size: A4 landscape; margin: 0.75in; }
+    body { font-family: Calibri, Arial, sans-serif; color: #111827; }
+    h1 { font-size: 18pt; color: #1e3a8a; margin-bottom: 6pt; }
+    p.meta { font-size: 9pt; color: #64748b; margin-bottom: 16pt; }
+    table { width: 100%; border-collapse: collapse; font-size: 9pt; }
+  </style>
+</head>
+<body>
+  <h1>${escapeHtml(title)}</h1>
+  <p class="meta">Exported on ${escapeHtml(new Date().toLocaleString())} · ${rows.length} selected record(s)</p>
+  <table>
+    <thead>
+      <tr>
+        <th style="border:1px solid #cbd5e1;padding:6pt;background:#eff6ff;font-weight:bold;width:32pt;">#</th>
+        ${headerCells}
+      </tr>
+    </thead>
+    <tbody>
+      ${bodyRows}
+    </tbody>
+  </table>
+</body>
+</html>`;
+
+  const blob = new Blob(["\ufeff" + htmlContent], {
+    type: "application/msword;charset=utf-8",
+  });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${sanitizeFilename(title)}.doc`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
