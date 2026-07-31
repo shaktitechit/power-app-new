@@ -1,5 +1,5 @@
 import { modelsRegistry } from "../../data/modelRegistry.js";
-const { Facility, UtilityAccount, UtilityTariff, UtilityBillingRecord, SolarPlant, DGSet, Transformer, Pump, HVACAudit, LightingAuditRecord, LuxMeasurement, MiscLoadAuditRecord, SolarGenerationRecord, DGAuditRecord, TransformerAuditRecord, PumpAuditRecord, ACAuditRecord, FanAuditRecord, SafetyAdditionalItemsAudit, SafetyDgAudit, SafetyDocumentsAudit, SafetyEarthingAudit, SafetyElevatorAudit, SafetyGeneralAudit, SafetyLeakInspectionAudit, SafetyLdbAudit, SafetyLoadAnalysisAudit, SafetyMeteringRoomAudit, SafetyPacVentilationAudit, SafetyPanelRoomAudit, SafetyPumpCompressorAudit, SafetyThermographyAudit, SafetyTransformerAudit, SafetyUpsAudit, SafetyWiringAudit } = modelsRegistry;
+const { Facility, UtilityAccount, UtilityTariff, UtilityBillingRecord, SolarPlant, DGSet, Transformer, Pump, HVACAudit, LightingAuditRecord, LuxMeasurement, MiscLoadAuditRecord, SolarGenerationRecord, DGAuditRecord, TransformerAuditRecord, PumpAuditRecord, ACAuditRecord, FanAuditRecord, StreetLightAuditRecord, UPSAudit, SafetyAdditionalItemsAudit, SafetyDgAudit, SafetyDocumentsAudit, SafetyEarthingAudit, SafetyElevatorAudit, SafetyGeneralAudit, SafetyLeakInspectionAudit, SafetyLdbAudit, SafetyLoadAnalysisAudit, SafetyMeteringRoomAudit, SafetyPacVentilationAudit, SafetyPanelRoomAudit, SafetyPumpCompressorAudit, SafetyThermographyAudit, SafetyTransformerAudit, SafetyUpsAudit, SafetyWiringAudit } = modelsRegistry;
 import mongoose from "mongoose";
 
 
@@ -65,6 +65,8 @@ function createEnergyBuckets(accounts) {
       misc_load_audits: [],
       ac_audit_records: [],
       fan_audit_records: [],
+      street_light_audits: [],
+      ups_audits: [],
     });
   }
   return map;
@@ -91,13 +93,27 @@ function createSafetyBuckets(accounts) {
  */
 function distributeByUtilityAccountId(buckets, docs, bucketArrayKey) {
   for (const doc of docs) {
-    const uaId = doc?.utility_account_id;
+    const uaId = resolveMongoId(doc?.utility_account_id);
     if (!uaId) continue;
-    const row = buckets.get(String(uaId));
+    const row = buckets.get(uaId);
     if (!row) continue;
     const arr = row[bucketArrayKey];
     if (Array.isArray(arr)) arr.push(doc);
   }
+}
+
+/** @param {unknown} value */
+function resolveMongoId(value) {
+  if (value == null) return "";
+  if (typeof value === "object") {
+    if (value._id != null) return String(value._id);
+    if (typeof value.toHexString === "function") return value.toHexString();
+    const asString = typeof value.toString === "function" ? value.toString() : "";
+    if (/^[a-f0-9]{24}$/i.test(asString)) return asString;
+    return "";
+  }
+  const s = String(value).trim();
+  return s && s !== "[object Object]" ? s : "";
 }
 
 /** @param {object[]} docs @param {string} parentField */
@@ -105,9 +121,8 @@ function groupDocsByParentIdField(docs, parentField) {
   /** @type {Map<string, object[]>} */
   const map = new Map();
   for (const doc of docs || []) {
-    const pid = doc?.[parentField];
-    if (pid == null) continue;
-    const key = String(pid);
+    const key = resolveMongoId(doc?.[parentField]);
+    if (!key) continue;
     if (!map.has(key)) map.set(key, []);
     map.get(key).push(doc);
   }
@@ -137,23 +152,25 @@ function nestEnergyAuditRecordsUnderEquipment(
   );
   const byPump = groupDocsByParentIdField(pumpAuditRecords, "pump_id");
 
+  const equipmentId = (doc) => resolveMongoId(doc?._id);
+
   for (const row of buckets.values()) {
     row.solar_plants = (row.solar_plants || []).map((plant) => ({
       ...plant,
       solar_generation_records:
-        bySolarPlant.get(String(plant._id)) ?? [],
+        bySolarPlant.get(equipmentId(plant)) ?? [],
     }));
     row.dg_sets = (row.dg_sets || []).map((dg) => ({
       ...dg,
-      dg_audit_records: byDgSet.get(String(dg._id)) ?? [],
+      dg_audit_records: byDgSet.get(equipmentId(dg)) ?? [],
     }));
     row.transformers = (row.transformers || []).map((t) => ({
       ...t,
-      transformer_audit_records: byTransformer.get(String(t._id)) ?? [],
+      transformer_audit_records: byTransformer.get(equipmentId(t)) ?? [],
     }));
     row.pumps = (row.pumps || []).map((p) => ({
       ...p,
-      pump_audit_records: byPump.get(String(p._id)) ?? [],
+      pump_audit_records: byPump.get(equipmentId(p)) ?? [],
     }));
   }
 }
@@ -195,6 +212,8 @@ export async function aggregateElectricalEnergyAuditForFacility(facilityRef) {
     pumpAuditRecords,
     acAuditRecords,
     fanAuditRecords,
+    streetLightAudits,
+    upsAudits,
   ] = await Promise.all([
     accountIds.length
       ? UtilityTariff.find({ utility_account_id: { $in: accountIds } }).lean()
@@ -218,6 +237,8 @@ export async function aggregateElectricalEnergyAuditForFacility(facilityRef) {
     PumpAuditRecord.find({ facility_id: fid }).lean(),
     ACAuditRecord.find({ facility_id: fid }).lean(),
     FanAuditRecord.find({ facility_id: fid }).lean(),
+    StreetLightAuditRecord.find({ facility_id: fid }).lean(),
+    UPSAudit.find({ facility_id: fid }).lean(),
   ]);
 
   const buckets = createEnergyBuckets(accounts);
@@ -239,8 +260,15 @@ export async function aggregateElectricalEnergyAuditForFacility(facilityRef) {
     transformerAuditRecords,
     pumpAuditRecords,
   );
+  // Flat arrays per utility account (fallback when nested join misses rows)
+  distributeByUtilityAccountId(buckets, solarGenRecords, "solar_generation_records");
+  distributeByUtilityAccountId(buckets, dgAuditRecords, "dg_audit_records");
+  distributeByUtilityAccountId(buckets, transformerAuditRecords, "transformer_audit_records");
+  distributeByUtilityAccountId(buckets, pumpAuditRecords, "pump_audit_records");
   distributeByUtilityAccountId(buckets, acAuditRecords, "ac_audit_records");
   distributeByUtilityAccountId(buckets, fanAuditRecords, "fan_audit_records");
+  distributeByUtilityAccountId(buckets, streetLightAudits, "street_light_audits");
+  distributeByUtilityAccountId(buckets, upsAudits, "ups_audits");
 
   return {
     audit_type: ELECTRICAL_ENERGY_AUDIT_LABEL,

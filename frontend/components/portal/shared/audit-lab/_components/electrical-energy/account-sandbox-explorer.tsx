@@ -191,7 +191,7 @@ export function AccountSandboxExplorer({
       streetLightRecords: targetNests
         .filter((nest) => nestConnected(nest, "street-light"))
         .flatMap((nest) =>
-          ((nest as any).street_light_audits || []).map((r: any) => ({ ...r, account_number: (nest.utility_account as any)?.account_number }))
+          (nest.street_light_audits || []).map((r: any) => ({ ...r, account_number: (nest.utility_account as any)?.account_number }))
         ),
       fanRecords: targetNests
         .filter((nest) => nestConnected(nest, "fan"))
@@ -206,7 +206,7 @@ export function AccountSandboxExplorer({
       upsRecords: targetNests
         .filter((nest) => nestConnected(nest, "ups"))
         .flatMap((nest) =>
-          ((nest as any).ups_audits || []).map((r: any) => ({ ...r, account_number: (nest.utility_account as any)?.account_number }))
+          (nest.ups_audits || []).map((r: any) => ({ ...r, account_number: (nest.utility_account as any)?.account_number }))
         ),
       miscRecords: targetNests
         .filter((nest) => nestConnected(nest, "misc"))

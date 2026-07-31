@@ -9,15 +9,22 @@ export interface FacilityAuditEnergyUtilityNest {
   tariffs: unknown[];
   billing_records: unknown[];
   solar_plants: unknown[];
+  /** Flat fallback when nested join misses rows */
+  solar_generation_records?: unknown[];
   dg_sets: unknown[];
+  dg_audit_records?: unknown[];
   transformers: unknown[];
+  transformer_audit_records?: unknown[];
   pumps: unknown[];
+  pump_audit_records?: unknown[];
   hvac_audits: unknown[];
   lighting_audits: unknown[];
   lux_measurements: unknown[];
   misc_load_audits: unknown[];
   ac_audit_records: unknown[];
   fan_audit_records: unknown[];
+  street_light_audits?: unknown[];
+  ups_audits?: unknown[];
 }
 
 export interface FacilityAuditSnapshotEnergyData {
@@ -53,6 +60,38 @@ export interface FacilityAuditSnapshotByTypeQueryArg
   extends FacilityAuditSnapshotQueryArg {
   /** Facility enum label or backend aliases (`electrical_energy`, `safety`, …). */
   audit_type: string;
+}
+
+export interface AuditAiContextMeta {
+  total_records: number;
+  included_records: number;
+  truncated: boolean;
+  payload_truncated?: boolean;
+  compact_mode: boolean;
+  char_count: number;
+  max_chars: number;
+  map_reduce?: boolean;
+  chunks_processed?: number;
+}
+
+export interface AuditAiContextRequest {
+  facility_id: string;
+  audit_type: string;
+  question_id: string;
+  options?: { max_chars?: number; max_records?: number; utility_account_id?: string };
+}
+
+export interface AuditAiAnalyzeRequest extends AuditAiContextRequest {
+  follow_up_text?: string;
+  prior_turns?: Array<{ role: "user" | "assistant"; content: string }>;
+  options?: AuditAiContextRequest["options"] & { max_tokens?: number; force_map_reduce?: boolean };
+}
+
+export interface AuditAiAnalyzeResponse {
+  question: { id: string; label: string; prompt: string };
+  structured: unknown;
+  raw: string;
+  meta: AuditAiContextMeta;
 }
 
 const buildFacilityQuery = (params: Record<string, string | undefined>) => {
@@ -121,6 +160,33 @@ export const auditApiSlice = apiSlice.injectEndpoints({
         },
       ],
     }),
+
+    postAuditAiContext: builder.mutation<
+      FacilityAuditSnapshotSuccess<{
+        compact_payload: unknown;
+        meta: AuditAiContextMeta;
+        stats: unknown;
+        question: { id: string; label: string; prompt: string };
+      }>,
+      AuditAiContextRequest
+    >({
+      query: (body) => ({
+        url: "/v1/audits/ai-context",
+        method: "POST",
+        body,
+      }),
+    }),
+
+    postAuditAiAnalyze: builder.mutation<
+      FacilityAuditSnapshotSuccess<AuditAiAnalyzeResponse>,
+      AuditAiAnalyzeRequest
+    >({
+      query: (body) => ({
+        url: "/v1/audits/ai-analyze",
+        method: "POST",
+        body,
+      }),
+    }),
   }),
 });
 
@@ -131,4 +197,6 @@ export const {
   useLazyGetElectricalSafetyAuditSnapshotQuery,
   useGetFacilityAuditSnapshotQuery,
   useLazyGetFacilityAuditSnapshotQuery,
+  usePostAuditAiContextMutation,
+  usePostAuditAiAnalyzeMutation,
 } = auditApiSlice;

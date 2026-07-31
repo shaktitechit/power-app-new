@@ -17,7 +17,12 @@ export const OPENROUTER_MODEL = process.env.OPENAI_MODEL || "gpt-4o-mini";
  */
 export const OPENROUTER_BASE_URL = "https://api.openai.com/v1";
 
-/** Max characters of extracted document text sent to the LLM (per request). */
+/** Max characters of audit JSON sent to the LLM (per request). */
+export const OPENROUTER_MAX_AUDIT_CONTEXT_CHARS = Number(
+  process.env.OPENROUTER_MAX_AUDIT_CONTEXT_CHARS || 80000,
+);
+
+/** Max extracted document text sent to the LLM (per request). */
 export const OPENROUTER_MAX_DOCUMENT_CHARS = Number(
   process.env.OPENROUTER_MAX_DOCUMENT_CHARS || 15000,
 );

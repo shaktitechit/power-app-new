@@ -29,6 +29,7 @@ import type {
   StructuredAuditAiResponse,
 } from "../lib/audit-ai-types";
 import { copyResponseToClipboard, downloadResponseAsWord } from "../lib/audit-ai-export";
+import { formatContextCoverage, type AuditContextMeta } from "../lib/audit-ai-budget";
 import { cn } from "@/components/portal/lib/utils";
 
 const severityStyles: Record<AuditAiSeverity, string> = {
@@ -125,6 +126,7 @@ interface StructuredAiResponseProps {
   facilityName?: string;
   userPrompt?: string;
   compact?: boolean;
+  contextMeta?: AuditContextMeta;
 }
 
 function ResponseActions({
@@ -199,9 +201,28 @@ export function StructuredAiResponse({
   facilityName,
   userPrompt,
   compact = false,
+  contextMeta,
 }: StructuredAiResponseProps) {
   return (
     <div className={cn("space-y-4", !compact && "animate-in fade-in slide-in-from-bottom-2 duration-300")}>
+      {contextMeta ? (
+        <div
+          className={cn(
+            "rounded-lg border px-3 py-2 text-xs",
+            contextMeta.truncated
+              ? "border-amber-500/30 bg-amber-500/10 text-amber-800 dark:text-amber-200"
+              : "border-border/60 bg-muted/30 text-muted-foreground",
+          )}
+        >
+          <span className="font-semibold uppercase tracking-wider">Data coverage: </span>
+          {formatContextCoverage(contextMeta)}
+          {contextMeta.truncated ? (
+            <span className="block mt-1 text-[11px] opacity-90">
+              Analysis uses the newest included records only. Aggregates in stats reflect full dataset when present.
+            </span>
+          ) : null}
+        </div>
+      ) : null}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         {!compact && (questionLabel || facilityName) ? (
           <div className="rounded-xl border border-primary/20 bg-primary/5 px-4 py-3 flex-1 min-w-0">

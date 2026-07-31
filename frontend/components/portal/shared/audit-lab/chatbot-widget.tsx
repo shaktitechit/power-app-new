@@ -2,11 +2,12 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { useChatCompletionMutation } from "@/store/slices/openRouterApiSlice";
 import {
   useLazyGetElectricalEnergyAuditSnapshotQuery,
   useLazyGetElectricalSafetyAuditSnapshotQuery,
+  usePostAuditAiAnalyzeMutation,
 } from "@/store/slices/auditApiSlice";
+import { normalizeContextMeta, buildCompactAuditContext, formatContextCoverage, type AuditContextMeta } from "./lib/audit-ai-budget";
 import {
   type Facility,
   useGetFacilitiesQuery,
@@ -50,15 +51,12 @@ import {
 } from "@/components/portal/ui/command";
 import { cn } from "@/components/portal/lib/utils";
 import {
-  AUDIT_AI_SYSTEM_PROMPT,
-  buildAnalysisMessages,
   parseStructuredAuditAiResponse,
+  summarizeResponseForHistory,
   type StructuredAuditAiResponse,
 } from "./lib/audit-ai-types";
 import {
-  extractQuestionPayload,
   getQuestionsForAuditType,
-  serializeAuditPayload,
   type AuditQuestionDefinition,
   type LoadedAuditContext,
 } from "./lib/audit-questions";
@@ -72,11 +70,13 @@ interface AnalysisTurn {
   response: StructuredAuditAiResponse | null;
   rawFallback: string | null;
   error: string | null;
+  contextMeta?: AuditContextMeta;
 }
 
 interface QuestionSession {
   turns: AnalysisTurn[];
   isLoading: boolean;
+  loadingCoverage?: string;
 }
 
 function LadyAvatar({ className = "h-5 w-5" }: { className?: string }) {
@@ -145,7 +145,7 @@ export function ChatbotWidget() {
     useLazyGetElectricalEnergyAuditSnapshotQuery();
   const [fetchSafetySnapshot, { isFetching: safetyLoading }] =
     useLazyGetElectricalSafetyAuditSnapshotQuery();
-  const [chatCompletion] = useChatCompletionMutation();
+  const [analyzeAuditAi] = usePostAuditAiAnalyzeMutation();
 
   const facilities: Facility[] = useMemo(() => {
     const raw = facilitiesResponse?.data ?? facilitiesResponse ?? [];
@@ -235,16 +235,20 @@ export function ChatbotWidget() {
 
       if (!userText) return;
 
+      const isFollowUp = Boolean(!options.isInitial && options.followUpText?.trim());
+      const loadingCoverage =
+        !isFollowUp
+          ? formatContextCoverage(buildCompactAuditContext(ctx, question).meta)
+          : undefined;
+
       setSessions((prev) => ({
         ...prev,
         [question.id]: {
           turns: options.isInitial ? [] : (prev[question.id]?.turns ?? []),
           isLoading: true,
+          loadingCoverage,
         },
       }));
-
-      const payload = extractQuestionPayload(ctx, question);
-      const dataJson = serializeAuditPayload(payload);
 
       const priorSession = options.isInitial ? undefined : sessionsRef.current[question.id];
       const priorTurns = (priorSession?.turns ?? []).flatMap((turn) => {
@@ -252,31 +256,27 @@ export function ChatbotWidget() {
           { role: "user", content: turn.userText },
         ];
         if (turn.response) {
-          msgs.push({ role: "assistant", content: JSON.stringify(turn.response) });
+          msgs.push({ role: "assistant", content: summarizeResponseForHistory(turn.response) });
         } else if (turn.rawFallback) {
-          msgs.push({ role: "assistant", content: turn.rawFallback });
+          msgs.push({ role: "assistant", content: turn.rawFallback.slice(0, 2000) });
         }
         return msgs;
       });
 
-      const userMessages = buildAnalysisMessages({
-        questionPrompt: question.prompt,
-        auditDataJson: dataJson,
-        priorTurns,
-        followUpText: options.isInitial ? undefined : options.followUpText,
-      });
-
       try {
-        const response = await chatCompletion({
-          messages: [
-            { role: "system", content: AUDIT_AI_SYSTEM_PROMPT },
-            ...userMessages,
-          ],
-          options: { temperature: 0.1, max_tokens: 4096 },
+        const result = await analyzeAuditAi({
+          facility_id: ctx.facility._id,
+          audit_type: ctx.auditType,
+          question_id: question.id,
+          follow_up_text: isFollowUp ? options.followUpText : undefined,
+          prior_turns: isFollowUp ? priorTurns : undefined,
         }).unwrap();
 
-        const content = response.choices?.[0]?.message?.content ?? "";
-        const parsed = parseStructuredAuditAiResponse(content);
+        const data = result.data;
+        const parsed =
+          data.structured && typeof data.structured === "object"
+            ? parseStructuredAuditAiResponse(JSON.stringify(data.structured))
+            : parseStructuredAuditAiResponse(data.raw ?? "");
 
         setSessions((prev) => {
           const existing = prev[question.id] ?? { turns: [], isLoading: false };
@@ -284,8 +284,9 @@ export function ChatbotWidget() {
             id: turnId,
             userText,
             response: parsed,
-            rawFallback: parsed ? null : content || "No response received.",
+            rawFallback: parsed ? null : data.raw || "No response received.",
             error: null,
+            contextMeta: normalizeContextMeta(data.meta as Record<string, unknown>),
           };
           return {
             ...prev,
@@ -320,7 +321,7 @@ export function ChatbotWidget() {
         });
       }
     },
-    [loadedContext, chatCompletion],
+    [loadedContext, analyzeAuditAi],
   );
 
   const handleLoadData = async () => {
@@ -637,7 +638,9 @@ export function ChatbotWidget() {
                         {loading ? (
                           <span className="inline-flex items-center gap-1 text-[10px] text-primary mt-1">
                             <Loader2 className="h-3 w-3 animate-spin" />
-                            Analyzing…
+                            {session?.loadingCoverage
+                              ? `Analyzing ${session.loadingCoverage}…`
+                              : "Analyzing…"}
                           </span>
                         ) : hasAnswer ? (
                           <span className="text-[10px] text-emerald-600 dark:text-emerald-400 mt-1 inline-block">
@@ -711,6 +714,7 @@ export function ChatbotWidget() {
                             userPrompt={turnIdx > 0 ? turn.userText : undefined}
                             facilityName={turnIdx === 0 ? loadedContext.facility.name : undefined}
                             compact={turnIdx > 0}
+                            contextMeta={turn.contextMeta}
                           />
                         ) : null}
 
@@ -730,7 +734,11 @@ export function ChatbotWidget() {
                     {isAnalyzing ? (
                       <div className="flex flex-col items-center justify-center gap-3 py-12">
                         <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                        <p className="text-sm text-muted-foreground">Analyzing audit data…</p>
+                        <p className="text-sm text-muted-foreground">
+                          {activeSession?.loadingCoverage
+                            ? `Analyzing ${activeSession.loadingCoverage}…`
+                            : "Analyzing audit data…"}
+                        </p>
                       </div>
                     ) : null}
 

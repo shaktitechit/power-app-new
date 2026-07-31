@@ -147,8 +147,10 @@ CRITICAL RULES — YOU MUST FOLLOW:
 3. Every finding, metric, table row, and chart data point MUST come directly from the JSON. Include "data_reference" (JSON path) where possible.
 4. Recommendations must be limited to actions directly supported by observed data (e.g. recorded non-compliance, measured inefficiency). Do NOT recommend actions based on speculation.
 5. Use tables when comparing multiple records (billing months, equipment list, checklist items).
-6. Use charts (bar, line, pie) ONLY when numeric time-series or categorical data exists in the JSON to plot. Chart "data" arrays must contain only values extracted from the audit JSON.
-7. If insufficient data exists for the question, return a short summary stating what is missing and empty findings/recommendations/charts/tables as appropriate.
+6. When audit_records or records are in the JSON, tables.rows MUST include one row per included record (use stats.included_count; do not sample rows).
+7. If stats.truncated is true, state that analysis covers included_count of record_count rows only.
+8. Use charts (bar, line, pie) ONLY when numeric time-series or categorical data exists in the JSON to plot. Chart "data" arrays must contain only values extracted from the audit JSON.
+9. If insufficient data exists for the question, return a short summary stating what is missing and empty findings/recommendations/charts/tables as appropriate.
 
 Respond ONLY with valid JSON (no markdown fences, no prose outside JSON):
 {
@@ -173,15 +175,36 @@ Respond ONLY with valid JSON (no markdown fences, no prose outside JSON):
   ]
 }`;
 
+export function summarizeResponseForHistory(response: StructuredAuditAiResponse): string {
+  return JSON.stringify({
+    summary: response.summary,
+    data_availability: response.data_availability,
+    findings_count: response.findings.length,
+    metrics: response.metrics.slice(0, 8),
+    recommendations_count: response.recommendations.length,
+  });
+}
+
 export function buildAnalysisMessages(args: {
   questionPrompt: string;
-  auditDataJson: string;
+  auditDataJson?: string;
   priorTurns: AnalysisChatMessage[];
   followUpText?: string;
+  isFollowUp?: boolean;
 }): AnalysisChatMessage[] {
-  const messages: AnalysisChatMessage[] = [
-    { role: "user", content: `${args.questionPrompt}\n\nAudit data (JSON):\n${args.auditDataJson}` },
-  ];
+  const messages: AnalysisChatMessage[] = [];
+
+  if (!args.isFollowUp && args.auditDataJson) {
+    messages.push({
+      role: "user",
+      content: `${args.questionPrompt}\n\nAudit data (JSON):\n${args.auditDataJson}`,
+    });
+  } else if (args.isFollowUp) {
+    messages.push({
+      role: "user",
+      content: `${args.questionPrompt}\n\n[Audit data was provided in the first message of this thread. Use that data only.]`,
+    });
+  }
 
   for (const turn of args.priorTurns) {
     messages.push(turn);
@@ -190,7 +213,7 @@ export function buildAnalysisMessages(args: {
   if (args.followUpText?.trim()) {
     messages.push({
       role: "user",
-      content: `${args.followUpText.trim()}\n\nReminder: Answer ONLY from the audit JSON already provided. No assumptions or hypotheses.`,
+      content: `${args.followUpText.trim()}\n\nReminder: Answer ONLY from the audit JSON in the first message. No assumptions or hypotheses.`,
     });
   }
 

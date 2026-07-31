@@ -5,6 +5,11 @@ import type {
   FacilityAuditSnapshotEnergyData,
   FacilityAuditSnapshotSafetyData,
 } from "@/store/slices/auditApiSlice";
+import {
+  countNestedAuditRecords,
+  extractEquipmentWithAuditRecords,
+  extractFlatRecords,
+} from "./energy-snapshot-extractors";
 
 export interface AuditQuestionDefinition {
   id: string;
@@ -81,13 +86,25 @@ const ENERGY_QUESTIONS: AuditQuestionDefinition[] = [
     id: "lux",
     label: "Lux Compliance",
     description: "Illuminance measurements vs required lux levels.",
-    prompt: `Report lux measurements vs required levels from the data. Calculate compliance only from recorded measured and required values. ${DATA_ONLY_RULE}`,
+    prompt: `Report lux measurements vs required levels from the data. Include a table with every record from audit_records/records. ${DATA_ONLY_RULE}`,
+  },
+  {
+    id: "fan",
+    label: "Fan Systems",
+    description: "Fan inventory, loads, and audit measurements.",
+    prompt: `Report fan audit records as stored. Include a table with every record from audit_records/records. ${DATA_ONLY_RULE}`,
+  },
+  {
+    id: "street_light",
+    label: "Street Lighting",
+    description: "Street light fixtures, wattage, and connected load.",
+    prompt: `Report street light audit records as stored. Include a table with every record from audit_records/records. ${DATA_ONLY_RULE}`,
   },
   {
     id: "ups",
     label: "UPS Systems",
     description: "UPS capacity, loading, efficiency, and battery health indicators.",
-    prompt: `Report UPS audit records as stored: capacity, loading, efficiency, battery age, room conditions. ${DATA_ONLY_RULE}`,
+    prompt: `Report UPS audit records as stored. Include a table with every record from audit_records/records. ${DATA_ONLY_RULE}`,
   },
   {
     id: "misc",
@@ -181,31 +198,55 @@ function countEnergyRecords(accounts: FacilityAuditEnergyUtilityNest[]) {
     (acc, nest) => {
       acc.tariffs += nest.tariffs?.length ?? 0;
       acc.billing += nest.billing_records?.length ?? 0;
-      acc.solar += nest.solar_plants?.length ?? 0;
-      acc.dg += nest.dg_sets?.length ?? 0;
+      acc.solar_plants += nest.solar_plants?.length ?? 0;
+      acc.solar_generation_records += countNestedAuditRecords(
+        [nest],
+        "solar_generation_records",
+        "solar_plants",
+      );
+      acc.dg_sets += nest.dg_sets?.length ?? 0;
+      acc.dg_audit_records += countNestedAuditRecords([nest], "dg_audit_records", "dg_sets");
       acc.transformers += nest.transformers?.length ?? 0;
+      acc.transformer_audit_records += countNestedAuditRecords(
+        [nest],
+        "transformer_audit_records",
+        "transformers",
+      );
       acc.pumps += nest.pumps?.length ?? 0;
+      acc.pump_audit_records += countNestedAuditRecords(
+        [nest],
+        "pump_audit_records",
+        "pumps",
+      );
       acc.hvac += nest.hvac_audits?.length ?? 0;
       acc.lighting += nest.lighting_audits?.length ?? 0;
       acc.lux += nest.lux_measurements?.length ?? 0;
       acc.misc += nest.misc_load_audits?.length ?? 0;
       acc.ac += nest.ac_audit_records?.length ?? 0;
       acc.fan += nest.fan_audit_records?.length ?? 0;
+      acc.street_light += nest.street_light_audits?.length ?? 0;
+      acc.ups += nest.ups_audits?.length ?? 0;
       return acc;
     },
     {
       tariffs: 0,
       billing: 0,
-      solar: 0,
-      dg: 0,
+      solar_plants: 0,
+      solar_generation_records: 0,
+      dg_sets: 0,
+      dg_audit_records: 0,
       transformers: 0,
+      transformer_audit_records: 0,
       pumps: 0,
+      pump_audit_records: 0,
       hvac: 0,
       lighting: 0,
       lux: 0,
       misc: 0,
       ac: 0,
       fan: 0,
+      street_light: 0,
+      ups: 0,
     },
   );
 }
@@ -230,62 +271,41 @@ function extractEnergyQuestionData(
         })),
       };
     case "tariff":
-      return accounts.map((n) => ({ utility_account: n.utility_account, tariffs: n.tariffs }));
+      return extractFlatRecords(accounts, "tariff", "tariffs");
     case "billing":
-      return accounts.map((n) => ({ utility_account: n.utility_account, billing_records: n.billing_records }));
+      return extractFlatRecords(accounts, "billing", "billing_records");
     case "solar":
-      return accounts.map((n) => ({
-        utility_account: n.utility_account,
-        solar_plants: n.solar_plants?.map((sp: any) => ({
-          ...sp,
-          solar_generation_records: sp.solar_generation_records,
-        })),
-      }));
+      return extractEquipmentWithAuditRecords(accounts, "solar");
     case "dg":
-      return accounts.map((n) => ({
-        utility_account: n.utility_account,
-        dg_sets: n.dg_sets?.map((dg: any) => ({
-          ...dg,
-          dg_audit_records: dg.dg_audit_records,
-        })),
-      }));
+      return extractEquipmentWithAuditRecords(accounts, "dg");
     case "transformer":
-      return accounts.map((n) => ({
-        utility_account: n.utility_account,
-        transformers: n.transformers?.map((t: any) => ({
-          ...t,
-          transformer_audit_records: t.transformer_audit_records,
-        })),
-      }));
+      return extractEquipmentWithAuditRecords(accounts, "transformer");
     case "pump":
-      return accounts.map((n) => ({
-        utility_account: n.utility_account,
-        pumps: n.pumps?.map((p: any) => ({
-          ...p,
-          pump_audit_records: p.pump_audit_records,
-        })),
-      }));
+      return extractEquipmentWithAuditRecords(accounts, "pump");
     case "hvac":
-      return accounts.map((n) => ({ utility_account: n.utility_account, hvac_audits: n.hvac_audits }));
+      return extractFlatRecords(accounts, "hvac", "hvac_audits");
     case "ac":
-      return accounts.map((n) => ({ utility_account: n.utility_account, ac_audit_records: n.ac_audit_records }));
+      return extractFlatRecords(accounts, "ac", "ac_audit_records");
     case "lighting":
-      return accounts.map((n) => ({ utility_account: n.utility_account, lighting_audits: n.lighting_audits }));
+      return extractFlatRecords(accounts, "lighting", "lighting_audits");
     case "lux":
-      return accounts.map((n) => ({ utility_account: n.utility_account, lux_measurements: n.lux_measurements }));
-    case "ups": {
-      return accounts.map((n) => ({
-        utility_account: n.utility_account,
-        ups_audits: (n as any).ups_audits,
-      }));
-    }
+      return extractFlatRecords(accounts, "lux", "lux_measurements");
+    case "fan":
+      return extractFlatRecords(accounts, "fan", "fan_audit_records");
+    case "street_light":
+      return extractFlatRecords(accounts, "street_light", "street_light_audits");
+    case "ups":
+      return extractFlatRecords(accounts, "ups", "ups_audits");
     case "misc":
-      return accounts.map((n) => ({ utility_account: n.utility_account, misc_load_audits: n.misc_load_audits }));
+      return extractFlatRecords(accounts, "misc", "misc_load_audits");
     case "savings":
       return {
         facility: snapshot.facility,
         record_counts: countEnergyRecords(accounts),
-        utility_accounts: accounts,
+        solar: extractEquipmentWithAuditRecords(accounts, "solar"),
+        dg: extractEquipmentWithAuditRecords(accounts, "dg"),
+        transformer: extractEquipmentWithAuditRecords(accounts, "transformer"),
+        pump: extractEquipmentWithAuditRecords(accounts, "pump"),
       };
     default:
       return accounts;
@@ -343,6 +363,7 @@ export function extractQuestionPayload(
       audit_type: context.auditType,
       facility: context.facility,
       question: question.label,
+      question_id: question.id,
       data: extractEnergyQuestionData(context.snapshot, question.id),
     };
   }
@@ -352,6 +373,7 @@ export function extractQuestionPayload(
       audit_type: context.auditType,
       facility: context.facility,
       question: question.label,
+      question_id: question.id,
       data: extractSafetyQuestionData(context.snapshot, question.id),
     };
   }
@@ -360,12 +382,7 @@ export function extractQuestionPayload(
     audit_type: context.auditType,
     facility: context.facility,
     question: question.label,
+    question_id: question.id,
     data: buildFacilityOnlyPayload(context.facility),
   };
-}
-
-export function serializeAuditPayload(payload: unknown, maxChars = 100_000): string {
-  let json = JSON.stringify(payload, null, 2);
-  if (json.length <= maxChars) return json;
-  return `${json.slice(0, maxChars)}\n... [truncated]`;
 }
