@@ -26,6 +26,8 @@ export type MiscLoadAuditFormState = {
   load_factor_percent: string;
   estimated_annual_energy_kWh: string;
 
+  remarks: string;
+
   existingDocuments: ExistingDocument[];
   newDocuments: File[];
 };
@@ -108,6 +110,8 @@ export const createEmptyForm = (
     load_factor_percent: "100",
     estimated_annual_energy_kWh: "",
 
+    remarks: "",
+
     existingDocuments: [],
     newDocuments: [],
   });
@@ -137,6 +141,8 @@ export function auditToForm(record: any): MiscLoadAuditFormState {
       record.estimated_annual_energy_kWh,
     ),
 
+    remarks: record.remarks || "",
+
     existingDocuments: record.documents || [],
     newDocuments: [],
   });
@@ -165,6 +171,7 @@ export function buildMiscLoadAuditPayload(
     operating_days_per_year: toNumber(form.operating_days_per_year),
     load_factor_percent: toNumber(form.load_factor_percent),
     estimated_annual_energy_kWh: toNumber(form.estimated_annual_energy_kWh),
+    remarks: form.remarks || undefined,
   };
 }
 

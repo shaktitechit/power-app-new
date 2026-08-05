@@ -70,6 +70,11 @@ const miscLoadAuditRecordSchema = new mongoose.Schema(
       default: 0,
     },
 
+    remarks: {
+      type: String,
+      trim: true,
+    },
+
     // 🔍 Audit metadata (recommended)
     audit_date: {
       type: Date,

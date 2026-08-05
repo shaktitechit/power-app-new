@@ -9,6 +9,7 @@ export type MiscLoadAuditExcelFormState = {
   average_operating_hours_per_day: string;
   operating_days_per_year: string;
   load_factor_percent: string;
+  remarks: string;
 
   estimated_annual_energy_kWh: string;
 };
@@ -28,6 +29,7 @@ export const MISC_LOAD_AUDIT_DETAIL_FIELDS: {
   },
   { key: "operating_days_per_year", label: "Operating Days / Year" },
   { key: "load_factor_percent", label: "Load Factor (%)" },
+  { key: "remarks", label: "Remarks" },
 ];
 
 export const MISC_LOAD_AUDIT_CALC_FIELDS: {

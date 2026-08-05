@@ -149,6 +149,20 @@ export function MiscLoadAuditFormFields({ form, onFormChange }: Props) {
                   />
                 </div>
               </div>
+
+              <div className="space-y-2">
+                <Label>Remarks</Label>
+                <Textarea
+                  value={form.remarks}
+                  onChange={(e) =>
+                    setForm((prev) => ({
+                      ...prev,
+                      remarks: e.target.value,
+                    }))
+                  }
+                  className={editableInputClass}
+                />
+              </div>
     </div>
   );
 }

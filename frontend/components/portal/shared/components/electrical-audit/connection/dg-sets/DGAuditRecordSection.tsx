@@ -46,6 +46,7 @@ import {
   useGetDGAuditRecordsQuery,
   useUpdateDGAuditRecordMutation,
 } from "@/store/slices/electrical-audit/dgAuditRecordApiSlice";
+import { useGetDGSetByIdQuery } from "@/store/slices/electrical-audit/dgSetApiSlice";
 import { useGetUtilityBillingRecordsQuery } from "@/store/slices/electrical-audit/utilityBillingRecordApiSlice";
 import { calculateGridCostPerKVAHForOneYear } from "@/components/portal/lib/electrical-audit/calculateGridCostPerKVAHForOneYear";
 import {
@@ -211,32 +212,68 @@ const toNumber = (value: string) => {
   return Number.isNaN(num) ? undefined : num;
 };
 
-const calculatePowerFactor = (
-  measuredKVA: string,
-  measuredKW: string,
+/** Excel rows 21/22: 3φ = 1.732×V×I×PF/1000; 1φ = V×I×PF/1000 */
+const calculateMeasuredKWOutput = (
+  numberOfPhase: string,
+  voltage: string,
+  current: string,
+  powerFactor: string,
 ): string => {
-  const kvaNum = toNumber(measuredKVA);
-  const kwNum = toNumber(measuredKW);
+  const voltageNum = toNumber(voltage);
+  const currentNum = toNumber(current);
+  const pfNum = toNumber(powerFactor);
 
-  if (kvaNum === undefined || kwNum === undefined || kvaNum === 0) {
+  if (
+    voltageNum === undefined ||
+    currentNum === undefined ||
+    pfNum === undefined
+  ) {
     return "";
   }
 
-  return String(Number((kwNum / kvaNum).toFixed(4)));
+  if (numberOfPhase === "three_phase") {
+    return String(
+      Number(((1.732 * voltageNum * currentNum * pfNum) / 1000).toFixed(2)),
+    );
+  }
+
+  if (numberOfPhase === "single_phase") {
+    return String(
+      Number(((voltageNum * currentNum * pfNum) / 1000).toFixed(2)),
+    );
+  }
+
+  return "";
 };
 
-const calculateLoadFactor = (
-  averageLoading: string,
-  maxLoadObserved: string,
+/** Excel rows 23/24: kVA = measured kW / PF */
+const calculateMeasuredKVAOutput = (
+  measuredKW: string,
+  powerFactor: string,
 ): string => {
-  const avgNum = toNumber(averageLoading);
-  const maxNum = toNumber(maxLoadObserved);
+  const kwNum = toNumber(measuredKW);
+  const pfNum = toNumber(powerFactor);
 
-  if (avgNum === undefined || maxNum === undefined || maxNum === 0) {
+  if (kwNum === undefined || pfNum === undefined || pfNum === 0) {
     return "";
   }
 
-  return String(Number(((avgNum / maxNum) * 100).toFixed(2)));
+  return String(Number((kwNum / pfNum).toFixed(2)));
+};
+
+/** Excel row 31: Load Factor % = Average Loading (kW) / Rated kW × 100 */
+const calculateLoadFactor = (
+  averageLoading: string,
+  ratedActivePowerKW: string,
+): string => {
+  const avgNum = toNumber(averageLoading);
+  const ratedNum = toNumber(ratedActivePowerKW);
+
+  if (avgNum === undefined || ratedNum === undefined || ratedNum === 0) {
+    return "";
+  }
+
+  return String(Number(((avgNum / ratedNum) * 100).toFixed(2)));
 };
 
 const calculateAverageLoading = (
@@ -385,30 +422,32 @@ const calculateDgCostPerKwh = (
   return String(Number((annualCostNum / unitsNum).toFixed(2)));
 };
 
+/** Excel row 47: (Units/year × 10.0377 / Annual fuel) — stored as percent number */
 const calculateCalculatedDgEfficiency = (
-  unitsGeneratedPerHour: string,
-  fuelConsumptionPerHour: string,
+  unitsGeneratedPerYear: string,
+  annualFuelConsumption: string,
 ): string => {
-  const unitsNum = toNumber(unitsGeneratedPerHour);
-  const fuelNum = toNumber(fuelConsumptionPerHour);
+  const unitsNum = toNumber(unitsGeneratedPerYear);
+  const fuelNum = toNumber(annualFuelConsumption);
 
   if (unitsNum === undefined || fuelNum === undefined || fuelNum === 0) {
     return "";
   }
 
-  return String(Number(((unitsNum / (fuelNum * 10)) * 100).toFixed(4)));
+  return String(Number(((unitsNum * 10.0377) / fuelNum).toFixed(2)));
 };
 
+/** Excel row 49: (Calculated − Manufacturer) / Manufacturer × 100 */
 const calculateEfficiencyDeviation = (
-  manufacturerEfficiency: string,
   calculatedEfficiency: string,
+  manufacturerEfficiency: string,
 ): string => {
-  const manufacturerNum = toNumber(manufacturerEfficiency);
   const calculatedNum = toNumber(calculatedEfficiency);
+  const manufacturerNum = toNumber(manufacturerEfficiency);
 
   if (
-    manufacturerNum === undefined ||
     calculatedNum === undefined ||
+    manufacturerNum === undefined ||
     manufacturerNum === 0
   ) {
     return "";
@@ -416,19 +455,31 @@ const calculateEfficiencyDeviation = (
 
   return String(
     Number(
-      (((manufacturerNum - calculatedNum) / manufacturerNum) * 100).toFixed(2),
+      (((calculatedNum - manufacturerNum) / manufacturerNum) * 100).toFixed(2),
     ),
   );
 };
 
 function applyDGAuditDerivedCalculations(
   form: DGAuditFormState,
+  ratedActivePowerKW?: string | number | null,
 ): DGAuditFormState {
   const updated = { ...form };
+  const ratedKW =
+    ratedActivePowerKW === undefined || ratedActivePowerKW === null
+      ? ""
+      : String(ratedActivePowerKW);
 
-  updated.power_factor = calculatePowerFactor(
-    updated.measured_kVA_output,
+  updated.measured_kW_output = calculateMeasuredKWOutput(
+    updated.number_of_phase,
+    updated.measured_voltage_LL,
+    updated.measured_current_avg,
+    updated.power_factor,
+  );
+
+  updated.measured_kVA_output = calculateMeasuredKVAOutput(
     updated.measured_kW_output,
+    updated.power_factor,
   );
 
   updated.average_loading_percent = calculateAverageLoading(
@@ -438,7 +489,7 @@ function applyDGAuditDerivedCalculations(
 
   updated.load_factor_percent = calculateLoadFactor(
     updated.average_loading_percent,
-    updated.max_load_observed_kW,
+    ratedKW,
   );
 
   updated.units_generated_per_hour_kWh = calculateUnitsGeneratedPerHour(
@@ -472,10 +523,11 @@ function applyDGAuditDerivedCalculations(
     updated.time_duration_of_the_test_hours,
   );
 
-  updated.specific_fuel_consumption_l_per_kWh_during_test = calculateTestSpecificFuelConsumption(
-    updated.fuel_consumption_during_test_lph,
-    updated.units_generated_during_test_kWh,
-  );
+  updated.specific_fuel_consumption_l_per_kWh_during_test =
+    calculateTestSpecificFuelConsumption(
+      updated.fuel_consumption_during_test_lph,
+      updated.units_generated_during_test_kWh,
+    );
 
   updated.sfc_deviation_percent_during_test = calculateSfcDeviationPercent(
     updated.specific_fuel_consumption_l_per_kWh_during_test,
@@ -493,13 +545,13 @@ function applyDGAuditDerivedCalculations(
   );
 
   updated.calculated_efficiency_percent = calculateCalculatedDgEfficiency(
-    updated.units_generated_per_hour_kWh,
-    updated.fuel_consumption_per_hour_liters,
+    updated.units_generated_per_year_kWh,
+    updated.annual_fuel_consumption_liters,
   );
 
   updated.efficiency_deviation_percent = calculateEfficiencyDeviation(
-    updated.manufacturer_efficiency_percent,
     updated.calculated_efficiency_percent,
+    updated.manufacturer_efficiency_percent,
   );
 
   return updated;
@@ -677,9 +729,14 @@ export function DGAuditRecordSection({
     utility_account_id: utilityAccountId,
     dg_set_id: dgSetId,
   });
+  const { data: dgSetResponse } = useGetDGSetByIdQuery(dgSetId, {
+    skip: !dgSetId,
+  });
   const { data: billingResponse } = useGetUtilityBillingRecordsQuery({
     utility_account_id: utilityAccountId,
   });
+
+  const ratedActivePowerKW = dgSetResponse?.data?.rated_active_power_kW;
 
   const gridCostSummary = useMemo(() => {
     return calculateGridCostPerKVAHForOneYear(billingResponse?.data || []);
@@ -727,11 +784,22 @@ export function DGAuditRecordSection({
       if (initialEditing && !auditStepLocked) {
         next.isEditing = true;
       }
-      setForm(next);
+      setForm(applyDGAuditDerivedCalculations(next, ratedActivePowerKW));
     } else {
-      setForm(createEmptyForm());
+      setForm(
+        applyDGAuditDerivedCalculations(createEmptyForm(), ratedActivePowerKW),
+      );
     }
+    // ratedActivePowerKW intentionally omitted — recalculated in a separate effect
+    // so a late DG-set fetch does not wipe in-progress edits.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [latestRecord, initialEditing, auditStepLocked]);
+
+  useEffect(() => {
+    setForm((prev) =>
+      applyDGAuditDerivedCalculations(prev, ratedActivePowerKW),
+    );
+  }, [ratedActivePowerKW]);
 
   useEffect(() => {
     setForm((prev) => ({
@@ -750,7 +818,7 @@ export function DGAuditRecordSection({
   const updateForm = (key: keyof DGAuditFormState, value: string | boolean) => {
     setForm((prev) => {
       const updated = { ...prev, [key]: value } as DGAuditFormState;
-      return applyDGAuditDerivedCalculations(updated);
+      return applyDGAuditDerivedCalculations(updated, ratedActivePowerKW);
     });
   };
 
@@ -758,14 +826,13 @@ export function DGAuditRecordSection({
     const rowPrefill: Partial<
       Record<keyof DGAuditExcelFormState, string | boolean>
     > = {
+      number_of_phase: form.number_of_phase,
       measured_voltage_LL: form.measured_voltage_LL,
       measured_current_avg: form.measured_current_avg,
-      measured_kW_output: form.measured_kW_output,
-      measured_kVA_output: form.measured_kVA_output,
+      power_factor: form.power_factor,
       frequency_Hz: form.frequency_Hz,
       max_load_observed_kW: form.max_load_observed_kW,
       min_load_observed_kW: form.min_load_observed_kW,
-      average_loading_percent: form.average_loading_percent,
       idle_running_observed: form.idle_running_observed,
       parallel_operation: form.parallel_operation,
       annual_fuel_consumption_liters: form.annual_fuel_consumption_liters,
@@ -820,7 +887,7 @@ export function DGAuditRecordSection({
           if (v === undefined) continue;
           mutable[k] = v;
         }
-        return applyDGAuditDerivedCalculations(next);
+        return applyDGAuditDerivedCalculations(next, ratedActivePowerKW);
       });
       toast.success("Form filled from Excel.");
     } catch (err) {
@@ -837,9 +904,16 @@ export function DGAuditRecordSection({
 
   const handleCancel = () => {
     if (latestRecord) {
-      setForm(recordToForm(latestRecord));
+      setForm(
+        applyDGAuditDerivedCalculations(
+          recordToForm(latestRecord),
+          ratedActivePowerKW,
+        ),
+      );
     } else {
-      setForm(createEmptyForm());
+      setForm(
+        applyDGAuditDerivedCalculations(createEmptyForm(), ratedActivePowerKW),
+      );
     }
   };
 
@@ -1160,44 +1234,6 @@ export function DGAuditRecordSection({
 
                   <div className="space-y-2">
                     <Label className="flex items-center">
-                      Measured kW Output
-                      <FieldInfo
-                        title="Measured kW Output"
-                        message={`Fill measured value of kW output.\n\nThree Phase formula: (1.732 × V × I × PF) ÷ 1000 — should be within ±5% of measured value.\n\nSingle Phase formula: (V × I × PF) ÷ 1000 — should be within ±5% of measured value.`}
-                      />
-                    </Label>
-                    <Input
-                      type="number"
-                      value={form.measured_kW_output}
-                      onChange={(e) =>
-                        updateForm("measured_kW_output", e.target.value)
-                      }
-                      disabled={!form.isEditing}
-                      className={getInputClass(!form.isEditing)}
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label className="flex items-center">
-                      Measured kVA Output
-                      <FieldInfo
-                        title="Measured kVA Output"
-                        message={`Fill measured value of kVA output.\n\nThree Phase: should be within ±5% of measured kVA value.\n\nSingle Phase: should be within ±5% of measured kVA value.`}
-                      />
-                    </Label>
-                    <Input
-                      type="number"
-                      value={form.measured_kVA_output}
-                      onChange={(e) =>
-                        updateForm("measured_kVA_output", e.target.value)
-                      }
-                      disabled={!form.isEditing}
-                      className={getInputClass(!form.isEditing)}
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label className="flex items-center">
                       Power Factor
                       <FieldInfo
                         title="Power Factor"
@@ -1208,6 +1244,41 @@ export function DGAuditRecordSection({
                       type="number"
                       step="0.01"
                       value={form.power_factor}
+                      onChange={(e) =>
+                        updateForm("power_factor", e.target.value)
+                      }
+                      disabled={!form.isEditing}
+                      className={getInputClass(!form.isEditing)}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label className="flex items-center">
+                      Measured kW Output
+                      <FieldInfo
+                        title="Measured kW Output"
+                        message={`Auto-calculated from Voltage, Current and Power Factor.\n\nThree Phase: (1.732 × V × I × PF) ÷ 1000\n\nSingle Phase: (V × I × PF) ÷ 1000`}
+                      />
+                    </Label>
+                    <Input
+                      type="number"
+                      value={form.measured_kW_output}
+                      disabled
+                      className={getInputClass(true)}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label className="flex items-center">
+                      Measured kVA Output
+                      <FieldInfo
+                        title="Measured kVA Output"
+                        message="Auto-calculated as Measured kW Output ÷ Power Factor."
+                      />
+                    </Label>
+                    <Input
+                      type="number"
+                      value={form.measured_kVA_output}
                       disabled
                       className={getInputClass(true)}
                     />
@@ -1299,7 +1370,7 @@ export function DGAuditRecordSection({
                       Load Factor (%)
                       <FieldInfo
                         title="Load Factor"
-                        message="Ideally should be between 60% to 85%."
+                        message="Average Loading (kW) ÷ Rated Active Power (kW) × 100. Ideally should be between 60% to 85%."
                       />
                     </Label>
                     <Input
@@ -1740,7 +1811,7 @@ export function DGAuditRecordSection({
                       Calculated Efficiency (%)
                       <FieldInfo
                         title="Calculated DG Efficiency"
-                        message="% (calculate)"
+                        message="(Units Generated Per Year × 10.0377) ÷ Annual Fuel Consumption."
                       />
                     </Label>
                     <Input

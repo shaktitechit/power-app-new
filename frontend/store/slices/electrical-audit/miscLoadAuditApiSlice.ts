@@ -24,6 +24,8 @@ export interface MiscLoadAuditRecord {
   load_factor_percent?: number | string;
   estimated_annual_energy_kWh?: number | string;
 
+  remarks?: string;
+
   audit_date?: string;
   auditor_id?: string;
 
@@ -52,6 +54,8 @@ export interface CreateMiscLoadAuditRequest {
   load_factor_percent?: number | string;
   estimated_annual_energy_kWh?: number | string;
 
+  remarks?: string;
+
   audit_date?: string;
   auditor_id?: string;
 
@@ -75,6 +79,8 @@ export interface UpdateMiscLoadAuditRequest {
   operating_days_per_year?: number | string;
   load_factor_percent?: number | string;
   estimated_annual_energy_kWh?: number | string;
+
+  remarks?: string;
 
   audit_date?: string;
   auditor_id?: string;
@@ -184,6 +190,10 @@ const buildMiscLoadAuditFormData = (
       "estimated_annual_energy_kWh",
       String(data.estimated_annual_energy_kWh)
     );
+  }
+
+  if (data.remarks !== undefined && data.remarks !== null) {
+    formData.append("remarks", data.remarks);
   }
 
   if (data.audit_date !== undefined && data.audit_date !== null) {

@@ -5,53 +5,37 @@ import * as XLSX from "xlsx";
  * Auto-calculated fields may still be imported; the form will recompute derived values after merge.
  */
 export type DGAuditExcelFormState = {
+  number_of_phase: string;
   measured_voltage_LL: string;
   measured_current_avg: string;
-  measured_kW_output: string;
-  measured_kVA_output: string;
   power_factor: string;
   frequency_Hz: string;
 
   max_load_observed_kW: string;
   min_load_observed_kW: string;
-  average_loading_percent: string;
-  load_factor_percent: string;
   idle_running_observed: string;
   parallel_operation: string;
 
   annual_fuel_consumption_liters: string;
   units_generated_per_year_kWh: string;
   total_working_hours_per_year: string;
-  units_generated_per_hour_kWh: string;
-  fuel_consumption_per_hour_liters: string;
 
   fuel_consumption_during_test_lph: string;
   units_generated_during_test_kWh: string;
   time_duration_of_the_test_hours: string;
-  units_generated_per_hour_kWh_during_test: string;
-  fuel_consumption_per_hour_liters_during_test: string;
-  specific_fuel_consumption_l_per_kWh_during_test: string;
 
-  specific_fuel_consumption_l_per_kWh: string;
   manufacturer_sfc_l_per_kWh: string;
-  sfc_deviation_percent: string;
-  sfc_deviation_percent_during_test: string;
 
   fuel_cost_rs_per_liter: string;
-  annual_fuel_cost_rs: string;
-  dg_cost_per_kWh_rs: string;
   grid_cost_per_kWh_rs: string;
 
-  calculated_efficiency_percent: string;
   manufacturer_efficiency_percent: string;
-  efficiency_deviation_percent: string;
 
   exhaust_temperature_C: string;
   cooling_water_temperature_C: string;
   lube_oil_pressure_bar: string;
   lube_oil_consumption_liters_per_year: string;
 
-  total_operating_hours: string;
   hours_since_last_overhaul: string;
 
   air_fuel_filter_condition: string;
@@ -64,15 +48,17 @@ export const DG_AUDIT_EXCEL_FIELDS: {
   key: keyof DGAuditExcelFormState;
   label: string;
 }[] = [
+  {
+    key: "number_of_phase",
+    label: "Number of Phase (single_phase / three_phase)",
+  },
   { key: "measured_voltage_LL", label: "Measured Voltage L-L" },
   { key: "measured_current_avg", label: "Measured Current Avg" },
-  { key: "measured_kW_output", label: "Measured kW Output" },
-  { key: "measured_kVA_output", label: "Measured kVA Output" },
+  { key: "power_factor", label: "Power Factor" },
   { key: "frequency_Hz", label: "Frequency (Hz)" },
 
   { key: "max_load_observed_kW", label: "Max Load Observed (kW)" },
   { key: "min_load_observed_kW", label: "Min Load Observed (kW)" },
-  { key: "average_loading_percent", label: "Average Loading (kW)" },
   {
     key: "idle_running_observed",
     label: "Idle Running Observed (Yes/No)",
@@ -186,6 +172,32 @@ function parseAirFuelFilter(
   return undefined;
 }
 
+function parseNumberOfPhase(
+  raw: string,
+): "" | "single_phase" | "three_phase" | undefined {
+  const t = raw.trim().toLowerCase().replace(/[\s-]+/g, "_");
+  if (!t) return "";
+  if (
+    t === "single_phase" ||
+    t === "single" ||
+    t === "1_phase" ||
+    t === "1φ" ||
+    t === "1_ph"
+  ) {
+    return "single_phase";
+  }
+  if (
+    t === "three_phase" ||
+    t === "three" ||
+    t === "3_phase" ||
+    t === "3φ" ||
+    t === "3_ph"
+  ) {
+    return "three_phase";
+  }
+  return undefined;
+}
+
 export function downloadDGAuditTemplate(
   options?: {
     filename?: string;
@@ -289,6 +301,12 @@ export function parseDGAuditExcel(
           if (key === "air_fuel_filter_condition") {
             const af = parseAirFuelFilter(valueRaw);
             if (af !== undefined) out[key] = af;
+            continue;
+          }
+
+          if (key === "number_of_phase") {
+            const phase = parseNumberOfPhase(valueRaw);
+            if (phase !== undefined) out[key] = phase;
             continue;
           }
 

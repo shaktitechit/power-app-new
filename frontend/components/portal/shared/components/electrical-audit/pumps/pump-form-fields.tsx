@@ -1,8 +1,11 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { Input } from "@/components/portal/ui/input";
 import { Label } from "@/components/portal/ui/label";
 import type { PumpFormState } from "./pump-utils";
+
+type RatedFlowSource = "lph" | "m3hr" | null;
 
 type Props = {
   form: PumpFormState;
@@ -10,8 +13,32 @@ type Props = {
   disabled?: boolean;
 };
 
+function resolveRatedFlowSource(form: PumpFormState): RatedFlowSource {
+  const hasLph = form.rated_flow_liters_per_hour !== "";
+  const hasM3 = form.rated_flow_m3_per_hr !== "";
+  // Prefer m³/hr when both exist — it's the required field and the usual edit source.
+  if (hasM3) return "m3hr";
+  if (hasLph) return "lph";
+  return null;
+}
+
 export function PumpFormFields({ form, onChange, disabled = false }: Props) {
+  const [ratedFlowSource, setRatedFlowSource] = useState<RatedFlowSource>(() =>
+    resolveRatedFlowSource(form),
+  );
+
+  // Reset source when a different pump (or a new blank form) is loaded.
+  useEffect(() => {
+    setRatedFlowSource(resolveRatedFlowSource(form));
+  }, [form.id, form.isNew]);
+
   const updateField = (key: keyof PumpFormState, value: any) => {
+    if (key === "rated_flow_liters_per_hour") {
+      setRatedFlowSource(value === "" ? null : "lph");
+    } else if (key === "rated_flow_m3_per_hr") {
+      setRatedFlowSource(value === "" ? null : "m3hr");
+    }
+
     onChange((prev) => {
       const next = {
         ...prev,
@@ -39,9 +66,6 @@ export function PumpFormFields({ form, onChange, disabled = false }: Props) {
       return next;
     });
   };
-
-  const isLphFilled = !!form.rated_flow_liters_per_hour && form.rated_flow_liters_per_hour !== "";
-  const isM3hrFilled = !!form.rated_flow_m3_per_hr && form.rated_flow_m3_per_hr !== "";
 
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -105,7 +129,7 @@ export function PumpFormFields({ form, onChange, disabled = false }: Props) {
           step="any"
           value={form.rated_flow_liters_per_hour}
           onChange={(e) => updateField("rated_flow_liters_per_hour", e.target.value)}
-          disabled={disabled || isM3hrFilled}
+          disabled={disabled || ratedFlowSource === "m3hr"}
           placeholder="e.g. 25000"
         />
       </div>
@@ -118,7 +142,7 @@ export function PumpFormFields({ form, onChange, disabled = false }: Props) {
           step="any"
           value={form.rated_flow_m3_per_hr}
           onChange={(e) => updateField("rated_flow_m3_per_hr", e.target.value)}
-          disabled={disabled || isLphFilled}
+          disabled={disabled || ratedFlowSource === "lph"}
           placeholder="e.g. 25"
           required
         />

@@ -65,6 +65,7 @@ export function MiscLoadAuditDisplayCard({ record, tabLabel, auditStepLocked = f
           <DisplayField label="Operating Days / Year" value={form.operating_days_per_year} />
           <DisplayField label="Load Factor (%)" value={form.load_factor_percent} />
           <DisplayField label="Est. Annual Energy (kWh)" value={form.estimated_annual_energy_kWh} />
+          <DisplayField label="Remarks" value={form.remarks} />
         </CardContent>
       </Card>
       <Card className="min-w-0 overflow-hidden lg:col-span-1">
