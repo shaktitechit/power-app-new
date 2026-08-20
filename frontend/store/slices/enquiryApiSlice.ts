@@ -117,6 +117,7 @@ export interface CreateEnquiryRequest {
   client_email?: string;
   client_representatives?: Enquiry["client_representatives"];
   assigned_to?: string | null;
+  assigned_admin_to?: string | null;
   enquiry_status?: EnquiryStatus;
   source?: string;
   expected_value?: number;
@@ -136,6 +137,7 @@ export interface UpdateEnquiryRequest {
   client_email?: string;
   client_representatives?: Enquiry["client_representatives"];
   assigned_to?: string | null;
+  assigned_admin_to?: string | null;
   enquiry_status?: EnquiryStatus;
   source?: string;
   expected_value?: number | null;

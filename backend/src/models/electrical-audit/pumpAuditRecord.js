@@ -58,7 +58,7 @@ const pumpAuditRecordSchema = new mongoose.Schema(
       max: 100,
     },
 
-    motor_loading_percent: { type: Number, min: 0, max: 100 },
+    motor_loading_percent: { type: Number, min: 0 },
     specific_energy_consumption_kWh_per_m3: { type: Number, min: 0 },
 
     annual_energy_consumption_kWh: { type: Number, min: 0 },

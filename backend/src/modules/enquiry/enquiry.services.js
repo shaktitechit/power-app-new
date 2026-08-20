@@ -47,11 +47,16 @@ export function parseClientRepresentatives(client_representatives) {
   }
   if (!Array.isArray(parsed)) return [];
   return parsed
-    .map((rep) => ({
-      name: String(rep?.name || "").trim(),
-      contact_number: String(rep?.contact_number || "").trim(),
-      email: String(rep?.email || "").trim(),
-    }))
+    .map((rep) => {
+      const name = String(rep?.name || "").trim();
+      const contact_number = String(rep?.contact_number || "").trim();
+      const email = String(rep?.email || "").trim();
+      return {
+        ...(name ? { name } : {}),
+        ...(contact_number ? { contact_number } : {}),
+        ...(email ? { email } : {}),
+      };
+    })
     .filter((rep) => rep.name || rep.contact_number || rep.email);
 }
 
@@ -146,9 +151,14 @@ export async function createEnquiryService({ user, body, io }) {
   const fallbackClientReps =
     parsedClientReps.length > 0
       ? parsedClientReps
-      : client_representative || client_contact_number || client_email
-        ? [{ name: String(client_representative || "").trim(), contact_number: String(client_contact_number || "").trim(), email: String(client_email || "").trim() }]
-        : [];
+      : parseClientRepresentatives([
+          {
+            name: client_representative,
+            contact_number: client_contact_number,
+            email: client_email,
+          },
+        ]);
+  const primaryRep = fallbackClientReps[0];
 
   const assigned_to = parseOptionalObjectId(assignedRaw);
   if (assignedRaw && assigned_to === undefined) {
@@ -187,9 +197,9 @@ export async function createEnquiryService({ user, body, io }) {
     name: String(name).trim(),
     city: String(city).trim(),
     address: address != null ? String(address).trim() : undefined,
-    client_representative: client_representative != null ? String(client_representative).trim() : undefined,
-    client_contact_number,
-    client_email,
+    client_representative: primaryRep?.name || (client_representative != null ? String(client_representative).trim() : undefined),
+    client_contact_number: primaryRep?.contact_number || client_contact_number,
+    client_email: primaryRep?.email || client_email,
     client_representatives: fallbackClientReps,
     assigned_to: assigned_to || undefined,
     assigned_admin_to: assigned_admin_to || undefined,
@@ -302,7 +312,19 @@ export async function updateEnquiryService({ user, enquiryId, body, io }) {
   if (client_representative !== undefined) enquiry.client_representative = client_representative ? String(client_representative).trim() : "";
   if (client_contact_number !== undefined) enquiry.client_contact_number = client_contact_number;
   if (client_email !== undefined) enquiry.client_email = client_email;
-  if (client_representatives !== undefined) enquiry.client_representatives = parseClientRepresentatives(client_representatives);
+  if (client_representatives !== undefined) {
+    enquiry.client_representatives = parseClientRepresentatives(client_representatives);
+    const primaryRep = enquiry.client_representatives[0];
+    if (client_representative === undefined) {
+      enquiry.client_representative = primaryRep?.name || "";
+    }
+    if (client_contact_number === undefined) {
+      enquiry.client_contact_number = primaryRep?.contact_number;
+    }
+    if (client_email === undefined) {
+      enquiry.client_email = primaryRep?.email;
+    }
+  }
 
   if (assignedRaw !== undefined) {
     if (assignedRaw === null || assignedRaw === "") {

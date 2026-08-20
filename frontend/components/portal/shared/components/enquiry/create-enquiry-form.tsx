@@ -32,6 +32,12 @@ import type {
   EnquiryStatus,
   RequestedAuditType,
 } from "@/store/slices/enquiryApiSlice";
+import {
+  emptyClientRepresentative,
+  EnquiryClientRepresentativesFields,
+  sanitizeEnquiryClientRepresentatives,
+  type EnquiryClientRepresentative,
+} from "./enquiry-client-representatives-fields";
 
 interface CreateEnquiryFormProps {
   open: boolean;
@@ -49,9 +55,9 @@ export function CreateEnquiryForm({
   const [name, setName] = useState("");
   const [city, setCity] = useState("");
   const [address, setAddress] = useState("");
-  const [clientRepresentative, setClientRepresentative] = useState("");
-  const [clientContactNumber, setClientContactNumber] = useState("");
-  const [clientEmail, setClientEmail] = useState("");
+  const [clientRepresentatives, setClientRepresentatives] = useState<
+    EnquiryClientRepresentative[]
+  >([emptyClientRepresentative()]);
   const [assignedTo, setAssignedTo] = useState<string>(UNASSIGNED);
   const [assignedAdminTo, setAssignedAdminTo] = useState<string>(UNASSIGNED);
   const [enquiryStatus, setEnquiryStatus] = useState<EnquiryStatus>("new");
@@ -133,9 +139,7 @@ export function CreateEnquiryForm({
     setName("");
     setCity("");
     setAddress("");
-    setClientRepresentative("");
-    setClientContactNumber("");
-    setClientEmail("");
+    setClientRepresentatives([emptyClientRepresentative()]);
     setAssignedTo(UNASSIGNED);
     setAssignedAdminTo(UNASSIGNED);
     setEnquiryStatus("new");
@@ -168,13 +172,19 @@ export function CreateEnquiryForm({
       return;
     }
 
+    const sanitizedReps = sanitizeEnquiryClientRepresentatives(
+      clientRepresentatives,
+    );
+    const primaryRep = sanitizedReps[0];
+
     const payload = {
       name: name.trim(),
       city: city.trim(),
       address: address.trim() || undefined,
-      client_representative: clientRepresentative.trim() || undefined,
-      client_contact_number: clientContactNumber.trim() || undefined,
-      client_email: clientEmail.trim() || undefined,
+      client_representatives: sanitizedReps,
+      client_representative: primaryRep?.name || undefined,
+      client_contact_number: primaryRep?.contact_number || undefined,
+      client_email: primaryRep?.email || undefined,
       assigned_to:
         assignedTo === UNASSIGNED ? undefined : assignedTo || undefined,
       assigned_admin_to:
@@ -208,7 +218,7 @@ export function CreateEnquiryForm({
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>Create enquiry</DialogTitle>
         </DialogHeader>
@@ -263,35 +273,11 @@ export function CreateEnquiryForm({
             />
           </div>
 
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="enq-cr">Client representative</Label>
-              <Input
-                id="enq-cr"
-                value={clientRepresentative}
-                onChange={(e) => setClientRepresentative(e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="enq-phone">Contact number</Label>
-              <Input
-                id="enq-phone"
-                value={clientContactNumber}
-                onChange={(e) => setClientContactNumber(e.target.value)}
-                placeholder="10-digit mobile"
-              />
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="enq-email">Client email</Label>
-            <Input
-              id="enq-email"
-              type="email"
-              value={clientEmail}
-              onChange={(e) => setClientEmail(e.target.value)}
-            />
-          </div>
+          <EnquiryClientRepresentativesFields
+            idPrefix="enq"
+            value={clientRepresentatives}
+            onChange={setClientRepresentatives}
+          />
 
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">

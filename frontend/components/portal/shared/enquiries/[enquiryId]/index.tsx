@@ -36,6 +36,7 @@ import {
 } from "@/components/portal/ui/alert-dialog";
 import { EnquiryStatusPill } from "@/components/portal/shared/components/enquiry/enquiry-status-pill";
 import { EditEnquiryForm } from "@/components/portal/shared/components/enquiry/edit-enquiry-form";
+import { getEnquiryClientRepresentatives } from "@/components/portal/shared/components/enquiry/enquiry-client-representatives-fields";
 import { canEditEnquiry } from "@/components/portal/lib/enquiryAccess";
 import { toSameOriginFileManagementUrl } from "@/components/portal/lib/fileManagementUrls";
 import {
@@ -298,9 +299,15 @@ export default function EnquiryDetailPage() {
 
   /** Follow-ups and quotations are blocked once the lead is won / lost / dropped. */
   const canActOnFollowUpsAndQuotes = canManage && !leadIsTerminal;
-  const contactTel = telHref(enquiry?.client_contact_number);
-  const contactMail = mailtoHref(enquiry?.client_email);
-  const contactWa = whatsappHref(enquiry?.client_contact_number);
+  const clientReps = getEnquiryClientRepresentatives(enquiry);
+  const contactPhone =
+    clientReps.find((rep) => rep.contact_number)?.contact_number ||
+    enquiry?.client_contact_number;
+  const contactEmail =
+    clientReps.find((rep) => rep.email)?.email || enquiry?.client_email;
+  const contactTel = telHref(contactPhone);
+  const contactMail = mailtoHref(contactEmail);
+  const contactWa = whatsappHref(contactPhone);
 
   const changePipelineStatus = async (next: EnquiryStatus) => {
     if (!enquiryId || !enquiry || next === enquiry.enquiry_status) return;
@@ -790,18 +797,49 @@ export default function EnquiryDetailPage() {
                     <CardTitle className="text-base font-semibold">Client Profile</CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-3.5">
-                    <div>
-                      <p className="text-xs font-medium text-muted-foreground">Client Representative</p>
-                      <p className="text-sm font-medium mt-0.5">{enquiry.client_representative || "—"}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs font-medium text-muted-foreground">Contact Number</p>
-                      <p className="text-sm font-medium mt-0.5">{enquiry.client_contact_number || "—"}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs font-medium text-muted-foreground">Client Email</p>
-                      <p className="text-sm font-medium mt-0.5">{enquiry.client_email || "—"}</p>
-                    </div>
+                    {clientReps.length > 0 ? (
+                      clientReps.map((rep, index) => (
+                        <div
+                          key={`enquiry-rep-${index}`}
+                          className={
+                            index > 0
+                              ? "space-y-3 border-t border-border pt-3.5"
+                              : "space-y-3"
+                          }
+                        >
+                          <div>
+                            <p className="text-xs font-medium text-muted-foreground">
+                              {clientReps.length > 1
+                                ? `Client Representative ${index + 1}`
+                                : "Client Representative"}
+                            </p>
+                            <p className="text-sm font-medium mt-0.5">
+                              {rep.name || "—"}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-xs font-medium text-muted-foreground">
+                              Contact Number
+                            </p>
+                            <p className="text-sm font-medium mt-0.5">
+                              {rep.contact_number || "—"}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-xs font-medium text-muted-foreground">
+                              Client Email
+                            </p>
+                            <p className="text-sm font-medium mt-0.5">
+                              {rep.email || "—"}
+                            </p>
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      <p className="text-sm text-muted-foreground">
+                        No client representative details.
+                      </p>
+                    )}
                     <div>
                       <p className="text-xs font-medium text-muted-foreground">Address</p>
                       <p className="text-sm font-medium mt-0.5">{enquiry.address || "—"}</p>

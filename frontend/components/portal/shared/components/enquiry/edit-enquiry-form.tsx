@@ -33,6 +33,13 @@ import {
   ENQUIRY_STATUS_OPTIONS,
   REQUESTED_AUDIT_TYPE_OPTIONS,
 } from "@/components/portal/lib/enquiryConstants";
+import {
+  emptyClientRepresentative,
+  EnquiryClientRepresentativesFields,
+  hydrateEnquiryClientRepresentatives,
+  sanitizeEnquiryClientRepresentatives,
+  type EnquiryClientRepresentative,
+} from "./enquiry-client-representatives-fields";
 
 interface EditEnquiryFormProps {
   open: boolean;
@@ -52,9 +59,9 @@ export function EditEnquiryForm({
   const [name, setName] = useState("");
   const [city, setCity] = useState("");
   const [address, setAddress] = useState("");
-  const [clientRepresentative, setClientRepresentative] = useState("");
-  const [clientContactNumber, setClientContactNumber] = useState("");
-  const [clientEmail, setClientEmail] = useState("");
+  const [clientRepresentatives, setClientRepresentatives] = useState<
+    EnquiryClientRepresentative[]
+  >([emptyClientRepresentative()]);
   const [assignedTo, setAssignedTo] = useState<string>(UNASSIGNED);
   const [assignedAdminTo, setAssignedAdminTo] = useState<string>(UNASSIGNED);
   const [enquiryStatus, setEnquiryStatus] = useState<EnquiryStatus>("new");
@@ -128,9 +135,7 @@ export function EditEnquiryForm({
     setName(enquiry.name ?? "");
     setCity(enquiry.city ?? "");
     setAddress(enquiry.address ?? "");
-    setClientRepresentative(enquiry.client_representative ?? "");
-    setClientContactNumber(enquiry.client_contact_number ?? "");
-    setClientEmail(enquiry.client_email ?? "");
+    setClientRepresentatives(hydrateEnquiryClientRepresentatives(enquiry));
 
     if (currentUser?.role === "admin" && currentUser?._id) {
       setAssignedAdminTo(currentUser._id);
@@ -226,14 +231,20 @@ export function EditEnquiryForm({
       return;
     }
 
+    const sanitizedReps = sanitizeEnquiryClientRepresentatives(
+      clientRepresentatives,
+    );
+    const primaryRep = sanitizedReps[0];
+
     const payload = {
       id: enquiryId,
       name: name.trim(),
       city: city.trim(),
       address: address.trim() || undefined,
-      client_representative: clientRepresentative.trim() || undefined,
-      client_contact_number: clientContactNumber.trim() || undefined,
-      client_email: clientEmail.trim() || undefined,
+      client_representatives: sanitizedReps,
+      client_representative: primaryRep?.name || "",
+      client_contact_number: primaryRep?.contact_number || undefined,
+      client_email: primaryRep?.email || undefined,
       assigned_to:
         assignedTo === UNASSIGNED ? null : assignedTo || undefined,
       assigned_admin_to:
@@ -273,7 +284,7 @@ export function EditEnquiryForm({
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>Edit enquiry</DialogTitle>
         </DialogHeader>
@@ -335,34 +346,11 @@ export function EditEnquiryForm({
               />
             </div>
 
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="eenq-cr">Client representative</Label>
-                <Input
-                  id="eenq-cr"
-                  value={clientRepresentative}
-                  onChange={(e) => setClientRepresentative(e.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="eenq-phone">Contact number</Label>
-                <Input
-                  id="eenq-phone"
-                  value={clientContactNumber}
-                  onChange={(e) => setClientContactNumber(e.target.value)}
-                />
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="eenq-email">Client email</Label>
-              <Input
-                id="eenq-email"
-                type="email"
-                value={clientEmail}
-                onChange={(e) => setClientEmail(e.target.value)}
-              />
-            </div>
+            <EnquiryClientRepresentativesFields
+              idPrefix="eenq"
+              value={clientRepresentatives}
+              onChange={setClientRepresentatives}
+            />
 
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
