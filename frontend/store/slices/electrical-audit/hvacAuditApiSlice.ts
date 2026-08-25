@@ -255,37 +255,57 @@ const buildHVACAuditFormData = (
     formData.append("utility_account_id", data.utility_account_id);
   }
 
-  formData.append(
-    "pre_audit_information",
-    JSON.stringify(data.pre_audit_information || {})
-  );
+  if ("pre_audit_information" in data && data.pre_audit_information !== undefined) {
+    formData.append(
+      "pre_audit_information",
+      JSON.stringify(data.pre_audit_information),
+    );
+  }
 
-  formData.append(
-    "documents_records_to_collect",
-    JSON.stringify(mergeChecklist(data.documents_records_to_collect))
-  );
+  if (
+    "documents_records_to_collect" in data &&
+    data.documents_records_to_collect !== undefined
+  ) {
+    formData.append(
+      "documents_records_to_collect",
+      JSON.stringify(mergeChecklist(data.documents_records_to_collect)),
+    );
+  }
 
-  formData.append(
-    "hvac_equipment_register",
-    JSON.stringify(data.hvac_equipment_register || [])
-  );
+  if (
+    "hvac_equipment_register" in data &&
+    data.hvac_equipment_register !== undefined
+  ) {
+    formData.append(
+      "hvac_equipment_register",
+      JSON.stringify(data.hvac_equipment_register),
+    );
+  }
 
-  formData.append(
-    "chiller_field_test",
-    JSON.stringify(data.chiller_field_test || {})
-  );
+  if ("chiller_field_test" in data && data.chiller_field_test !== undefined) {
+    formData.append(
+      "chiller_field_test",
+      JSON.stringify(data.chiller_field_test),
+    );
+  }
 
-  formData.append(
-    "auxiliary_power",
-    JSON.stringify(data.auxiliary_power || {})
-  );
+  if ("auxiliary_power" in data && data.auxiliary_power !== undefined) {
+    formData.append("auxiliary_power", JSON.stringify(data.auxiliary_power));
+  }
 
-  formData.append(
-    "cooling_tower_quick_test",
-    JSON.stringify(data.cooling_tower_quick_test || {})
-  );
+  if (
+    "cooling_tower_quick_test" in data &&
+    data.cooling_tower_quick_test !== undefined
+  ) {
+    formData.append(
+      "cooling_tower_quick_test",
+      JSON.stringify(data.cooling_tower_quick_test),
+    );
+  }
 
-  formData.append("summary", JSON.stringify(data.summary || {}));
+  if ("summary" in data && data.summary !== undefined) {
+    formData.append("summary", JSON.stringify(data.summary));
+  }
 
   if (data.audit_date !== undefined && data.audit_date !== null) {
     formData.append("audit_date", data.audit_date);
