@@ -28,6 +28,8 @@ import {
 } from "@/components/portal/lib/authRoles";
 import { toastHandler } from "@/components/portal/lib/toast";
 import { useAuditRecordCompletenessToggle } from "@/components/portal/shared/components/electrical-audit/utility-audit/use-audit-record-completeness-toggle";
+import { AuditDocumentDeleteDialog } from "@/components/portal/shared/components/electrical-audit/utility-audit/audit-document-delete-dialog";
+import { useAuditDocumentDelete } from "@/components/portal/shared/components/electrical-audit/utility-audit/use-audit-document-delete";
 import { toSameOriginFileManagementUrl } from "@/components/portal/lib/fileManagementUrls";
 import { useAppSelector } from "@/store/hooks";
 import {
@@ -193,6 +195,18 @@ export function DGSetAuditPanel({
 
   const saving = isDeleting || isUpdating || isUploadingDocs;
 
+  const {
+    target: documentDeleteTarget,
+    deleting: isDeletingDocument,
+    requestDelete: requestDeleteDocument,
+    confirmDelete: confirmDeleteDocument,
+    close: closeDeleteDocument,
+  } = useAuditDocumentDelete({
+    getDocuments: (recordId) => latestRecord?.documents,
+    persist: (recordId, remaining) =>
+      updateDGAuditRecord({ id: recordId, existing_documents: remaining }).unwrap(),
+  });
+
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2 text-sm font-medium text-foreground">
@@ -240,6 +254,9 @@ export function DGSetAuditPanel({
           togglingCompleteness={completenessTargetId === latestRecord._id}
           onUploadDocuments={handleOpenUploadModal}
           onPreviewDocument={handleOpenPreview}
+                onDeleteDocument={(doc, recordId, index) =>
+            requestDeleteDocument(recordId, index, doc.fileName)
+          }
         />
       )}
 
@@ -441,6 +458,16 @@ export function DGSetAuditPanel({
           ) : null}
         </DialogContent>
       </Dialog>
+
+      <AuditDocumentDeleteDialog
+        open={Boolean(documentDeleteTarget)}
+        fileName={documentDeleteTarget?.fileName}
+        deleting={isDeletingDocument}
+        onOpenChange={(open) => {
+          if (!open) closeDeleteDocument();
+        }}
+        onConfirm={() => void confirmDeleteDocument()}
+      />
     </div>
   );
 }

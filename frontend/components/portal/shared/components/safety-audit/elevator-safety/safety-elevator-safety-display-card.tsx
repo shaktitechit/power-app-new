@@ -2,7 +2,8 @@
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/portal/ui/card";
 import { Button } from "@/components/portal/ui/button";
-import { FileText, ImageIcon, Pencil, Trash2, Upload } from "lucide-react";
+import { Pencil, Trash2, Upload } from "lucide-react";
+import { AuditDocumentRows } from "@/components/portal/shared/components/electrical-audit/utility-audit/audit-document-row";
 import { AuditRecordCompletenessToggle } from "@/components/portal/shared/components/electrical-audit/utility-audit/audit-record-completeness-toggle";
 import type { SafetyAuditAttachment, SafetyAuditRecord } from "@/store/slices/safety-audit/safetyAuditTypes";
 
@@ -19,6 +20,7 @@ interface SafetyElevatorSafetyDisplayCardProps {
   togglingCompleteness?: boolean;
   onUploadDocuments: () => void;
   onPreviewDocument: (doc: SafetyAuditAttachment, index: number) => void;
+  onDeleteDocument?: (doc: SafetyAuditAttachment, index: number) => void;
 }
 
 export function SafetyElevatorSafetyDisplayCard({
@@ -34,6 +36,7 @@ export function SafetyElevatorSafetyDisplayCard({
   togglingCompleteness = false,
   onUploadDocuments,
   onPreviewDocument,
+  onDeleteDocument,
 }: SafetyElevatorSafetyDisplayCardProps) {
   const elevatorName =
     typeof record.elevator_name === "string" && record.elevator_name.trim()
@@ -150,42 +153,17 @@ export function SafetyElevatorSafetyDisplayCard({
 
           {canViewDocuments ? (
             record.documents && record.documents.length > 0 ? (
-              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                {record.documents.map((doc, idx) => (
-                  <div
-                    key={idx}
-                    className="flex items-start gap-3 rounded-lg border p-2 bg-background"
-                  >
-                    {doc.fileType === "image" ? (
-                      <ImageIcon className="h-4 w-4 shrink-0 text-primary mt-1" />
-                    ) : (
-                      <FileText className="h-4 w-4 shrink-0 text-destructive mt-1" />
-                    )}
-                    <div className="flex-1 min-w-0">
-                      <button
-                        type="button"
-                        onClick={() => onPreviewDocument(doc, idx)}
-                        className="block max-w-full truncate text-left text-sm font-medium text-primary hover:underline"
-                      >
-                        {doc.fileName || `Attachment ${idx + 1}`}
-                      </button>
-                      {doc.caption ? (
-                        <p
-                          className="truncate text-xs text-muted-foreground"
-                          title={doc.caption}
-                        >
-                          {doc.caption}
-                        </p>
-                      ) : null}
-                      {doc.uploadedAt ? (
-                        <p className="text-[10px] text-muted-foreground mt-0.5">
-                          {new Date(doc.uploadedAt).toLocaleDateString()}
-                        </p>
-                      ) : null}
-                    </div>
-                  </div>
-                ))}
-              </div>
+              <AuditDocumentRows
+                documents={record.documents ?? []}
+                className="sm:grid-cols-2 lg:grid-cols-3"
+                fallbackLabel="Attachment"
+                onPreview={(doc, idx) => onPreviewDocument(doc, idx)}
+                onDelete={
+                  !auditStepLocked && !record.is_completed && onDeleteDocument
+                    ? (doc, idx) => onDeleteDocument(doc, idx)
+                    : undefined
+                }
+              />
             ) : (
               <p className="text-xs text-muted-foreground">No documents uploaded.</p>
             )

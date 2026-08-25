@@ -27,6 +27,8 @@ import {
   useUpdateSafetyPanelRoomAuditMutation,
 } from "@/store/slices/safety-audit/safetyPanelRoomAuditApiSlice";
 import { toastHandler } from "@/components/portal/lib/toast";
+import { AuditDocumentDeleteDialog } from "@/components/portal/shared/components/electrical-audit/utility-audit/audit-document-delete-dialog";
+import { useAuditDocumentDelete } from "@/components/portal/shared/components/electrical-audit/utility-audit/use-audit-document-delete";
 import { toSameOriginFileManagementUrl } from "@/components/portal/lib/fileManagementUrls";
 import { useAppSelector } from "@/store/hooks";
 import {
@@ -467,6 +469,18 @@ export function SafetyPanelRoomSection({
 
   const saving = isCreating || isUpdating || isDeleting;
 
+  const {
+    target: documentDeleteTarget,
+    deleting: isDeletingDocument,
+    requestDelete: requestDeleteDocument,
+    confirmDelete: confirmDeleteDocument,
+    close: closeDeleteDocument,
+  } = useAuditDocumentDelete({
+    getDocuments: (recordId) => records.find((r) => r._id === recordId)?.documents,
+    persist: (recordId, remaining) =>
+      updateRec({ id: recordId, existing_documents: remaining } as never).unwrap(),
+  });
+
   if (isLoading) {
     return (
       <div className="text-sm text-muted-foreground">
@@ -528,6 +542,9 @@ export function SafetyPanelRoomSection({
               togglingCompleteness={completenessTargetId === activeRecord._id}
               onUploadDocuments={() => handleOpenUploadModal(activeRecord._id)}
               onPreviewDocument={handleOpenPreview}
+              onDeleteDocument={(doc, index) =>
+                requestDeleteDocument(activeRecord._id, index, doc.fileName)
+              }
             />
           ) : null}
         </div>
@@ -744,6 +761,16 @@ export function SafetyPanelRoomSection({
           ) : null}
         </DialogContent>
       </Dialog>
+
+      <AuditDocumentDeleteDialog
+        open={Boolean(documentDeleteTarget)}
+        fileName={documentDeleteTarget?.fileName}
+        deleting={isDeletingDocument}
+        onOpenChange={(open) => {
+          if (!open) closeDeleteDocument();
+        }}
+        onConfirm={() => void confirmDeleteDocument()}
+      />
     </div>
   );
 }

@@ -24,6 +24,8 @@ import {
   useUpdateSafetyUpsAuditMutation,
 } from "@/store/slices/safety-audit/safetyUpsAuditApiSlice";
 import { toastHandler } from "@/components/portal/lib/toast";
+import { AuditDocumentDeleteDialog } from "@/components/portal/shared/components/electrical-audit/utility-audit/audit-document-delete-dialog";
+import { useAuditDocumentDelete } from "@/components/portal/shared/components/electrical-audit/utility-audit/use-audit-document-delete";
 import { toast } from "sonner";
 import { useAppSelector } from "@/store/hooks";
 import {
@@ -546,6 +548,18 @@ export function SafetyUpsBatterySection({
   };
 
   const saving = isCreating || isUpdating || isDeleting;
+  const {
+    target: documentDeleteTarget,
+    deleting: isDeletingDocument,
+    requestDelete: requestDeleteDocument,
+    confirmDelete: confirmDeleteDocument,
+    close: closeDeleteDocument,
+  } = useAuditDocumentDelete({
+    getDocuments: (recordId) =>
+      forms.find((f) => f.id === recordId)?.existingDocuments,
+    persist: (recordId, remaining) =>
+      updateRec({ id: recordId, existing_documents: remaining } as never).unwrap(),
+  });
   const listLoading =
     idReady && (isLoading || (isFetching && !data && !isError));
 
@@ -939,6 +953,26 @@ export function SafetyUpsBatterySection({
                               {doc.fileName || `Document ${docIndex + 1}`}
                             </a>
                           </div>
+                          {form.id &&
+                          !auditStepLocked &&
+                          !audits.find((a) => String(a._id) === form.id)
+                            ?.is_completed ? (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                requestDeleteDocument(
+                                  form.id as string,
+                                  docIndex,
+                                  doc.fileName,
+                                )
+                              }
+                              aria-label={`Delete ${doc.fileName || `Document ${docIndex + 1}`}`}
+                              title="Delete document"
+                              className="shrink-0 rounded-md p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          ) : null}
                         </div>
                       ))}
                     </div>
@@ -1008,6 +1042,16 @@ export function SafetyUpsBatterySection({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <AuditDocumentDeleteDialog
+        open={Boolean(documentDeleteTarget)}
+        fileName={documentDeleteTarget?.fileName}
+        deleting={isDeletingDocument}
+        onOpenChange={(open) => {
+          if (!open) closeDeleteDocument();
+        }}
+        onConfirm={() => void confirmDeleteDocument()}
+      />
     </div>
   );
 }

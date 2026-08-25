@@ -31,6 +31,8 @@ import {
 import { cnHideUtilityAuditEdits } from "@/components/portal/lib/electrical-audit/utility-audit-edits-visibility";
 import { UTILITY_AUDIT_STEP_IDS } from "@/components/portal/lib/electrical-audit/utility-audit-steps";
 import { toastHandler } from "@/components/portal/lib/toast";
+import { AuditDocumentDeleteDialog } from "@/components/portal/shared/components/electrical-audit/utility-audit/audit-document-delete-dialog";
+import { useAuditDocumentDelete } from "@/components/portal/shared/components/electrical-audit/utility-audit/use-audit-document-delete";
 import { toSameOriginFileManagementUrl } from "@/components/portal/lib/fileManagementUrls";
 import { AuditSectionSkeleton } from "@/components/portal/shared/components/electrical-audit/utility-audit/audit-skeleton";
 import { useAppSelector } from "@/store/hooks";
@@ -311,6 +313,18 @@ export function TransformerSection({
     return <AuditSectionSkeleton />;
   }
 
+  const {
+    target: documentDeleteTarget,
+    deleting: isDeletingDocument,
+    requestDelete: requestDeleteDocument,
+    confirmDelete: confirmDeleteDocument,
+    close: closeDeleteDocument,
+  } = useAuditDocumentDelete({
+    getDocuments: (recordId) => transformers.find((r) => r._id === recordId)?.documents,
+    persist: (recordId, remaining) =>
+      updateTransformer({ id: recordId, existing_documents: remaining }).unwrap(),
+  });
+
   return (
     <div className="relative space-y-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -363,6 +377,9 @@ export function TransformerSection({
               onDelete={() => handleDelete(activeTransformer)}
               onUploadDocuments={() => handleOpenUploadModal(activeTransformer._id)}
               onPreviewDocument={handleOpenPreview}
+                onDeleteDocument={(doc, recordId, index) =>
+                requestDeleteDocument(recordId, index, doc.fileName)
+              }
             />
           ) : null}
         </div>
@@ -580,6 +597,16 @@ export function TransformerSection({
           ) : null}
         </DialogContent>
       </Dialog>
+
+      <AuditDocumentDeleteDialog
+        open={Boolean(documentDeleteTarget)}
+        fileName={documentDeleteTarget?.fileName}
+        deleting={isDeletingDocument}
+        onOpenChange={(open) => {
+          if (!open) closeDeleteDocument();
+        }}
+        onConfirm={() => void confirmDeleteDocument()}
+      />
     </div>
   );
 }

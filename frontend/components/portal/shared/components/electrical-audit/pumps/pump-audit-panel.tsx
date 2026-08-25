@@ -30,6 +30,8 @@ import {
 import { cnHideUtilityAuditEdits } from "@/components/portal/lib/electrical-audit/utility-audit-edits-visibility";
 import { toastHandler } from "@/components/portal/lib/toast";
 import { useAuditRecordCompletenessToggle } from "@/components/portal/shared/components/electrical-audit/utility-audit/use-audit-record-completeness-toggle";
+import { AuditDocumentDeleteDialog } from "@/components/portal/shared/components/electrical-audit/utility-audit/audit-document-delete-dialog";
+import { useAuditDocumentDelete } from "@/components/portal/shared/components/electrical-audit/utility-audit/use-audit-document-delete";
 import { useAppSelector } from "@/store/hooks";
 import { toSameOriginFileManagementUrl } from "@/components/portal/lib/fileManagementUrls";
 import type { Pump } from "@/store/slices/electrical-audit/pumpApiSlice";
@@ -185,6 +187,21 @@ export function PumpAuditPanel({
 
   const saving = isDeleting || isUpdating || isUploadingDocs;
 
+  const {
+    target: documentDeleteTarget,
+    deleting: isDeletingDocument,
+    requestDelete: requestDeleteDocument,
+    confirmDelete: confirmDeleteDocument,
+    close: closeDeleteDocument,
+  } = useAuditDocumentDelete({
+    getDocuments: () => latestRecord?.documents,
+    persist: (recordId, remaining) =>
+      updatePumpAuditRecord({
+        id: recordId,
+        existing_documents: remaining,
+      }).unwrap(),
+  });
+
   return (
     <Card className="border-dashed bg-muted/10">
       <CardHeader className="flex flex-row items-center gap-2 py-3">
@@ -208,6 +225,9 @@ export function PumpAuditPanel({
             togglingCompleteness={completenessTargetId === latestRecord._id}
             onUploadDocuments={() => setUploadModalOpen(true)}
             onPreviewDocument={handleOpenPreview}
+            onDeleteDocument={(doc, recordId, index) =>
+              requestDeleteDocument(recordId, index, doc.fileName)
+            }
           />
         ) : (
           <div className="flex flex-col items-center justify-center rounded-lg border border-dashed py-8 text-center">
@@ -431,6 +451,15 @@ export function PumpAuditPanel({
           ) : null}
         </DialogContent>
       </Dialog>
+      <AuditDocumentDeleteDialog
+        open={Boolean(documentDeleteTarget)}
+        fileName={documentDeleteTarget?.fileName}
+        deleting={isDeletingDocument}
+        onOpenChange={(open) => {
+          if (!open) closeDeleteDocument();
+        }}
+        onConfirm={() => void confirmDeleteDocument()}
+      />
     </Card>
   );
 }

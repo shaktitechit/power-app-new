@@ -712,6 +712,21 @@ export const updateFacilityService = async ({ user, facilityId, body, files, io 
     }
   }
 
+  if (body.existing_documents !== undefined) {
+    try {
+      const parsedDocs =
+        typeof body.existing_documents === "string"
+          ? JSON.parse(body.existing_documents)
+          : body.existing_documents;
+      if (Array.isArray(parsedDocs)) {
+        facility.documents = parsedDocs;
+        updatedFields.push("documents");
+      }
+    } catch (e) {
+      console.error("Failed to parse existing_documents:", e);
+    }
+  }
+
   if (uploadedDocuments.length > 0) {
     facility.documents = [...(facility.documents || []), ...uploadedDocuments];
     updatedFields.push("documents");

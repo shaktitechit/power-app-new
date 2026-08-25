@@ -8,7 +8,8 @@ import type {
   DGAuditRecord,
   DGAuditRecordDocument,
 } from "@/store/slices/electrical-audit/dgAuditRecordApiSlice";
-import { FileText, ImageIcon, Pencil, Trash2, Upload } from "lucide-react";
+import { FileText, Pencil, Trash2, Upload } from "lucide-react";
+import { AuditDocumentRows } from "@/components/portal/shared/components/electrical-audit/utility-audit/audit-document-row";
 import {
   formatDisplayValue,
   formatFilterCondition,
@@ -50,6 +51,11 @@ type Props = {
     recordId: string,
     index: number,
   ) => void;
+  onDeleteDocument?: (
+    doc: DGAuditRecordDocument,
+    recordId: string,
+    index: number,
+  ) => void;
 };
 
 export function DGAuditDisplayCard({
@@ -65,6 +71,7 @@ export function DGAuditDisplayCard({
   togglingCompleteness = false,
   onUploadDocuments,
   onPreviewDocument,
+  onDeleteDocument,
 }: Props) {
   const recordEditsLocked = isUtilityAuditRecordEditsLocked(
     auditStepLocked,
@@ -199,41 +206,15 @@ export function DGAuditDisplayCard({
               <p className="text-xs text-muted-foreground">No documents yet.</p>
             </div>
           ) : (
-            <div className="grid min-w-0 gap-2">
-              {(record.documents ?? []).map((doc, docIdx) => (
-                <div
-                  key={docIdx}
-                  className="flex min-w-0 items-start gap-2 rounded-lg border p-2"
-                >
-                  <div className="flex min-w-0 flex-1 items-center gap-3">
-                    {doc.fileType === "image" ? (
-                      <ImageIcon className="h-4 w-4 shrink-0 text-primary" />
-                    ) : (
-                      <FileText className="h-4 w-4 shrink-0 text-destructive" />
-                    )}
-                    <div className="flex min-w-0 flex-1 flex-col">
-                      <button
-                        type="button"
-                        onClick={() =>
-                          onPreviewDocument(doc, record._id, docIdx)
-                        }
-                        className="block max-w-full truncate text-left text-sm font-medium text-primary hover:underline"
-                      >
-                        {doc.fileName || `Document ${docIdx + 1}`}
-                      </button>
-                      {doc.caption ? (
-                        <p
-                          className="truncate text-xs text-muted-foreground"
-                          title={doc.caption}
-                        >
-                          {doc.caption}
-                        </p>
-                      ) : null}
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
+            <AuditDocumentRows
+                documents={record.documents ?? []}
+                onPreview={(doc, docIdx) => onPreviewDocument(doc, record._id, docIdx)}
+                onDelete={
+                  !recordEditsLocked && onDeleteDocument
+                    ? (doc, docIdx) => onDeleteDocument(doc, record._id, docIdx)
+                    : undefined
+                }
+              />
           )}
         </CardContent>
       </Card>

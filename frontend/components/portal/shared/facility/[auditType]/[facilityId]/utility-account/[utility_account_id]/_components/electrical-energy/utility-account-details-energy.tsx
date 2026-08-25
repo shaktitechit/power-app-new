@@ -8,7 +8,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/portal/ui/dialog";
-import { Activity, FileText, ImageIcon, Plug, Save, Upload, X, Zap } from "lucide-react";
+import { Activity, ImageIcon, Plug, Save, Upload, X, Zap } from "lucide-react";
+import { AuditDocumentRows } from "@/components/portal/shared/components/electrical-audit/utility-audit/audit-document-row";
+import { AuditDocumentDeleteDialog } from "@/components/portal/shared/components/electrical-audit/utility-audit/audit-document-delete-dialog";
+import { useAuditDocumentDelete } from "@/components/portal/shared/components/electrical-audit/utility-audit/use-audit-document-delete";
 import type { UtilityAccount } from "@/store/slices/electrical-audit/utilityApiSlice";
 import {
   useUpdateUtilityAccountMutation,
@@ -132,6 +135,27 @@ export function UtilityAccountDetailsEnergy({
       console.error("Failed to save caption:", err);
     }
   };
+
+  const {
+    target: documentDeleteTarget,
+    deleting: isDeletingDocument,
+    requestDelete: requestDeleteDocument,
+    confirmDelete: confirmDeleteDocument,
+    close: closeDeleteDocument,
+  } = useAuditDocumentDelete({
+    getDocuments: () => utilityAccount.documents,
+    persist: async (_recordId, remaining) => {
+      await updateUtilityAccount({
+        id: utilityAccount._id,
+        existing_documents: remaining,
+      }).unwrap();
+      setPreviewDoc(null);
+      setPreviewDocIndex(null);
+      setEditCaptionValue("");
+    },
+  });
+
+  const canDeleteDocuments = canUpdateUtilityAccount && !auditStepLocked;
 
   return (
     <div className="space-y-4 sm:space-y-6">
@@ -357,46 +381,21 @@ export function UtilityAccountDetailsEnergy({
               Only super admin, admin, and manager can view uploaded documents.
             </p>
           ) : utilityAccount.documents?.length > 0 ? (
-            <div className="grid min-w-0 gap-2 sm:grid-cols-2 lg:grid-cols-3">
-              {utilityAccount.documents.map(
-                (doc: UtilityDocument, index: number) => (
-                  <div
-                    key={index}
-                    className="flex min-w-0 items-start gap-2 rounded-lg border p-2"
-                  >
-                    <div className="flex min-w-0 flex-1 items-center gap-3">
-                      {doc.fileType === "image" ? (
-                        <ImageIcon className="h-4 w-4 shrink-0 text-primary" />
-                      ) : (
-                        <FileText className="h-4 w-4 shrink-0 text-destructive" />
-                      )}
-                      <div className="flex min-w-0 flex-1 flex-col">
-                        <button
-                          type="button"
-                          onClick={() => handleOpenPreview(doc, index)}
-                          className="block max-w-full truncate text-left text-sm font-medium text-primary hover:underline"
-                        >
-                          {doc.fileName || `Document ${index + 1}`}
-                        </button>
-                        {doc.caption ? (
-                          <p
-                            className="truncate text-xs text-muted-foreground"
-                            title={doc.caption}
-                          >
-                            {doc.caption}
-                          </p>
-                        ) : null}
-                        {doc.uploadedAt ? (
-                          <p className="text-[11px] text-muted-foreground">
-                            {new Date(doc.uploadedAt).toLocaleDateString()}
-                          </p>
-                        ) : null}
-                      </div>
-                    </div>
-                  </div>
-                ),
-              )}
-            </div>
+            <AuditDocumentRows
+              documents={utilityAccount.documents}
+              className="sm:grid-cols-2 lg:grid-cols-3"
+              onPreview={handleOpenPreview}
+              onDelete={
+                canDeleteDocuments
+                  ? (doc, index) =>
+                      requestDeleteDocument(
+                        utilityAccount._id,
+                        index,
+                        doc.fileName,
+                      )
+                  : undefined
+              }
+            />
           ) : (
             <p className="text-sm text-muted-foreground">No documents uploaded.</p>
           )}
@@ -574,6 +573,16 @@ export function UtilityAccountDetailsEnergy({
           ) : null}
         </DialogContent>
       </Dialog>
+
+      <AuditDocumentDeleteDialog
+        open={Boolean(documentDeleteTarget)}
+        fileName={documentDeleteTarget?.fileName}
+        deleting={isDeletingDocument}
+        onOpenChange={(open) => {
+          if (!open) closeDeleteDocument();
+        }}
+        onConfirm={() => void confirmDeleteDocument()}
+      />
     </div>
   );
 }

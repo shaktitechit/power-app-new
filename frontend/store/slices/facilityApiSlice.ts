@@ -134,6 +134,7 @@ export interface UpdateFacilityRequest {
   auditor_ids?: string[];
   documents?: File[];
   captions?: string[];
+  existing_documents?: FacilityDocument[];
   removed_document_ids?: string[];
   budget?: {
     no_of_persons?: number | null;
@@ -252,6 +253,13 @@ const buildFacilityFormData = (
 
   if (data.captions !== undefined) {
     formData.append("captions", JSON.stringify(data.captions));
+  }
+
+  if ("existing_documents" in data && data.existing_documents !== undefined) {
+    formData.append(
+      "existing_documents",
+      JSON.stringify(data.existing_documents),
+    );
   }
 
   if ("removed_document_ids" in data && Array.isArray(data.removed_document_ids)) {

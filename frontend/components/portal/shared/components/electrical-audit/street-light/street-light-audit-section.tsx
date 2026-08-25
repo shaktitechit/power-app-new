@@ -45,6 +45,8 @@ import { toastHandler } from "@/components/portal/lib/toast";
 import { toSameOriginFileManagementUrl } from "@/components/portal/lib/fileManagementUrls";
 import { AuditSectionSkeleton } from "@/components/portal/shared/components/electrical-audit/utility-audit/audit-skeleton";
 import { useAuditRecordCompletenessToggle } from "@/components/portal/shared/components/electrical-audit/utility-audit/use-audit-record-completeness-toggle";
+import { AuditDocumentDeleteDialog } from "@/components/portal/shared/components/electrical-audit/utility-audit/audit-document-delete-dialog";
+import { useAuditDocumentDelete } from "@/components/portal/shared/components/electrical-audit/utility-audit/use-audit-document-delete";
 import { AuditRecordsEmptyState } from "@/components/portal/shared/components/electrical-audit/utility-audit/audit-records-empty-state";
 import { useAppSelector } from "@/store/hooks";
 import {
@@ -355,6 +357,18 @@ export function StreetLightAuditSection({
     setPreviewDoc((prev) => (prev ? { ...prev, caption: editCaptionValue.trim() } : null));
   };
 
+  const {
+    target: documentDeleteTarget,
+    deleting: isDeletingDocument,
+    requestDelete: requestDeleteDocument,
+    confirmDelete: confirmDeleteDocument,
+    close: closeDeleteDocument,
+  } = useAuditDocumentDelete({
+    getDocuments: (recordId) => streetLightAudits.find((r) => r._id === recordId)?.documents,
+    persist: (recordId, remaining) =>
+      updateStreetLightAudit({ id: recordId, existing_documents: remaining }).unwrap(),
+  });
+
   if (isLoading) {
     return <AuditSectionSkeleton />;
   }
@@ -445,6 +459,9 @@ export function StreetLightAuditSection({
               togglingCompleteness={completenessTargetId === activeRecord._id}
               onUploadDocuments={() => handleUploadDocsClick(activeRecord._id)}
               onPreviewDocument={handlePreviewDocument}
+                onDeleteDocument={(doc, recordId, index) =>
+                requestDeleteDocument(recordId, index, doc.fileName)
+              }
             />
           ) : null}
         </div>
@@ -541,6 +558,16 @@ export function StreetLightAuditSection({
           ) : null}
         </DialogContent>
       </Dialog>
+
+      <AuditDocumentDeleteDialog
+        open={Boolean(documentDeleteTarget)}
+        fileName={documentDeleteTarget?.fileName}
+        deleting={isDeletingDocument}
+        onOpenChange={(open) => {
+          if (!open) closeDeleteDocument();
+        }}
+        onConfirm={() => void confirmDeleteDocument()}
+      />
     </div>
   );
 }

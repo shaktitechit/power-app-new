@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Download, Eye, FileIcon, FileText, ImageIcon, Plus } from "lucide-react";
+import { Download, Eye, FileIcon, FileText, ImageIcon, Plus, Trash2 } from "lucide-react";
 import { toSameOriginFileManagementUrl } from "@/components/portal/lib/fileManagementUrls";
 import { Button } from "@/components/portal/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/portal/ui/card";
@@ -11,7 +11,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/portal/ui/dialog";
-import type { Facility, FacilityDocument } from "@/store/slices/facilityApiSlice";
+import { AuditDocumentDeleteDialog } from "@/components/portal/shared/components/electrical-audit/utility-audit/audit-document-delete-dialog";
+import { useAuditDocumentDelete } from "@/components/portal/shared/components/electrical-audit/utility-audit/use-audit-document-delete";
+import {
+  type Facility,
+  type FacilityDocument,
+  useUpdateFacilityMutation,
+} from "@/store/slices/facilityApiSlice";
 
 interface ImagesDocumentsTabProps {
   facility: Facility;
@@ -30,6 +36,25 @@ export function ImagesDocumentsTab({
   const selectedDocUrl = selectedDoc
     ? toSameOriginFileManagementUrl(selectedDoc.fileUrl)
     : "";
+  const canDeleteDocuments = canUpdateFacility && !facilityAuditClosed;
+
+  const [updateFacility] = useUpdateFacilityMutation();
+  const {
+    target: documentDeleteTarget,
+    deleting: isDeletingDocument,
+    requestDelete: requestDeleteDocument,
+    confirmDelete: confirmDeleteDocument,
+    close: closeDeleteDocument,
+  } = useAuditDocumentDelete({
+    getDocuments: () => facility.documents,
+    persist: async (_recordId, remaining) => {
+      await updateFacility({
+        id: facility._id,
+        existing_documents: remaining,
+      }).unwrap();
+      setSelectedDoc(null);
+    },
+  });
 
   return (
     <>
@@ -78,6 +103,23 @@ export function ImagesDocumentsTab({
                             <p className="text-xs text-muted-foreground">PDF Document</p>
                           </div>
                         )}
+                        {canDeleteDocuments ? (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              requestDeleteDocument(
+                                facility._id,
+                                index,
+                                doc.fileName,
+                              )
+                            }
+                            aria-label={`Delete ${doc.fileName || `File ${index + 1}`}`}
+                            title="Delete document"
+                            className="absolute right-2 top-2 rounded-md bg-background/90 p-1.5 text-muted-foreground shadow-sm hover:bg-destructive/10 hover:text-destructive"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        ) : null}
                       </div>
 
                       <div className="space-y-2 p-2">
@@ -169,6 +211,16 @@ export function ImagesDocumentsTab({
           </div>
         </DialogContent>
       </Dialog>
+
+      <AuditDocumentDeleteDialog
+        open={Boolean(documentDeleteTarget)}
+        fileName={documentDeleteTarget?.fileName}
+        deleting={isDeletingDocument}
+        onOpenChange={(open) => {
+          if (!open) closeDeleteDocument();
+        }}
+        onConfirm={() => void confirmDeleteDocument()}
+      />
     </>
   );
 }

@@ -55,6 +55,8 @@ import { UTILITY_AUDIT_STEP_IDS } from "@/components/portal/lib/electrical-audit
 import { cnHideUtilityAuditEdits, isUtilityAuditRecordEditsLocked, isUtilityAuditSheetEditsLocked } from "@/components/portal/lib/electrical-audit/utility-audit-edits-visibility";
 import { AuditSectionSkeleton } from "@/components/portal/shared/components/electrical-audit/utility-audit/audit-skeleton";
 import { useAuditRecordCompletenessToggle } from "@/components/portal/shared/components/electrical-audit/utility-audit/use-audit-record-completeness-toggle";
+import { AuditDocumentDeleteDialog } from "@/components/portal/shared/components/electrical-audit/utility-audit/audit-document-delete-dialog";
+import { useAuditDocumentDelete } from "@/components/portal/shared/components/electrical-audit/utility-audit/use-audit-document-delete";
 import { UtilityTariffDisplayCard } from "./utility-tariff-display-card";
 import { UtilityTariffDeletedRestorePanel } from "./utility-tariff-deleted-restore-panel";
 import { UtilityTariffFormModal } from "./utility-tariff-form-modal";
@@ -441,6 +443,18 @@ export function UtilityTariffSection({
     }
   };
 
+  const {
+    target: documentDeleteTarget,
+    deleting: isDeletingDocument,
+    requestDelete: requestDeleteDocument,
+    confirmDelete: confirmDeleteDocument,
+    close: closeDeleteDocument,
+  } = useAuditDocumentDelete({
+    getDocuments: (recordId) => latestTariff?.documents,
+    persist: (recordId, remaining) =>
+      updateUtilityTariff({ id: recordId, existing_documents: remaining }).unwrap(),
+  });
+
   if (isLoading) {
     return <AuditSectionSkeleton />;
   }
@@ -544,6 +558,9 @@ export function UtilityTariffSection({
           togglingCompleteness={completenessTargetId === latestTariff._id}
           onUploadDocuments={handleOpenUploadModal}
           onPreviewDocument={handleOpenPreview}
+                onDeleteDocument={(doc, index) =>
+            requestDeleteDocument(latestTariff._id, index, doc.fileName)
+          }
         />
       )}
 
@@ -778,6 +795,16 @@ export function UtilityTariffSection({
           ) : null}
         </DialogContent>
       </Dialog>
+
+      <AuditDocumentDeleteDialog
+        open={Boolean(documentDeleteTarget)}
+        fileName={documentDeleteTarget?.fileName}
+        deleting={isDeletingDocument}
+        onOpenChange={(open) => {
+          if (!open) closeDeleteDocument();
+        }}
+        onConfirm={() => void confirmDeleteDocument()}
+      />
     </div>
   );
 }

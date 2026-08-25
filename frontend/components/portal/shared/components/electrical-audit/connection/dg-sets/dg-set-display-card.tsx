@@ -7,7 +7,8 @@ import type {
   DGSet,
   DGSetDocument,
 } from "@/store/slices/electrical-audit/dgSetApiSlice";
-import { FileText, ImageIcon, Pencil, Trash2, Upload, Zap } from "lucide-react";
+import { FileText, Pencil, Trash2, Upload, Zap } from "lucide-react";
+import { AuditDocumentRows } from "@/components/portal/shared/components/electrical-audit/utility-audit/audit-document-row";
 import {
   dgSetToForm,
   formatDisplayValue,
@@ -51,6 +52,11 @@ type Props = {
     dgSetId: string,
     index: number,
   ) => void;
+  onDeleteDocument?: (
+    doc: DGSetDocument,
+    recordId: string,
+    index: number,
+  ) => void;
 };
 
 export function DGSetDisplayCard({
@@ -66,6 +72,7 @@ export function DGSetDisplayCard({
   onDelete,
   onUploadDocuments,
   onPreviewDocument,
+  onDeleteDocument,
 }: Props) {
   const form = dgSetToForm(dgSet);
 
@@ -174,41 +181,15 @@ export function DGSetDisplayCard({
                 <p className="text-xs text-muted-foreground">No documents yet.</p>
               </div>
             ) : (
-              <div className="grid min-w-0 gap-2">
-                {(dgSet.documents ?? []).map((doc, docIdx) => (
-                  <div
-                    key={docIdx}
-                    className="flex min-w-0 items-start gap-2 rounded-lg border p-2"
-                  >
-                    <div className="flex min-w-0 flex-1 items-center gap-3">
-                      {doc.fileType === "image" ? (
-                        <ImageIcon className="h-4 w-4 shrink-0 text-primary" />
-                      ) : (
-                        <FileText className="h-4 w-4 shrink-0 text-destructive" />
-                      )}
-                      <div className="flex min-w-0 flex-1 flex-col">
-                        <button
-                          type="button"
-                          onClick={() =>
-                            onPreviewDocument(doc, dgSet._id, docIdx)
-                          }
-                          className="block max-w-full truncate text-left text-sm font-medium text-primary hover:underline"
-                        >
-                          {doc.fileName || `Document ${docIdx + 1}`}
-                        </button>
-                        {doc.caption ? (
-                          <p
-                            className="truncate text-xs text-muted-foreground"
-                            title={doc.caption}
-                          >
-                            {doc.caption}
-                          </p>
-                        ) : null}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
+              <AuditDocumentRows
+                documents={dgSet.documents ?? []}
+                onPreview={(doc, docIdx) => onPreviewDocument(doc, dgSet._id, docIdx)}
+                onDelete={
+                  !auditStepLocked && onDeleteDocument
+                    ? (doc, docIdx) => onDeleteDocument(doc, dgSet._id, docIdx)
+                    : undefined
+                }
+              />
             )}
           </CardContent>
         </Card>

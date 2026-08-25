@@ -7,7 +7,8 @@ import type {
   Transformer,
   TransformerDocument,
 } from "@/store/slices/electrical-audit/transformerApiSlice";
-import { FileText, ImageIcon, Pencil, Trash2, Upload, Cpu } from "lucide-react";
+import { FileText, Pencil, Trash2, Upload, Cpu } from "lucide-react";
+import { AuditDocumentRows } from "@/components/portal/shared/components/electrical-audit/utility-audit/audit-document-row";
 import {
   transformerToForm,
   formatDisplayValue,
@@ -50,6 +51,11 @@ type Props = {
     transformerId: string,
     index: number,
   ) => void;
+  onDeleteDocument?: (
+    doc: TransformerDocument,
+    recordId: string,
+    index: number,
+  ) => void;
 };
 
 export function TransformerDisplayCard({
@@ -65,6 +71,7 @@ export function TransformerDisplayCard({
   onDelete,
   onUploadDocuments,
   onPreviewDocument,
+  onDeleteDocument,
 }: Props) {
   const form = transformerToForm(transformer);
 
@@ -160,41 +167,15 @@ export function TransformerDisplayCard({
                 <p className="text-xs text-muted-foreground">No documents yet.</p>
               </div>
             ) : (
-              <div className="grid min-w-0 gap-2">
-                {(transformer.documents ?? []).map((doc, docIdx) => (
-                  <div
-                    key={docIdx}
-                    className="flex min-w-0 items-start gap-2 rounded-lg border p-2"
-                  >
-                    <div className="flex min-w-0 flex-1 items-center gap-3">
-                      {doc.fileType === "image" ? (
-                        <ImageIcon className="h-4 w-4 shrink-0 text-primary" />
-                      ) : (
-                        <FileText className="h-4 w-4 shrink-0 text-destructive" />
-                      )}
-                      <div className="flex min-w-0 flex-1 flex-col">
-                        <button
-                          type="button"
-                          onClick={() =>
-                            onPreviewDocument(doc, transformer._id, docIdx)
-                          }
-                          className="block max-w-full truncate text-left text-sm font-medium text-primary hover:underline"
-                        >
-                          {doc.fileName || `Document ${docIdx + 1}`}
-                        </button>
-                        {doc.caption ? (
-                          <p
-                            className="truncate text-xs text-muted-foreground"
-                            title={doc.caption}
-                          >
-                            {doc.caption}
-                          </p>
-                        ) : null}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
+              <AuditDocumentRows
+                documents={transformer.documents ?? []}
+                onPreview={(doc, docIdx) => onPreviewDocument(doc, transformer._id, docIdx)}
+                onDelete={
+                  !auditStepLocked && onDeleteDocument
+                    ? (doc, docIdx) => onDeleteDocument(doc, transformer._id, docIdx)
+                    : undefined
+                }
+              />
             )}
           </CardContent>
         </Card>
