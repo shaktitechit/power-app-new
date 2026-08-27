@@ -337,12 +337,6 @@ export function SolarPlantSection({
     }
   };
 
-  const saving = isCreating || isUpdating || isDeleting || isUploadingDocs;
-
-  if (isLoading || isGenLoading || isBillingLoading) {
-    return <AuditSectionSkeleton />;
-  }
-
   const {
     target: documentDeleteTarget,
     deleting: isDeletingDocument,
@@ -354,6 +348,12 @@ export function SolarPlantSection({
     persist: (recordId, remaining) =>
       updateSolarPlant({ id: recordId, existing_documents: remaining }).unwrap(),
   });
+
+  const saving = isCreating || isUpdating || isDeleting || isUploadingDocs;
+
+  if (isLoading || isGenLoading || isBillingLoading) {
+    return <AuditSectionSkeleton />;
+  }
 
   return (
     <div className="relative space-y-4">

@@ -298,12 +298,6 @@ export function PumpSection({
     }
   };
 
-  const saving = isCreating || isUpdating || isDeleting || isUploadingDocs;
-
-  if (isLoading || isAuditLoading) {
-    return <AuditSectionSkeleton />;
-  }
-
   const {
     target: documentDeleteTarget,
     deleting: isDeletingDocument,
@@ -315,6 +309,12 @@ export function PumpSection({
     persist: (recordId, remaining) =>
       updatePump({ id: recordId, existing_documents: remaining }).unwrap(),
   });
+
+  const saving = isCreating || isUpdating || isDeleting || isUploadingDocs;
+
+  if (isLoading || isAuditLoading) {
+    return <AuditSectionSkeleton />;
+  }
 
   return (
     <div className="relative space-y-4">

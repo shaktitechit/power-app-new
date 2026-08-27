@@ -307,12 +307,6 @@ export function DGSetSection({
     }
   };
 
-  const saving = isCreating || isUpdating || isDeleting || isUploadingDocs;
-
-  if (isLoading || isAuditLoading) {
-    return <AuditSectionSkeleton />;
-  }
-
   const {
     target: documentDeleteTarget,
     deleting: isDeletingDocument,
@@ -324,6 +318,12 @@ export function DGSetSection({
     persist: (recordId, remaining) =>
       updateDGSet({ id: recordId, existing_documents: remaining }).unwrap(),
   });
+
+  const saving = isCreating || isUpdating || isDeleting || isUploadingDocs;
+
+  if (isLoading || isAuditLoading) {
+    return <AuditSectionSkeleton />;
+  }
 
   return (
     <div className="relative space-y-4">
