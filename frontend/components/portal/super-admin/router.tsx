@@ -5,7 +5,13 @@ import Analytics from "@/components/portal/shared/analytics";
 import Audits from "@/components/portal/shared/audit-lab";
 import Dashboard from "@/components/portal/shared/dashboard";
 import Enquiries from "@/components/portal/shared/enquiries";
+import EnquiryAnalytics from "@/components/portal/shared/enquiries/analytics";
+import EnquiryFollowUps from "@/components/portal/shared/enquiries/follow-ups";
 import EnquiryDetails from "@/components/portal/shared/enquiries/[enquiryId]";
+import Quotations from "@/components/portal/shared/quotations";
+import QuotationDetails from "@/components/portal/shared/quotations/[quotationId]";
+import TermsConditions from "@/components/portal/shared/terms-conditions";
+import TermsConditionsDetails from "@/components/portal/shared/terms-conditions/[termsConditionsId]";
 import Facilities from "@/components/portal/shared/facilities";
 import FacilityAuditType from "@/components/portal/shared/facility/[auditType]";
 import FacilityDetails from "@/components/portal/shared/facility/[auditType]/[facilityId]";
@@ -18,6 +24,7 @@ import Settings from "@/components/portal/shared/settings";
 import SubmittedEnquiries from "@/components/portal/shared/submited-enquiries";
 import Users from "@/components/portal/shared/users";
 import UserDetails from "@/components/portal/shared/users/[user_id]";
+import Company from "@/components/portal/shared/company";
 
 /**
  * Resolves URL path segments to the correct page component for the Super Admin portal.
@@ -28,13 +35,26 @@ export function render(segments: string[]) {
   if (segments[0] === "analytics") return <Analytics />;
   if (segments[0] === "audits") return <Audits />;
   if (segments[0] === "settings") return <Settings />;
+  if (segments[0] === "company") return <Company />;
   if (segments[0] === "submited-enquiries") return <SubmittedEnquiries />;
   if (segments[0] === "facilities") return <Facilities />;
   if (segments[0] === "reports") return <Reports />;
 
   if (segments[0] === "enquiries") {
     if (segments.length === 1) return <Enquiries />;
+    if (segments[1] === "analytics") return <EnquiryAnalytics />;
+    if (segments[1] === "follow-ups") return <EnquiryFollowUps />;
     if (segments.length === 2) return <EnquiryDetails />;
+  }
+
+  if (segments[0] === "quotations") {
+    if (segments.length === 1) return <Quotations />;
+    if (segments.length === 2) return <QuotationDetails />;
+  }
+
+  if (segments[0] === "terms-conditions") {
+    if (segments.length === 1) return <TermsConditions />;
+    if (segments.length === 2) return <TermsConditionsDetails />;
   }
 
   if (segments[0] === "users") {

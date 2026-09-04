@@ -33,4 +33,8 @@ export const RESOURCES = {
   DASHBOARD: "dashboard",
   ANALYTICS: "analytics",
   FILE: "file",
+  COMPANY: "company",
+  QUOTATION: "quotation",
+  EXPRESSION_OF_INTEREST: "expression_of_interest",
+  TERMS_CONDITIONS: "terms_conditions",
 };

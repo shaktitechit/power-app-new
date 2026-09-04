@@ -162,6 +162,13 @@ const facilitySchema = new mongoose.Schema(
         default: null,
       },
     },
+
+    /** Quoted / expected value for this facility's audit scope. */
+    expected_value: {
+      type: Number,
+      min: 0,
+      default: null,
+    },
   },
   {
     timestamps: {

@@ -4,6 +4,8 @@ import { notFound } from "next/navigation";
 import Analytics from "@/components/portal/shared/analytics";
 import Dashboard from "@/components/portal/shared/dashboard";
 import Enquiries from "@/components/portal/shared/enquiries";
+import EnquiryAnalytics from "@/components/portal/shared/enquiries/analytics";
+import EnquiryFollowUps from "@/components/portal/shared/enquiries/follow-ups";
 import EnquiryDetails from "@/components/portal/shared/enquiries/[enquiryId]";
 import Facilities from "@/components/portal/shared/facilities";
 import FacilityAuditType from "@/components/portal/shared/facility/[auditType]";
@@ -24,6 +26,8 @@ export function render(segments: string[]) {
 
   if (segments[0] === "enquiries") {
     if (segments.length === 1) return <Enquiries />;
+    if (segments[1] === "analytics") return <EnquiryAnalytics />;
+    if (segments[1] === "follow-ups") return <EnquiryFollowUps />;
     if (segments.length === 2) return <EnquiryDetails />;
   }
 

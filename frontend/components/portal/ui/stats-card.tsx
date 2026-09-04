@@ -23,21 +23,21 @@ export function StatsCard({
   className,
 }: StatsCardProps) {
   return (
-    <Card className={cn("border-border bg-card", className)}>
-      <CardContent className="flex min-w-0 items-center gap-3 p-3 sm:gap-4 sm:p-4 lg:p-6">
-        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 sm:h-10 sm:w-10 lg:h-12 lg:w-12">
-          <Icon className="h-4 w-4 text-primary sm:h-5 sm:w-5 lg:h-6 lg:w-6" />
+    <Card className={cn("gap-0 border-border bg-card py-0", className)}>
+      <CardContent className="flex min-w-0 items-center gap-3 p-3 sm:gap-3 sm:p-3.5">
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 sm:h-10 sm:w-10">
+          <Icon className="h-4 w-4 text-primary sm:h-5 sm:w-5" />
         </div>
         <div className="min-w-0 flex-1">
-          <div className="min-w-0 space-y-1 sm:space-y-2">
+          <div className="min-w-0 space-y-0.5">
             <p className="truncate text-xs font-medium text-muted-foreground sm:text-sm">
               {title}
             </p>
-            <p className="break-words text-xl font-bold text-card-foreground sm:text-2xl lg:text-3xl">
+            <p className="break-words text-xl font-bold leading-tight text-card-foreground sm:text-2xl">
               {value}
             </p>
             {description && (
-              <p className="truncate text-xs text-muted-foreground sm:text-sm">
+              <p className="truncate text-xs text-muted-foreground">
                 {description}
               </p>
             )}

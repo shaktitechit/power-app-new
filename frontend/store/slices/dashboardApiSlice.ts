@@ -142,6 +142,7 @@ export interface DashboardRecentFacilityItem {
     city?: string;
     facility_type?: string;
     audit_type?: string;
+    audit_number?: string;
     status?: string;
     audit_closure?: {
       closed_at?: string;

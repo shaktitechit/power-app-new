@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, useRef } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import { useParams } from "@/components/portal/hooks/useParams";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import Link from "next/link";
@@ -19,13 +19,6 @@ import {
   DialogTitle,
 } from "@/components/portal/ui/dialog";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/portal/ui/select";
-import {
   AlertDialog,
   AlertDialogCancel,
   AlertDialogContent,
@@ -35,34 +28,68 @@ import {
   AlertDialogTitle,
 } from "@/components/portal/ui/alert-dialog";
 import { EnquiryStatusPill } from "@/components/portal/shared/components/enquiry/enquiry-status-pill";
+import { EnquiryPipelineStepper } from "@/components/portal/shared/components/enquiry/enquiry-pipeline-stepper";
+import { EnquiryAssignDialog } from "@/components/portal/shared/components/enquiry/enquiry-assign-dialog";
 import { EditEnquiryForm } from "@/components/portal/shared/components/enquiry/edit-enquiry-form";
+import { CreateQuotationForm } from "@/components/portal/shared/components/quotation/create-quotation-form";
+import { QuotationStatusPill } from "@/components/portal/shared/components/quotation/quotation-status-pill";
+import { QuotationPdfListActions } from "@/components/portal/shared/components/quotation/quotation-pdf-preview";
+import { CreateEoiForm } from "@/components/portal/shared/components/eoi/create-eoi-form";
+import { EoiStatusPill } from "@/components/portal/shared/components/eoi/eoi-status-pill";
+import { EoiListActions } from "@/components/portal/shared/components/eoi/eoi-list-actions";
 import { getEnquiryClientRepresentatives } from "@/components/portal/shared/components/enquiry/enquiry-client-representatives-fields";
-import { canEditEnquiry } from "@/components/portal/lib/enquiryAccess";
+import {
+  FollowUpModeBadge,
+  FollowUpModePicker,
+  FollowUpOutcomePicker,
+  FollowUpOutcomePill,
+} from "@/components/portal/shared/components/enquiry/follow-up-fields";
+import { canAssignEnquiryRoles, canEditEnquiry } from "@/components/portal/lib/enquiryAccess";
 import { toSameOriginFileManagementUrl } from "@/components/portal/lib/fileManagementUrls";
 import {
-  ENQUIRY_STATUS_OPTIONS,
-  FOLLOW_UP_MODE_OPTIONS,
-  FOLLOW_UP_OUTCOME_OPTIONS,
+  TERMINAL_ENQUIRY_STATUSES,
+  datetimeLocalToIso,
 } from "@/components/portal/lib/enquiryConstants";
+import { eoiRecipientLabel } from "@/components/portal/lib/eoiConstants";
+import {
+  formatDisplayDate,
+  formatInr as formatQuotationInr,
+  enquiryRequestedAuditsFromQuotation,
+  latestAcceptedQuotation,
+  quotationCustomerName,
+} from "@/components/portal/lib/quotationConstants";
 import { toastHandler } from "@/components/portal/lib/toast";
 import {
   type FollowUp,
   type EnquiryDocument,
-  type EnquiryStatus,
+  type EnquiryDocumentKind,
   useGetEnquiryByIdQuery,
   useGetFollowUpsQuery,
   useGetEnquiryDocumentsQuery,
   useCreateFollowUpMutation,
-  useUpdateFollowUpMutation,
-  useDeleteFollowUpMutation,
   useCreateEnquiryDocumentMutation,
   useDeleteEnquiryDocumentMutation,
   useUpdateEnquiryDocumentMutation,
   useUpdateEnquiryMutation,
   useDeleteEnquiryMutation,
 } from "@/store/slices/enquiryApiSlice";
+import {
+  type Quotation,
+  useGetQuotationsQuery,
+} from "@/store/slices/quotationApiSlice";
+import {
+  type ExpressionOfInterest,
+  useGetEoisQuery,
+} from "@/store/slices/eoiApiSlice";
 import { useAppSelector } from "@/store/hooks";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/portal/ui/tabs";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/portal/ui/select";
 import {
   ArrowLeft,
   Mail,
@@ -80,6 +107,9 @@ import {
   Download,
   Info,
   Image as ImageIcon,
+  UserPlus,
+  CheckCircle2,
+  FileSpreadsheet,
 } from "lucide-react";
 
 
@@ -110,19 +140,32 @@ function formatInr(n: number) {
   }).format(n);
 }
 
-function getTodayDateInput(): string {
-  const d = new Date();
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-}
-
-const TERMINAL_ENQUIRY_STATUSES = new Set([
-  "won",
-  "lost",
-  "dropped",
-]);
+const DOC_KIND_META: Record<
+  EnquiryDocumentKind,
+  { title: string; saveLabel: string; tab: string; success: string; loading: string }
+> = {
+  eoi: {
+    title: "Send EOI",
+    saveLabel: "Send EOI",
+    tab: "eoi",
+    success: "EOI sent.",
+    loading: "Sending EOI…",
+  },
+  quotation: {
+    title: "Create quotation",
+    saveLabel: "Create quotation",
+    tab: "quotations",
+    success: "Quotation created.",
+    loading: "Creating quotation…",
+  },
+  other: {
+    title: "Add document",
+    saveLabel: "Save",
+    tab: "documents",
+    success: "Document added.",
+    loading: "Adding document…",
+  },
+};
 
 
 
@@ -146,26 +189,15 @@ function whatsappHref(phone?: string | null) {
   return `https://wa.me/${wa}`;
 }
 
-/** Earliest `next_followup_date` across follow-ups for the enquiry snapshot. */
+/** Earliest `next_followup_date` across existing follow-ups plus the new one. */
 function earliestEnquiryNextFollowDate(
   rows: FollowUp[],
-  mode:
-    | { type: "create"; newRowNext?: string | null }
-    | { type: "update"; followUpId: string; nextIso: string | null },
+  newRowNext?: string | null,
 ): string | null {
   const instants: number[] = [];
-  for (const r of rows) {
-    let raw: string | null | undefined = r.next_followup_date;
-    if (mode.type === "update" && r._id === mode.followUpId) {
-      raw = mode.nextIso !== null ? mode.nextIso : undefined;
-    }
-    if (raw) {
-      const t = new Date(raw).getTime();
-      if (!Number.isNaN(t)) instants.push(t);
-    }
-  }
-  if (mode.type === "create" && mode.newRowNext) {
-    const t = new Date(mode.newRowNext).getTime();
+  for (const raw of [...rows.map((r) => r.next_followup_date), newRowNext]) {
+    if (!raw) continue;
+    const t = new Date(raw).getTime();
     if (!Number.isNaN(t)) instants.push(t);
   }
   if (instants.length === 0) return null;
@@ -194,14 +226,13 @@ export default function EnquiryDetailPage() {
   const userId = user?._id?.toString();
 
   const [fuOpen, setFuOpen] = useState(false);
-  const [fuEditing, setFuEditing] = useState<FollowUp | null>(null);
-  const [fuDate, setFuDate] = useState("");
   const [fuMode, setFuMode] = useState<string>("");
-  const [fuRemarks, setFuRemarks] = useState("");
   const [fuOutcome, setFuOutcome] = useState<string>("");
+  const [fuRemarks, setFuRemarks] = useState("");
   const [fuNext, setFuNext] = useState("");
 
   const [qOpen, setQOpen] = useState(false);
+  const [qDocKind, setQDocKind] = useState<EnquiryDocumentKind>("other");
   const [qDocUrl, setQDocUrl] = useState("");
   const [deleteDoc, setDeleteDoc] = useState<EnquiryDocument | null>(null);
   const [qFile, setQFile] = useState<File | null>(null);
@@ -209,8 +240,15 @@ export default function EnquiryDetailPage() {
   const [dragActive, setDragActive] = useState(false);
   const [qCaption, setQCaption] = useState("");
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [createQuotationOpen, setCreateQuotationOpen] = useState(false);
+  const [createEoiOpen, setCreateEoiOpen] = useState(false);
+  const [editingEoi, setEditingEoi] = useState<ExpressionOfInterest | null>(
+    null,
+  );
+  const [assignOpen, setAssignOpen] = useState(false);
   const [closeLeadOpen, setCloseLeadOpen] = useState(false);
   const [submitConfirmOpen, setSubmitConfirmOpen] = useState(false);
+  const [wonQuotationId, setWonQuotationId] = useState("");
   const [editOpen, setEditOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [previewDoc, setPreviewDoc] = useState<EnquiryDocument["document"] | null>(null);
@@ -259,9 +297,15 @@ export default function EnquiryDetailPage() {
     { skip: !enquiryId },
   );
 
+  const { data: quotationsRes, isLoading: quotationsLoading } =
+    useGetQuotationsQuery({ enquiryId }, { skip: !enquiryId });
+
+  const { data: eoisRes, isLoading: eoisLoading } = useGetEoisQuery(
+    { enquiryId },
+    { skip: !enquiryId },
+  );
+
   const [createFu, { isLoading: creatingFu }] = useCreateFollowUpMutation();
-  const [updateFu, { isLoading: updatingFu }] = useUpdateFollowUpMutation();
-  const [deleteFu, { isLoading: deletingFu }] = useDeleteFollowUpMutation();
 
   const [createQ, { isLoading: creatingQ }] = useCreateEnquiryDocumentMutation();
   const [updateQ, { isLoading: updatingQ }] =
@@ -275,9 +319,23 @@ export default function EnquiryDetailPage() {
   const enquiry = enquiryRes?.data;
   const followUps = fuRes?.data ?? [];
   const enquiryDocuments = qRes?.data ?? [];
+  const quotations = quotationsRes?.data ?? [];
+  const acceptedQuotations = useMemo(
+    () => quotations.filter((row) => row.status === "ACCEPTED"),
+    [quotations],
+  );
+  const selectedWonQuotation = useMemo(
+    () => acceptedQuotations.find((row) => row._id === wonQuotationId) ?? null,
+    [acceptedQuotations, wonQuotationId],
+  );
+  const eois = eoisRes?.data ?? [];
+  const otherDocuments = enquiryDocuments.filter(
+    (d) => !d.document_kind || d.document_kind === "other",
+  );
 
   const canManage =
     user?.role === "super_admin" || (enquiry && canEditEnquiry(userId, enquiry));
+  const canAssignRoles = canAssignEnquiryRoles(user?.role);
 
   const canDeleteEnquiry = user?.role === "super_admin";
 
@@ -299,6 +357,12 @@ export default function EnquiryDetailPage() {
 
   /** Follow-ups and quotations are blocked once the lead is won / lost / dropped. */
   const canActOnFollowUpsAndQuotes = canManage && !leadIsTerminal;
+  /** Auditors may view EOIs, quotations, and documents but not create or change them. */
+  const canManagePipelineArtifacts =
+    canActOnFollowUpsAndQuotes && user?.role !== "auditor";
+  const canCreateQuotation = canManagePipelineArtifacts;
+  const canCreateEoi = canManagePipelineArtifacts;
+  const canManageDocuments = canManagePipelineArtifacts;
   const clientReps = getEnquiryClientRepresentatives(enquiry);
   const contactPhone =
     clientReps.find((rep) => rep.contact_number)?.contact_number ||
@@ -309,35 +373,60 @@ export default function EnquiryDetailPage() {
   const contactMail = mailtoHref(contactEmail);
   const contactWa = whatsappHref(contactPhone);
 
-  const changePipelineStatus = async (next: EnquiryStatus) => {
-    if (!enquiryId || !enquiry || next === enquiry.enquiry_status) return;
-    try {
-      await toastHandler({
-        action: () =>
-          updateEnquiry({
-            id: enquiryId,
-            enquiry_status: next,
-          }).unwrap(),
-        loading: "Updating pipeline…",
-        success: "Pipeline status updated.",
-      });
-    } catch {
-      /* toast */
-    }
-  };
-
-  const submitLead = async () => {
+  const submitAssign = async (payload: {
+    assigned_to: string | null;
+    assigned_manager_to: string | null;
+    assigned_admin_to: string | null;
+  }) => {
     if (!enquiryId) return;
     try {
       await toastHandler({
         action: () =>
           updateEnquiry({
             id: enquiryId,
+            assigned_to: payload.assigned_to,
+            assigned_manager_to: payload.assigned_manager_to,
+            assigned_admin_to: payload.assigned_admin_to,
+          }).unwrap(),
+        loading: "Assigning enquiry…",
+        success: "Enquiry assigned.",
+      });
+      setAssignOpen(false);
+    } catch {
+      /* toast */
+    }
+  };
+
+  const canMarkWon =
+    !quotationsLoading && acceptedQuotations.length > 0;
+
+  useEffect(() => {
+    if (!submitConfirmOpen) return;
+    const defaultQuotation = latestAcceptedQuotation(acceptedQuotations);
+    setWonQuotationId(defaultQuotation?._id ?? "");
+  }, [submitConfirmOpen, acceptedQuotations]);
+
+  const submitLead = async () => {
+    if (!enquiryId || !canMarkWon || !wonQuotationId || !selectedWonQuotation) return;
+
+    const requestedAudits = enquiryRequestedAuditsFromQuotation(
+      selectedWonQuotation,
+      enquiry?.requested_audits ?? [],
+    );
+
+    try {
+      await toastHandler({
+        action: () =>
+          updateEnquiry({
+            id: enquiryId,
             enquiry_status: "won",
+            accepted_quotation_id: selectedWonQuotation._id,
+            requested_audits: requestedAudits,
           }).unwrap(),
         loading: "Updating lead…",
-        success: "Lead submitted — marked as won.",
+        success: "Lead marked as won.",
       });
+      setSubmitConfirmOpen(false);
     } catch {
       /* toast */
     }
@@ -365,104 +454,49 @@ export default function EnquiryDetailPage() {
   };
 
   const openCreateFu = () => {
-    setFuEditing(null);
-    setFuDate(getTodayDateInput());
     setFuMode("");
-    setFuRemarks("");
     setFuOutcome("");
+    setFuRemarks("");
     setFuNext("");
     setFuOpen(true);
   };
 
-  const openEditFu = useCallback((row: FollowUp) => {
-    setFuEditing(row);
-    const fd = new Date(row.followup_date);
-    setFuDate(
-      Number.isNaN(fd.getTime())
-        ? getTodayDateInput()
-        : `${fd.getFullYear()}-${String(fd.getMonth() + 1).padStart(2, "0")}-${String(fd.getDate()).padStart(2, "0")}`,
-    );
-    setFuMode(row.mode ?? "");
-    setFuRemarks(row.remarks ?? "");
-    setFuOutcome(row.outcome ?? "");
-    if (row.next_followup_date) {
-      const nd = new Date(row.next_followup_date);
-      setFuNext(
-        Number.isNaN(nd.getTime())
-          ? ""
-          : `${nd.getFullYear()}-${String(nd.getMonth() + 1).padStart(2, "0")}-${String(nd.getDate()).padStart(2, "0")}`,
-      );
-    } else setFuNext("");
-    setFuOpen(true);
-  }, []);
-
   const submitFollowUp = async () => {
     if (!canActOnFollowUpsAndQuotes) return;
-    if (!enquiryId || !fuDate) return;
-    const followup_date = new Date(fuDate);
-    if (Number.isNaN(followup_date.getTime())) return;
-    const nextFollow =
-      fuNext.trim() === ""
-        ? undefined
-        : new Date(fuNext).getTime()
-          ? new Date(fuNext).toISOString()
-          : undefined;
-
-    const body = {
-      followup_date: followup_date.toISOString(),
-      mode: (fuMode || undefined) as FollowUp["mode"],
-      remarks: fuRemarks.trim() || undefined,
-      outcome: (fuOutcome || undefined) as FollowUp["outcome"],
-      next_followup_date: fuEditing
-        ? fuNext.trim() === ""
-          ? null
-          : nextFollow ?? null
-        : nextFollow,
-    };
-
-    const editing = fuEditing;
+    if (!enquiryId) return;
+    const nextFollow = datetimeLocalToIso(fuNext);
 
     try {
       await toastHandler({
         action: async () => {
-          if (editing) {
-            await updateFu({
-              enquiryId,
-              followUpId: editing._id,
-              ...body,
-            }).unwrap();
-            const nextIso = earliestEnquiryNextFollowDate(followUps, {
-              type: "update",
-              followUpId: editing._id,
-              nextIso: fuNext.trim() === "" ? null : nextFollow ?? null,
-            });
-            await updateEnquiry({
-              id: enquiryId,
-              next_followup_date: nextIso,
-            }).unwrap();
-          } else {
-            await createFu({ enquiryId, ...body }).unwrap();
-            const nextIso = earliestEnquiryNextFollowDate(followUps, {
-              type: "create",
-              newRowNext: nextFollow ?? null,
-            });
-            await updateEnquiry({
-              id: enquiryId,
-              next_followup_date: nextIso,
-            }).unwrap();
-          }
+          await createFu({
+            enquiryId,
+            mode: (fuMode || null) as FollowUp["mode"] | null,
+            outcome: (fuOutcome || null) as FollowUp["outcome"] | null,
+            remarks: fuRemarks.trim() || undefined,
+            next_followup_date: nextFollow,
+          }).unwrap();
+          const nextIso = earliestEnquiryNextFollowDate(
+            followUps,
+            nextFollow ?? null,
+          );
+          await updateEnquiry({
+            id: enquiryId,
+            next_followup_date: nextIso,
+          }).unwrap();
         },
-        loading: editing ? "Updating follow-up…" : "Creating follow-up…",
-        success: editing ? "Follow-up saved." : "Follow-up added.",
+        loading: "Creating follow-up…",
+        success: "Follow-up added.",
       });
       setFuOpen(false);
-      setFuEditing(null);
+      setTab("followups");
     } catch {
       /* toast */
     }
   };
 
-  const openCreateQuote = () => {
+  const openCreateDocument = (kind: EnquiryDocumentKind) => {
+    setQDocKind(kind);
     setQDocUrl("");
     setQFile(null);
     if (qFilePreview) {
@@ -474,21 +508,24 @@ export default function EnquiryDetailPage() {
     setQOpen(true);
   };
 
-  const submitQuote = async () => {
-    if (!canActOnFollowUpsAndQuotes) return;
+  const submitDocument = async () => {
+    if (!canManageDocuments) return;
+    if (qDocKind === "eoi") return;
     if (!enquiryId) return;
+    const meta = DOC_KIND_META[qDocKind];
 
     try {
       await toastHandler({
         action: () =>
           createQ({
             enquiryId,
+            document_kind: qDocKind,
             document_url: qDocUrl.trim() || undefined,
             file: qFile || undefined,
             caption: qCaption.trim() || undefined,
           }).unwrap(),
-        loading: "Adding document…",
-        success: "Document added.",
+        loading: meta.loading,
+        success: meta.success,
       });
       if (qFilePreview) {
         URL.revokeObjectURL(qFilePreview);
@@ -496,6 +533,7 @@ export default function EnquiryDetailPage() {
       }
       setQFile(null);
       setQOpen(false);
+      setTab(meta.tab);
     } catch {
       /* toast */
     }
@@ -516,14 +554,19 @@ export default function EnquiryDetailPage() {
         key: "mode",
         header: "Mode",
         hideOnMobile: true,
-        render: (row) => row.mode ?? "—",
+        render: (row) => <FollowUpModeBadge mode={row.mode} />,
       },
       {
         key: "outcome",
-        header: "Outcome",
+        header: "Reply outcome",
+        render: (row) => <FollowUpOutcomePill outcome={row.outcome} />,
+      },
+      {
+        key: "next_followup_date",
+        header: "Next follow-up",
         hideOnMobile: true,
         render: (row) =>
-          row.outcome ? row.outcome.replace(/_/g, " ") : "—",
+          row.next_followup_date ? formatShortDate(row.next_followup_date) : "—",
       },
       {
         key: "remarks",
@@ -534,28 +577,8 @@ export default function EnquiryDetailPage() {
           </span>
         ),
       },
-      ...(canActOnFollowUpsAndQuotes
-        ? [
-            {
-              key: "actions",
-              header: "Actions",
-              render: (row: FollowUp) => (
-                <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => openEditFu(row)}
-                  >
-                    <Pencil className="mr-1 h-3.5 w-3.5" />
-                    Edit
-                  </Button>
-                </div>
-              ),
-            } as Column<FollowUp>,
-          ]
-        : []),
     ],
-    [canActOnFollowUpsAndQuotes, openEditFu],
+    [],
   );
 
   const enquiryDocumentColumns: Column<EnquiryDocument>[] = useMemo(() => {
@@ -591,7 +614,7 @@ export default function EnquiryDetailPage() {
       },
     ];
 
-    if (!canActOnFollowUpsAndQuotes) return cols;
+    if (!canManageDocuments) return cols;
 
     cols.push({
       key: "actions",
@@ -613,7 +636,136 @@ export default function EnquiryDetailPage() {
     });
 
     return cols;
-  }, [canActOnFollowUpsAndQuotes, quoteBusy]);
+  }, [canManageDocuments, quoteBusy]);
+
+  const quotationColumns: Column<Quotation>[] = useMemo(
+    () => [
+      {
+        key: "quotationRef",
+        header: "Reference",
+        render: (row) => (
+          <span className="font-medium text-foreground">{row.quotationRef}</span>
+        ),
+      },
+      {
+        key: "customer",
+        header: "Customer",
+        render: (row) => (
+          <div className="min-w-0">
+            <p className="truncate text-sm text-foreground">
+              {quotationCustomerName(row)}
+            </p>
+            {row.customer?.kindAttn ? (
+              <p className="truncate text-xs text-muted-foreground">
+                {row.customer.kindAttn}
+              </p>
+            ) : null}
+          </div>
+        ),
+      },
+      {
+        key: "quotationDate",
+        header: "Date",
+        hideOnMobile: true,
+        render: (row) => (
+          <span className="text-sm text-foreground">
+            {formatDisplayDate(row.quotationDate)}
+          </span>
+        ),
+      },
+      {
+        key: "grandTotal",
+        header: "Amount",
+        render: (row) => (
+          <span className="text-sm font-medium text-foreground">
+            {formatQuotationInr(
+              row.financials?.roundedGrandTotal ?? row.financials?.grandTotal,
+            )}
+          </span>
+        ),
+      },
+      {
+        key: "status",
+        header: "Status",
+        render: (row) => <QuotationStatusPill status={row.status} />,
+      },
+      {
+        key: "actions",
+        header: "Actions",
+        render: (row) => <QuotationPdfListActions quotation={row} />,
+      },
+    ],
+    [],
+  );
+
+  const eoiColumns: Column<ExpressionOfInterest>[] = useMemo(
+    () => [
+      {
+        key: "eoiRef",
+        header: "Reference",
+        render: (row) => (
+          <span className="font-medium text-foreground">{row.eoiRef}</span>
+        ),
+      },
+      {
+        key: "recipient",
+        header: "Recipient",
+        render: (row) => (
+          <div className="min-w-0">
+            <p className="truncate text-sm text-foreground">
+              {eoiRecipientLabel(row)}
+            </p>
+            {row.recipient?.designation ? (
+              <p className="truncate text-xs text-muted-foreground">
+                {row.recipient.designation}
+              </p>
+            ) : null}
+          </div>
+        ),
+      },
+      {
+        key: "eoiDate",
+        header: "Date",
+        hideOnMobile: true,
+        render: (row) => (
+          <span className="text-sm text-foreground">
+            {formatDisplayDate(row.eoiDate)}
+          </span>
+        ),
+      },
+      {
+        key: "subject",
+        header: "Subject",
+        hideOnMobile: true,
+        render: (row) => (
+          <p className="max-w-xs truncate text-sm text-foreground">
+            {row.subject || "—"}
+          </p>
+        ),
+      },
+      {
+        key: "status",
+        header: "Status",
+        render: (row) => <EoiStatusPill status={row.status} />,
+      },
+      {
+        key: "actions",
+        header: "Actions",
+        className: "min-w-[22rem]",
+        render: (row) => (
+          <EoiListActions
+            eoi={row}
+            canAct={canManagePipelineArtifacts}
+            onEdit={() => {
+              setEditingEoi(row);
+              setCreateEoiOpen(true);
+            }}
+          />
+        ),
+      },
+    ],
+    [canManagePipelineArtifacts],
+  );
 
   const loadingMain =
     !enquiryId || enquiryLoading || (enquiryFetching && !enquiry);
@@ -651,7 +803,8 @@ export default function EnquiryDetailPage() {
       ) : (
         <>
           {/* Sticky Actions Header */}
-          <div className="sticky top-0 z-20 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-b border-border pb-4 pt-2 flex flex-col gap-4 md:flex-row md:items-center md:justify-between -mx-4 px-4 sm:-mx-6 sm:px-6">
+          <div className="sticky top-0 z-20 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-b border-border pb-4 pt-2 flex flex-col gap-4 -mx-4 px-4 sm:-mx-6 sm:px-6">
+            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2.5">
                 <h1 className="text-xl font-bold tracking-tight text-foreground truncate max-w-md">
@@ -701,79 +854,113 @@ export default function EnquiryDetailPage() {
               </div>
             </div>
 
-            <div className="flex flex-wrap items-center gap-2.5 md:self-end">
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-medium text-muted-foreground whitespace-nowrap">Pipeline status:</span>
-                <Select
-                  value={enquiry.enquiry_status}
-                  onValueChange={(v) => void changePipelineStatus(v as EnquiryStatus)}
-                  disabled={!canManage || leadIsTerminal || updatingLeadStatus}
-                >
-                  <SelectTrigger id="pipeline-status" className="h-9 w-[130px] text-xs">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {ENQUIRY_STATUS_OPTIONS.map((o) => (
-                      <SelectItem key={o.value} value={o.value} className="text-xs">
-                        {o.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="flex items-center gap-2">
-                {canManage && !leadIsTerminal ? (
-                  <>
+            <div className="flex flex-wrap items-center gap-2 md:self-end">
+              {canManage && !leadIsTerminal ? (
+                <>
+                  {canAssignRoles ? (
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => setEditOpen(true)}
+                      onClick={() => setAssignOpen(true)}
+                      disabled={updatingLeadStatus}
                       className="h-9 gap-1.5 text-xs"
                     >
-                      <Pencil className="h-3.5 w-3.5" />
-                      Edit enquiry
+                      <UserPlus className="h-3.5 w-3.5" />
+                      Assign
                     </Button>
+                  ) : null}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={openCreateFu}
+                    className="h-9 gap-1.5 text-xs"
+                  >
+                    <MessageSquare className="h-3.5 w-3.5" />
+                    Follow-Up
+                  </Button>
+                  {canCreateEoi ? (
                     <Button
+                      variant="outline"
                       size="sm"
-                      onClick={() => setSubmitConfirmOpen(true)}
-                      disabled={updatingLeadStatus}
+                      onClick={() => {
+                        setEditingEoi(null);
+                        setCreateEoiOpen(true);
+                      }}
                       className="h-9 gap-1.5 text-xs"
                     >
                       <Send className="h-3.5 w-3.5" />
-                      Submit lead
+                      Create EOI
                     </Button>
+                  ) : null}
+                  {canCreateQuotation ? (
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => setCloseLeadOpen(true)}
-                      disabled={updatingLeadStatus}
-                      className="h-9 gap-1.5 text-xs border-destructive text-destructive hover:bg-destructive hover:text-white"
+                      onClick={() => setCreateQuotationOpen(true)}
+                      className="h-9 gap-1.5 text-xs"
                     >
-                      <CircleSlash className="h-3.5 w-3.5" />
-                      Declined lead
+                      <FileSpreadsheet className="h-3.5 w-3.5" />
+                      Create Quotation
                     </Button>
-                  </>
-                ) : null}
-
-                {canDeleteEnquiry && (
+                  ) : null}
                   <Button
-                    variant="destructive"
                     size="sm"
-                    onClick={() => setDeleteDialogOpen(true)}
-                    disabled={isDeletingEnquiry}
+                    onClick={() => setSubmitConfirmOpen(true)}
+                    disabled={updatingLeadStatus || !canMarkWon}
+                    title={
+                      canMarkWon
+                        ? "Mark this lead as won"
+                        : quotationsLoading
+                          ? "Loading quotations…"
+                          : "Accept a quotation before marking this lead as won"
+                    }
                     className="h-9 gap-1.5 text-xs"
                   >
-                    <Trash2 className="h-3.5 w-3.5" />
-                    Delete enquiry
+                    <CheckCircle2 className="h-3.5 w-3.5" />
+                    Won
                   </Button>
-                )}
-              </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setCloseLeadOpen(true)}
+                    disabled={updatingLeadStatus}
+                    className="h-9 gap-1.5 text-xs border-destructive text-destructive hover:bg-destructive hover:text-white"
+                  >
+                    <CircleSlash className="h-3.5 w-3.5" />
+                    Declined
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setEditOpen(true)}
+                    className="h-9 gap-1.5 text-xs"
+                  >
+                    <Pencil className="h-3.5 w-3.5" />
+                    Edit
+                  </Button>
+                </>
+              ) : null}
+
+              {canDeleteEnquiry && (
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={() => setDeleteDialogOpen(true)}
+                  disabled={isDeletingEnquiry}
+                  className="h-9 gap-1.5 text-xs"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  Delete
+                </Button>
+              )}
             </div>
+            </div>
+
+            <EnquiryPipelineStepper status={enquiry.enquiry_status} />
           </div>
 
           <Tabs value={currentTab} onValueChange={setTab} className="w-full mt-6">
-            <TabsList className="grid h-auto w-full grid-cols-3 p-1 sm:h-9 sm:w-fit sm:max-w-md">
+            <TabsList className="flex h-auto w-full flex-wrap justify-start gap-1 p-1 sm:w-fit">
               <TabsTrigger value="details" className="gap-1.5 px-3 py-2 sm:py-1">
                 <Info className="h-4 w-4 shrink-0" />
                 Details
@@ -783,10 +970,20 @@ export default function EnquiryDetailPage() {
                 Follow-ups
                 <span className="text-muted-foreground text-xs font-normal">({followUps.length})</span>
               </TabsTrigger>
+              <TabsTrigger value="eoi" className="gap-1.5 px-3 py-2 sm:py-1">
+                <Send className="h-4 w-4 shrink-0" />
+                EOI
+                <span className="text-muted-foreground text-xs font-normal">({eois.length})</span>
+              </TabsTrigger>
+              <TabsTrigger value="quotations" className="gap-1.5 px-3 py-2 sm:py-1">
+                <FileSpreadsheet className="h-4 w-4 shrink-0" />
+                Quotations
+                <span className="text-muted-foreground text-xs font-normal">({quotations.length})</span>
+              </TabsTrigger>
               <TabsTrigger value="documents" className="gap-1.5 px-3 py-2 sm:py-1">
                 <FileText className="h-4 w-4 shrink-0" />
                 Documents
-                <span className="text-muted-foreground text-xs font-normal">({enquiryDocuments.length})</span>
+                <span className="text-muted-foreground text-xs font-normal">({otherDocuments.length})</span>
               </TabsTrigger>
             </TabsList>
 
@@ -858,7 +1055,7 @@ export default function EnquiryDetailPage() {
                         <p className="text-sm font-mono mt-0.5">{enquiry.enquiry_number || "—"}</p>
                       </div>
                       <div>
-                        <p className="text-xs font-medium text-muted-foreground">Expected Value</p>
+                        <p className="text-xs font-medium text-muted-foreground">Total Expected Value</p>
                         <p className="text-sm font-semibold text-primary mt-0.5">
                           {enquiry.expected_value != null ? formatInr(enquiry.expected_value) : "—"}
                         </p>
@@ -878,12 +1075,34 @@ export default function EnquiryDetailPage() {
                         <p className="text-sm font-medium mt-0.5">{enquiry.source?.trim() || "—"}</p>
                       </div>
                       <div>
-                        <p className="text-xs font-medium text-muted-foreground">Assigned To</p>
+                        <p className="text-xs font-medium text-muted-foreground">Assigned Auditor</p>
                         <p className="text-sm font-medium mt-0.5">
                           {enquiry.assigned_to && typeof enquiry.assigned_to === "object"
                             ? enquiry.assigned_to.name ?? enquiry.assigned_to.email
                             : enquiry.assigned_to
                               ? String(enquiry.assigned_to)
+                              : "—"}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <p className="text-xs font-medium text-muted-foreground">Assigned Manager</p>
+                        <p className="text-sm font-medium mt-0.5">
+                          {enquiry.assigned_manager_to && typeof enquiry.assigned_manager_to === "object"
+                            ? enquiry.assigned_manager_to.name ?? enquiry.assigned_manager_to.email
+                            : enquiry.assigned_manager_to
+                              ? String(enquiry.assigned_manager_to)
+                              : "—"}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-xs font-medium text-muted-foreground">Assigned Admin</p>
+                        <p className="text-sm font-medium mt-0.5">
+                          {enquiry.assigned_admin_to && typeof enquiry.assigned_admin_to === "object"
+                            ? enquiry.assigned_admin_to.name ?? enquiry.assigned_admin_to.email
+                            : enquiry.assigned_admin_to
+                              ? String(enquiry.assigned_admin_to)
                               : "—"}
                         </p>
                       </div>
@@ -899,18 +1118,6 @@ export default function EnquiryDetailPage() {
                               : "—"}
                         </p>
                       </div>
-                      <div>
-                        <p className="text-xs font-medium text-muted-foreground">Assigned Admin</p>
-                        <p className="text-sm font-medium mt-0.5">
-                          {enquiry.assigned_admin_to && typeof enquiry.assigned_admin_to === "object"
-                            ? enquiry.assigned_admin_to.name ?? enquiry.assigned_admin_to.email
-                            : enquiry.assigned_admin_to
-                              ? String(enquiry.assigned_admin_to)
-                              : "—"}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-2 gap-4 mt-4">
                       <div>
                         <p className="text-xs font-medium text-muted-foreground">Created At</p>
                         <p className="text-sm font-medium mt-0.5">
@@ -934,14 +1141,24 @@ export default function EnquiryDetailPage() {
                         {(enquiry.requested_audit_types?.length ?? 0) === 0 ? (
                           <span className="text-sm text-muted-foreground">—</span>
                         ) : (
-                          enquiry.requested_audit_types?.map((t) => (
-                            <span
-                              key={t}
-                              className="inline-flex rounded-md border border-border bg-muted/40 px-2.5 py-0.5 text-xs font-medium"
-                            >
-                              {t}
-                            </span>
-                          ))
+                          enquiry.requested_audit_types?.map((t) => {
+                            const amount = enquiry.requested_audits?.find(
+                              (row) => row.audit_type === t,
+                            )?.expected_value;
+                            return (
+                              <span
+                                key={t}
+                                className="inline-flex items-center gap-1.5 rounded-md border border-border bg-muted/40 px-2.5 py-0.5 text-xs font-medium"
+                              >
+                                {t}
+                                {amount != null ? (
+                                  <span className="font-semibold text-primary">
+                                    {formatInr(amount)}
+                                  </span>
+                                ) : null}
+                              </span>
+                            );
+                          })
                         )}
                       </div>
                     </div>
@@ -1002,10 +1219,67 @@ export default function EnquiryDetailPage() {
                 </div>
               ) : null}
               <DataTable<FollowUp>
+                className="overflow-x-auto"
                 columns={followUpColumns}
                 data={followUps}
                 loading={fuLoading}
                 emptyMessage="No follow-ups yet"
+              />
+            </TabsContent>
+
+            <TabsContent value="eoi" className="mt-4 space-y-4">
+              {leadIsTerminal ? (
+                <p className="rounded-md border border-border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
+                  This lead is closed — you cannot add or change EOIs here.
+                </p>
+              ) : null}
+              {canCreateEoi ? (
+                <div className="flex justify-end">
+                  <Button
+                    size="sm"
+                    onClick={() => {
+                      setEditingEoi(null);
+                      setCreateEoiOpen(true);
+                    }}
+                  >
+                    <Plus className="mr-1 h-4 w-4" />
+                    Create EOI
+                  </Button>
+                </div>
+              ) : null}
+              <DataTable<ExpressionOfInterest>
+                className="overflow-x-auto"
+                columns={eoiColumns}
+                data={eois}
+                loading={eoisLoading}
+                emptyMessage="No EOIs yet"
+              />
+            </TabsContent>
+
+            <TabsContent value="quotations" className="mt-4 space-y-4">
+              {leadIsTerminal ? (
+                <p className="rounded-md border border-border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
+                  This lead is closed — you cannot add or change quotations here.
+                </p>
+              ) : null}
+              {canCreateQuotation ? (
+                <div className="flex justify-end">
+                  <Button size="sm" onClick={() => setCreateQuotationOpen(true)}>
+                    <Plus className="mr-1 h-4 w-4" />
+                    Create quotation
+                  </Button>
+                </div>
+              ) : null}
+              <DataTable<Quotation>
+                columns={quotationColumns}
+                data={quotations}
+                loading={quotationsLoading}
+                onRowClick={
+                  user?.role === "auditor"
+                    ? undefined
+                    : (row) => row && router.push(`/quotations/${row._id}`)
+                }
+                emptyMessage="No quotations yet"
               />
             </TabsContent>
 
@@ -1016,9 +1290,9 @@ export default function EnquiryDetailPage() {
                   documents here.
                 </p>
               ) : null}
-              {canActOnFollowUpsAndQuotes ? (
+              {canManageDocuments ? (
                 <div className="flex justify-end">
-                  <Button size="sm" onClick={openCreateQuote}>
+                  <Button size="sm" onClick={() => openCreateDocument("other")}>
                     <Plus className="mr-1 h-4 w-4" />
                     Add document
                   </Button>
@@ -1026,7 +1300,7 @@ export default function EnquiryDetailPage() {
               ) : null}
               <DataTable<EnquiryDocument>
                 columns={enquiryDocumentColumns}
-                data={enquiryDocuments}
+                data={otherDocuments}
                 loading={qLoading}
                 emptyMessage="No documents yet"
               />
@@ -1035,70 +1309,31 @@ export default function EnquiryDetailPage() {
         </>
       )}
 
-      <Dialog
-        open={fuOpen}
-        onOpenChange={(open) => {
-          setFuOpen(open);
-          if (!open) setFuEditing(null);
-        }}
-      >
+      <Dialog open={fuOpen} onOpenChange={setFuOpen}>
         <DialogContent className="sm:max-w-md" aria-describedby={undefined}>
           <DialogHeader>
-            <DialogTitle>
-              {fuEditing ? "Edit follow-up" : "New follow-up"}
-            </DialogTitle>
+            <DialogTitle>New follow-up</DialogTitle>
           </DialogHeader>
           <div className="grid gap-4 py-2">
             <div className="space-y-2">
-              <Label htmlFor="fu-date">Follow-up date *</Label>
-              <Input
-                id="fu-date"
-                type="date"
-                value={fuDate}
-                onChange={(e) => setFuDate(e.target.value)}
-                required
-              />
-            </div>
-            <div className="space-y-2">
               <Label>Mode</Label>
-              <Select value={fuMode || "__"} onValueChange={(v) => setFuMode(v === "__" ? "" : v)}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select mode" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__">—</SelectItem>
-                  {FOLLOW_UP_MODE_OPTIONS.map((o) => (
-                    <SelectItem key={o.value} value={o.value}>
-                      {o.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <FollowUpModePicker value={fuMode} onChange={setFuMode} />
             </div>
             <div className="space-y-2">
-              <Label>Outcome</Label>
-              <Select value={fuOutcome || "__"} onValueChange={(v) => setFuOutcome(v === "__" ? "" : v)}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Outcome" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__">—</SelectItem>
-                  {FOLLOW_UP_OUTCOME_OPTIONS.map((o) => (
-                    <SelectItem key={o.value} value={o.value}>
-                      {o.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Label>Reply outcome</Label>
+              <FollowUpOutcomePicker value={fuOutcome} onChange={setFuOutcome} />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="fu-next">Next follow-up</Label>
+              <Label htmlFor="fu-next">Next follow-up date &amp; time</Label>
               <Input
                 id="fu-next"
-                type="date"
+                type="datetime-local"
                 value={fuNext}
                 onChange={(e) => setFuNext(e.target.value)}
               />
+              <p className="text-xs text-muted-foreground">
+                Drives the enquiry&apos;s next follow-up reminder.
+              </p>
             </div>
             <div className="space-y-2">
               <Label htmlFor="fu-remarks">Remarks</Label>
@@ -1116,14 +1351,9 @@ export default function EnquiryDetailPage() {
             </Button>
             <Button
               onClick={() => void submitFollowUp()}
-              disabled={
-                !fuDate ||
-                creatingFu ||
-                updatingFu ||
-                !canActOnFollowUpsAndQuotes
-              }
+              disabled={creatingFu || !canActOnFollowUpsAndQuotes}
             >
-              {creatingFu || updatingFu ? "Saving…" : "Save"}
+              {creatingFu ? "Saving…" : "Save"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1132,11 +1362,15 @@ export default function EnquiryDetailPage() {
       <Dialog open={qOpen} onOpenChange={setQOpen}>
         <DialogContent className="sm:max-w-md" aria-describedby={undefined}>
           <DialogHeader>
-            <DialogTitle>Add document</DialogTitle>
+            <DialogTitle>{DOC_KIND_META[qDocKind].title}</DialogTitle>
           </DialogHeader>
           <div className="grid gap-4 py-2">
             <div className="rounded-md border border-border bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
-              Document number is generated automatically. Upload a PDF/image, or record a link.
+              {qDocKind === "eoi"
+                ? "Upload the EOI file or add a link. Sending it moves the pipeline to EOI Sent."
+                : qDocKind === "quotation"
+                  ? "Upload the quotation file or add a link. Creating it moves the pipeline to Quoted."
+                  : "Document number is generated automatically. Upload a PDF/image, or record a link."}
             </div>
 
             <div className="space-y-2">
@@ -1260,14 +1494,14 @@ export default function EnquiryDetailPage() {
               Cancel
             </Button>
             <Button
-              onClick={() => void submitQuote()}
+              onClick={() => void submitDocument()}
               disabled={
                 (!qDocUrl.trim() && !qFile) ||
                 creatingQ ||
-                !canActOnFollowUpsAndQuotes
+                !canManageDocuments
               }
             >
-              {creatingQ ? "Saving…" : "Save"}
+              {creatingQ ? "Saving…" : DOC_KIND_META[qDocKind].saveLabel}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1315,7 +1549,7 @@ export default function EnquiryDetailPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>Decline this lead?</AlertDialogTitle>
             <AlertDialogDescription>
-              Pick an outcome. Follow-ups and quotations stay read-only after the
+              Pick an outcome. Follow-ups, EOI, and quotations stay read-only after the
               lead is declined.
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -1346,24 +1580,74 @@ export default function EnquiryDetailPage() {
       <AlertDialog open={submitConfirmOpen} onOpenChange={setSubmitConfirmOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Submit this lead?</AlertDialogTitle>
+            <AlertDialogTitle>Mark this lead as won?</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to submit this lead? This will mark the lead as submitted and freeze edits.
+              This will move the pipeline to Won and freeze further follow-ups, EOI, and quotations.
             </AlertDialogDescription>
           </AlertDialogHeader>
+
+          <div className="space-y-3 py-1">
+            {quotationsLoading ? (
+              <p className="text-sm text-muted-foreground">
+                Loading quotations…
+              </p>
+            ) : acceptedQuotations.length > 0 ? (
+              <div className="space-y-2">
+                <Label htmlFor="won-accepted-quotation">
+                  Accepted quotation
+                </Label>
+                <Select
+                  value={wonQuotationId}
+                  onValueChange={setWonQuotationId}
+                  disabled={updatingLeadStatus}
+                >
+                  <SelectTrigger id="won-accepted-quotation">
+                    <SelectValue placeholder="Select accepted quotation" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {acceptedQuotations.map((quotation) => (
+                      <SelectItem key={quotation._id} value={quotation._id}>
+                        {quotation.quotationRef}
+                        {" · "}
+                        {formatQuotationInr(
+                          quotation.financials?.roundedGrandTotal ??
+                            quotation.financials?.grandTotal,
+                        )}
+                        {quotation.quotationDate
+                          ? ` · ${formatDisplayDate(quotation.quotationDate)}`
+                          : ""}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {selectedWonQuotation ? (
+                  <p className="text-xs text-muted-foreground">
+                    Enquiry expected values will sync from this quotation&apos;s line items.
+                  </p>
+                ) : null}
+              </div>
+            ) : (
+              <p className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+                No accepted quotations yet. Accept a quotation before marking this lead as won.
+              </p>
+            )}
+          </div>
+
           <AlertDialogFooter className="flex-col gap-2 sm:flex-row sm:justify-end">
             <AlertDialogCancel disabled={updatingLeadStatus}>
               Cancel
             </AlertDialogCancel>
             <Button
               type="button"
-              disabled={updatingLeadStatus}
-              onClick={async () => {
-                await submitLead();
-                setSubmitConfirmOpen(false);
-              }}
+              disabled={
+                updatingLeadStatus ||
+                quotationsLoading ||
+                !canMarkWon ||
+                !wonQuotationId
+              }
+              onClick={() => void submitLead()}
             >
-              Confirm submit
+              Confirm won
             </Button>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -1453,6 +1737,37 @@ export default function EnquiryDetailPage() {
           enquiryId={enquiryId ?? null}
         />
       ) : null}
+
+      <CreateQuotationForm
+        open={createQuotationOpen}
+        onOpenChange={setCreateQuotationOpen}
+        enquiryId={enquiryId}
+        onComplete={() => {
+          setTab("quotations");
+        }}
+      />
+
+      <CreateEoiForm
+        open={createEoiOpen}
+        onOpenChange={(open) => {
+          setCreateEoiOpen(open);
+          if (!open) setEditingEoi(null);
+        }}
+        enquiryId={enquiryId}
+        eoi={editingEoi ?? undefined}
+        onComplete={() => {
+          setTab("eoi");
+          setEditingEoi(null);
+        }}
+      />
+
+      <EnquiryAssignDialog
+        open={assignOpen}
+        onOpenChange={setAssignOpen}
+        enquiry={enquiry}
+        isSubmitting={updatingLeadStatus}
+        onSubmit={submitAssign}
+      />
     </DashboardLayout>
   );
 }

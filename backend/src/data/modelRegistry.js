@@ -1,10 +1,15 @@
+import Company from "../models/company.js";
 import Enquiry from "../models/enquiry.js";
 import Facility from "../models/facility.js";
 import FacilityAuditor from "../models/facilityAuditor.js";
 import FollowUp from "../models/followUp.js";
+import Message from "../models/message.js";
 import Notification from "../models/notification.js";
 import PresenceLog from "../models/presenceLog.js";
 import EnquiryDocument from "../models/enquiryDocument.js";
+import ExpressionOfInterest from "../models/expressionOfInterest.js";
+import Quotation from "../models/quotation.js";
+import TermsConditions from "../models/termsConditions.js";
 import RecentActivity from "../models/recentActivity.js";
 import Report from "../models/report.js";
 import User from "../models/user.js";
@@ -54,13 +59,18 @@ import {
 
 export const modelsRegistry = {
   // Core Models
+  Company,
   Enquiry,
   Facility,
   FacilityAuditor,
   FollowUp,
+  Message,
   Notification,
   PresenceLog,
   EnquiryDocument,
+  ExpressionOfInterest,
+  Quotation,
+  TermsConditions,
   RecentActivity,
   Report,
   User,

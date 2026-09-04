@@ -1,14 +1,27 @@
-FROM node:20-alpine AS builder
+FROM node:20-alpine AS deps
 
 WORKDIR /app
+
+COPY frontend/package*.json ./
+RUN npm install
+
+# Local compose (`docker-compose.local.yml`) — `next dev` with bind-mounted source.
+FROM deps AS development
+
+ENV NODE_ENV=development
+
+COPY frontend ./
+
+EXPOSE 3000
+
+CMD ["npm", "run", "dev", "--", "-H", "0.0.0.0", "-p", "3000"]
+
+FROM deps AS builder
 
 ARG NEXT_PUBLIC_API_URL=http://backend:5000
 ARG NEXT_PUBLIC_BACKEND_URL=https://power.spspl.com
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_BACKEND_URL=$NEXT_PUBLIC_BACKEND_URL
-
-COPY frontend/package*.json ./
-RUN npm install
 
 COPY frontend ./
 RUN npm run build

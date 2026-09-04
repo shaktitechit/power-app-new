@@ -4,6 +4,10 @@ import { apiRateLimiter } from "./middlewares/rateLimitLoggerMiddleware.js";
 import usersRoute from "./modules/auth/auth.routes.js";
 import facilityRoute from "./modules/facility/facility.routes.js";
 import enquiryRoute from "./modules/enquiry/enquiry.routes.js";
+import quotationRoute from "./modules/quotation/quotation.routes.js";
+import expressionOfInterestRoute from "./modules/expression-of-interest/expression-of-interest.routes.js";
+import termsConditionsRoute from "./modules/terms-conditions/terms-conditions.routes.js";
+import companyRoute from "./modules/company/company.routes.js";
 import auditRoutes from "./modules/audit/audit.routes.js";
 import utilityRoutes from "./modules/utility/utility.routes.js";
 import reportRoutes from "./modules/report/report.routes.js";
@@ -15,6 +19,7 @@ import adminRoutes from "./modules/super-admin/super-admin.routes.js";
 import emailRoutes from "./modules/email/email.routes.js";
 import fileManagementRoute from "./modules/file-management/file-management.routes.js";
 import notificationRoutes from "./modules/notification/notification.routes.js";
+import messageRoutes from "./modules/message/message.routes.js";
 import openRouterRoutes from "./modules/open-router/open-router.routes.js";
 
 // Electrical audit (utility account domain)
@@ -75,9 +80,14 @@ export function registerV1ApiRoutes(app) {
   app.use("/api/v1/users", usersRoute);
   app.use("/api/v1/facilities", facilityRoute);
   app.use("/api/v1/enquiries", enquiryRoute);
+  app.use("/api/v1/quotations", quotationRoute);
+  app.use("/api/v1/expression-of-interest", expressionOfInterestRoute);
+  app.use("/api/v1/terms-conditions", termsConditionsRoute);
+  app.use("/api/v1/companies", companyRoute);
   app.use("/api/v1/audits", auditRoutes);
   app.use("/api/v1/utilities", utilityRoutes);
   app.use("/api/v1/notifications", notificationRoutes);
+  app.use("/api/v1/messages", messageRoutes);
 
   // --- Electrical audit (`routes/electrical-audit`): tariffs, billing, equipment, records ---
   app.use("/api/v1/utility-tariffs", utilityTarrifRoutes);

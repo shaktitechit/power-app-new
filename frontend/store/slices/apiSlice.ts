@@ -19,6 +19,14 @@ const rawBaseQuery = fetchBaseQuery({
   },
   fetchFn: (input, init) =>
     fetch(input, { ...init, cache: init?.cache ?? "no-store" }),
+  prepareHeaders: (headers, api) => {
+    const arg = api.arg as FetchArgs | string | undefined;
+    const body = typeof arg === "object" && arg ? arg.body : undefined;
+    if (typeof FormData !== "undefined" && body instanceof FormData) {
+      headers.delete("Content-Type");
+    }
+    return headers;
+  },
   responseHandler: async (response) => {
     const contentType = response.headers.get("content-type") || "";
 
@@ -63,7 +71,8 @@ const baseQueryWithReauth: BaseQueryFn<
   if (
     String(url).includes("/users/refresh") ||
     String(url).includes("/users/login") ||
-    String(url).includes("/users/register")
+    String(url).includes("/users/register") ||
+    String(url).includes("/companies/branding")
   ) {
     return result;
   }
@@ -147,6 +156,10 @@ export const apiSlice = createApi({
     "AuditSnapshot",
     "Mode",
     "Notification",
+    "Company",
+    "Quotation",
+    "ExpressionOfInterest",
+    "TermsConditions",
   ],
   endpoints: () => ({}),
 });

@@ -6,39 +6,9 @@
     "auditLog": "/Users/macbook/Desktop/power-app-main/backend/src/logs/.3219f47905fe974ce771b3043df7b98795e7c7da-audit.json",
     "files": [
         {
-            "date": 1782106131039,
-            "name": "/Users/macbook/Desktop/power-app-main/backend/src/logs/error-2026-06-22.log",
-            "hash": "c27d140bcf4bd542ee8debba081d6502c1afc1b903154d3aebe4f338ee58e1c5"
-        },
-        {
-            "date": 1782555495420,
-            "name": "/Users/macbook/Desktop/power-app-main/backend/src/logs/error-2026-06-27.log",
-            "hash": "c7a7a022459d9a5751610f3412e7ed921fa605589e76e49595987a1a276f854b"
-        },
-        {
-            "date": 1782901709305,
-            "name": "/Users/macbook/Desktop/power-app-main/backend/src/logs/error-2026-07-01.log",
-            "hash": "bb5d3df953d0e370e3b5ce47a53d9dda0c5961c57fa45aab58502fe4f8462c13"
-        },
-        {
-            "date": 1782977543322,
-            "name": "/Users/macbook/Desktop/power-app-main/backend/src/logs/error-2026-07-02.log",
-            "hash": "766975c19c61052a0a1a8c8dbd57a172c120aad0e996f15bf8e99de10241bb57"
-        },
-        {
-            "date": 1783061734567,
-            "name": "/Users/macbook/Desktop/power-app-main/backend/src/logs/error-2026-07-03.log",
-            "hash": "61bdfe377d03c9a49c85916ee149385c40cfec094579413796278366adec1dc6"
-        },
-        {
-            "date": 1783510694248,
-            "name": "/Users/macbook/Desktop/power-app-main/backend/src/logs/error-2026-07-08.log",
-            "hash": "03ffd9adbc1085ce43b943878b6b1cb62a1b8e1967c686d1cdf4bc4da4853261"
-        },
-        {
-            "date": 1783589425385,
-            "name": "/Users/macbook/Desktop/power-app-main/backend/src/logs/error-2026-07-09.log",
-            "hash": "53a0986c13ba12615b05e59c69cccc20f2ecf56ec74db323d88c4351b33f6cf2"
+            "date": 1788451384714,
+            "name": "/Users/macbook/Desktop/power-app-main/backend/src/logs/error-2026-09-03.log",
+            "hash": "83ee291d90760d4e836af21749473d5f6f0d5a5f1061afd189c52935f9c14048"
         }
     ],
     "hashType": "sha256"

@@ -1,19 +1,19 @@
+import { enquiryStatusLabel } from "@/components/portal/lib/enquiryConstants";
+import { assigneeLabel } from "@/components/portal/lib/enquiryAccess";
 import type { Enquiry } from "@/store/slices/enquiryApiSlice";
 
-export function enquirySearchHaystack(enquiry: Enquiry): string {
-  const assigned =
-    enquiry.assigned_to &&
-    typeof enquiry.assigned_to === "object" &&
-    enquiry.assigned_to !== null
-      ? [
-          enquiry.assigned_to.name,
-          enquiry.assigned_to.email,
-          enquiry.assigned_to._id,
-        ]
-      : enquiry.assigned_to
-        ? [String(enquiry.assigned_to)]
-        : [];
+function assigneeSearchParts(
+  value: Enquiry["assigned_to"],
+): Array<string | undefined> {
+  const label = assigneeLabel(value);
+  if (!value) return [];
+  if (typeof value === "object") {
+    return [value.name, value.email, value._id, label ?? undefined];
+  }
+  return [String(value)];
+}
 
+export function enquirySearchHaystack(enquiry: Enquiry): string {
   const creator =
     enquiry.created_by &&
     typeof enquiry.created_by === "object" &&
@@ -50,6 +50,7 @@ export function enquirySearchHaystack(enquiry: Enquiry): string {
     enquiry.client_contact_number,
     enquiry.client_email,
     enquiry.enquiry_status,
+    enquiryStatusLabel(enquiry.enquiry_status),
     enquiry.source,
     enquiry.notes,
     enquiry.expected_value,
@@ -57,7 +58,9 @@ export function enquirySearchHaystack(enquiry: Enquiry): string {
     enquiry.next_followup_date,
     enquiry._id,
     enquiry.is_converted_to_facility ? "converted facility" : "",
-    ...assigned,
+    ...assigneeSearchParts(enquiry.assigned_to),
+    ...assigneeSearchParts(enquiry.assigned_manager_to),
+    ...assigneeSearchParts(enquiry.assigned_admin_to),
     ...creator,
     ...reps,
     ...cf,

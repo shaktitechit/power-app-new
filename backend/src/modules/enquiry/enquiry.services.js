@@ -1,5 +1,5 @@
 import { modelsRegistry } from "../../data/modelRegistry.js";
-const { Enquiry, FollowUp, EnquiryDocument, Facility } = modelsRegistry;
+const { Enquiry, FollowUp, EnquiryDocument, Facility, Quotation } = modelsRegistry;
 import crypto from "crypto";
 import mongoose from "mongoose";
 import { uploadAuditDocuments } from "../shared/electrical-audit.helpers.js";
@@ -9,21 +9,62 @@ import { uploadAuditDocuments } from "../shared/electrical-audit.helpers.js";
 
 import { createRecentActivity } from "../../helpers/createRecentActivity.js";
 import { buildActivityMessage } from "../../helpers/buildActivityMessage.js";
-import { isAdmin } from "../../services/authorization/index.js";
 import { createNotification } from "../../services/notificationService.js";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 export const ENQUIRY_STATUSES = [
   "new",
-  "contacted",
-  "in_discussion",
+  "assigned",
+  "follow_up",
+  "eoi_sent",
   "quoted",
-  "eoq_uploaded",
-  "negotiation",
   "won",
   "lost",
   "dropped",
+  "contacted",
+  "in_discussion",
+  "eoq_uploaded",
+  "negotiation",
 ];
+
+const PIPELINE_RANK = {
+  new: 0,
+  contacted: 1,
+  assigned: 1,
+  in_discussion: 2,
+  follow_up: 2,
+  eoq_uploaded: 3,
+  eoi_sent: 3,
+  negotiation: 4,
+  quoted: 4,
+  won: 5,
+  lost: 5,
+  dropped: 5,
+};
+
+const TERMINAL_STATUSES = new Set(["won", "lost", "dropped"]);
+
+const STATUS_FILTER_ALIASES = {
+  assigned: ["assigned", "contacted"],
+  follow_up: ["follow_up", "in_discussion"],
+  eoi_sent: ["eoi_sent", "eoq_uploaded"],
+  quoted: ["quoted", "negotiation"],
+};
+
+function applyPipelineAdvance(enquiry, targetStatus) {
+  if (!enquiry || TERMINAL_STATUSES.has(String(enquiry.enquiry_status))) return false;
+  const currentRank = PIPELINE_RANK[enquiry.enquiry_status] ?? 0;
+  const targetRank = PIPELINE_RANK[targetStatus] ?? 0;
+  if (targetRank <= currentRank) return false;
+  enquiry.enquiry_status = targetStatus;
+  return true;
+}
+
+export async function savePipelineAdvance(enquiry, targetStatus) {
+  if (!applyPipelineAdvance(enquiry, targetStatus)) return enquiry;
+  await enquiry.save();
+  return enquiry;
+}
 export const AUDIT_TYPES = [
   "Electrical Energy Audit",
   "Electrical Safety Audit",
@@ -60,19 +101,21 @@ export function parseClientRepresentatives(client_representatives) {
     .filter((rep) => rep.name || rep.contact_number || rep.email);
 }
 
-async function generateUniqueEnquiryDocumentNumber() {
+async function generateUniqueEnquiryDocumentNumber(kind = "other") {
+  const prefix =
+    kind === "eoi" ? "EOI" : kind === "quotation" ? "QUO" : "DOC";
   const maxAttempts = 12;
   for (let i = 0; i < maxAttempts; i++) {
     const d = new Date();
     const ymd = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}${String(d.getDate()).padStart(2, "0")}`;
     const rand = crypto.randomBytes(4).toString("hex").toUpperCase().slice(0, 8);
-    const candidate = `DOC-${ymd}-${rand}`;
+    const candidate = `${prefix}-${ymd}-${rand}`;
     const taken = await EnquiryDocument.findOne({ document_number: candidate, deleted_at: null })
       .select("_id")
       .lean();
     if (!taken) return candidate;
   }
-  return `DOC-${Date.now()}-${crypto.randomBytes(3).toString("hex").toUpperCase()}`;
+  return `${prefix}-${Date.now()}-${crypto.randomBytes(3).toString("hex").toUpperCase()}`;
 }
 
 export function parseRequestedAuditTypes(value) {
@@ -83,6 +126,46 @@ export function parseRequestedAuditTypes(value) {
   }
   if (!Array.isArray(arr)) return undefined;
   return arr.filter((t) => AUDIT_TYPES.includes(t));
+}
+
+/**
+ * Normalise the per-audit expected value breakdown. Accepts plain audit-type
+ * strings too, so a client that only knows about requested_audit_types still
+ * produces valid rows (with a zero amount).
+ */
+export function parseRequestedAudits(value) {
+  if (value == null) return undefined;
+  let arr = value;
+  if (typeof value === "string") {
+    try { arr = JSON.parse(value); } catch { return undefined; }
+  }
+  if (!Array.isArray(arr)) return undefined;
+
+  const seen = new Set();
+  const rows = [];
+  for (const entry of arr) {
+    const audit_type =
+      typeof entry === "string" ? entry : String(entry?.audit_type ?? "").trim();
+    if (!AUDIT_TYPES.includes(audit_type) || seen.has(audit_type)) continue;
+    seen.add(audit_type);
+
+    const raw = typeof entry === "string" ? 0 : entry?.expected_value;
+    const amount = raw === "" || raw == null ? 0 : Number(raw);
+    if (!Number.isFinite(amount) || amount < 0) {
+      const err = new Error(`Invalid expected_value for ${audit_type}`);
+      err.statusCode = 400;
+      throw err;
+    }
+    rows.push({ audit_type, expected_value: amount });
+  }
+  return rows;
+}
+
+export function sumRequestedAudits(rows) {
+  return (rows ?? []).reduce(
+    (total, row) => total + (Number(row?.expected_value) || 0),
+    0,
+  );
 }
 
 export function parseOptionalObjectId(value) {
@@ -98,34 +181,97 @@ export function displayEnquiryName(enquiry) {
 export function buildEnquiryPopulate() {
   return [
     { path: "assigned_to", select: "name email role" },
+    { path: "assigned_manager_to", select: "name email role" },
     { path: "assigned_admin_to", select: "name email role" },
     { path: "created_by", select: "name email role" },
     { path: "converted_facility_id", select: "name city status" },
+    { path: "accepted_quotation_id", select: "quotationRef status quotationDate financials.grandTotal financials.roundedGrandTotal" },
   ];
+}
+
+export function applyEnquiryVisibilityFilter(query, user) {
+  if (!user?._id) return;
+  if (user.role === "super_admin") return;
+  if (user.role === "admin") {
+    query.assigned_admin_to = user._id;
+    return;
+  }
+  if (user.role === "manager") {
+    query.$or = [
+      { assigned_manager_to: user._id },
+      { assigned_to: user._id },
+    ];
+    return;
+  }
+  if (user.role === "auditor") {
+    query.assigned_to = user._id;
+    return;
+  }
+  query.$or = [
+    { assigned_to: user._id },
+    { assigned_manager_to: user._id },
+    { assigned_admin_to: user._id },
+  ];
+}
+
+function isAssignedToUser(enquiry, user) {
+  if (!enquiry || !user?._id) return false;
+  const uid = user._id.toString();
+  if (enquiry.assigned_to?.toString() === uid) return true;
+  if (enquiry.assigned_manager_to?.toString() === uid) return true;
+  if (enquiry.assigned_admin_to?.toString() === uid) return true;
+  return false;
 }
 
 /**
  * Resolve an enquiry the user is allowed to access.
- * Admin/super_admin → any enquiry.
- * Others → only their created or assigned enquiries.
+ * super_admin → any enquiry.
+ * admin / manager / auditor → only enquiries assigned to them for that role.
  */
 export async function resolveAccessibleEnquiry(user, enquiryId) {
   if (!user?._id || !enquiryId) return null;
-  if (!mongoose.Types.ObjectId.isValid(enquiryId)) return null;
+  const id = typeof enquiryId === "object" ? enquiryId._id : enquiryId;
+  if (!id || !mongoose.Types.ObjectId.isValid(id)) return null;
 
-  const enquiry = await Enquiry.findById(enquiryId);
+  const enquiry = await Enquiry.findById(id);
   if (!enquiry) return null;
-  if (user?.role === "admin") {
-    if (enquiry.assigned_admin_to?.toString() === user._id.toString()) return enquiry;
-    return null;
-  }
-  if (isAdmin(user)) return enquiry;
-
-  const uid = user._id.toString();
-  if (enquiry.created_by?.toString() === uid) return enquiry;
-  if (enquiry.assigned_to?.toString() === uid) return enquiry;
+  if (user?.role === "super_admin") return enquiry;
+  if (isAssignedToUser(enquiry, user)) return enquiry;
 
   return null;
+}
+
+function recipientIdFromRef(ref) {
+  if (!ref) return null;
+  return ref._id || ref;
+}
+
+function resolveCreateAssignees(user, assigned_to, assigned_manager_to, assigned_admin_to) {
+  if (user?.role === "super_admin") {
+    return {
+      assigned_to: assigned_to || undefined,
+      assigned_manager_to: assigned_manager_to || undefined,
+      assigned_admin_to: assigned_admin_to || undefined,
+    };
+  }
+  return {
+    assigned_to: user?.role === "auditor" ? user._id : undefined,
+    assigned_manager_to: user?.role === "manager" ? user._id : undefined,
+    assigned_admin_to: user?.role === "admin" ? user._id : undefined,
+  };
+}
+
+async function notifyAssignee(io, { recipientId, senderId, enquiry }) {
+  const id = recipientIdFromRef(recipientId);
+  if (!id) return;
+  await createNotification(io, {
+    recipient: id,
+    sender: senderId,
+    title: "New Enquiry Assigned",
+    message: `You have been assigned to enquiry: ${displayEnquiryName(enquiry)}`,
+    type: "enquiry",
+    referenceId: enquiry._id,
+  });
 }
 
 // ─── Enquiry services ─────────────────────────────────────────────────────────
@@ -136,9 +282,10 @@ export async function createEnquiryService({ user, body, io }) {
     client_representative, client_contact_number, client_email,
     client_representatives,
     assigned_to: assignedRaw,
+    assigned_manager_to: assignedManagerRaw,
     assigned_admin_to: assignedAdminRaw,
     enquiry_status, source, expected_value,
-    requested_audit_types, notes, next_followup_date,
+    requested_audit_types, requested_audits, notes, next_followup_date,
   } = body;
 
   if (!name || !city) {
@@ -167,6 +314,13 @@ export async function createEnquiryService({ user, body, io }) {
     throw err;
   }
 
+  const assigned_manager_to = parseOptionalObjectId(assignedManagerRaw);
+  if (assignedManagerRaw && assigned_manager_to === undefined) {
+    const err = new Error("Invalid assigned_manager_to");
+    err.statusCode = 400;
+    throw err;
+  }
+
   const assigned_admin_to = parseOptionalObjectId(assignedAdminRaw);
   if (assignedAdminRaw && assigned_admin_to === undefined) {
     const err = new Error("Invalid assigned_admin_to");
@@ -174,13 +328,28 @@ export async function createEnquiryService({ user, body, io }) {
     throw err;
   }
 
+  const assignees = resolveCreateAssignees(
+    user,
+    assigned_to,
+    assigned_manager_to,
+    assigned_admin_to,
+  );
+
   if (enquiry_status != null && !ENQUIRY_STATUSES.includes(String(enquiry_status))) {
     const err = new Error("Invalid enquiry_status");
     err.statusCode = 400;
     throw err;
   }
 
-  const auditTypes = parseRequestedAuditTypes(requested_audit_types);
+  // The per-audit breakdown owns both the audit type list and the total when
+  // it is supplied; otherwise fall back to the flat fields.
+  const auditRows = parseRequestedAudits(requested_audits);
+  const auditTypes = auditRows
+    ? auditRows.map((row) => row.audit_type)
+    : parseRequestedAuditTypes(requested_audit_types);
+  const totalExpectedValue = auditRows
+    ? (auditRows.length > 0 ? sumRequestedAudits(auditRows) : undefined)
+    : (expected_value !== undefined && expected_value !== "" ? Number(expected_value) : undefined);
 
   let nextFollowup = undefined;
   if (next_followup_date) {
@@ -193,6 +362,15 @@ export async function createEnquiryService({ user, body, io }) {
     nextFollowup = d;
   }
 
+  let status = enquiry_status || "new";
+  if (
+    (assignees.assigned_to || assignees.assigned_manager_to || assignees.assigned_admin_to) &&
+    !TERMINAL_STATUSES.has(String(status))
+  ) {
+    const currentRank = PIPELINE_RANK[status] ?? 0;
+    if (currentRank < PIPELINE_RANK.assigned) status = "assigned";
+  }
+
   const enquiry = await Enquiry.create({
     name: String(name).trim(),
     city: String(city).trim(),
@@ -201,12 +379,14 @@ export async function createEnquiryService({ user, body, io }) {
     client_contact_number: primaryRep?.contact_number || client_contact_number,
     client_email: primaryRep?.email || client_email,
     client_representatives: fallbackClientReps,
-    assigned_to: assigned_to || undefined,
-    assigned_admin_to: assigned_admin_to || undefined,
-    enquiry_status: enquiry_status || "new",
+    assigned_to: assignees.assigned_to,
+    assigned_manager_to: assignees.assigned_manager_to,
+    assigned_admin_to: assignees.assigned_admin_to,
+    enquiry_status: status,
     source: source != null ? String(source).trim() : undefined,
-    expected_value: expected_value !== undefined && expected_value !== "" ? Number(expected_value) : undefined,
+    expected_value: totalExpectedValue,
     requested_audit_types: auditTypes ?? [],
+    requested_audits: auditRows ?? [],
     notes: notes != null ? String(notes).trim() : undefined,
     next_followup_date: nextFollowup,
     created_by: user._id,
@@ -214,16 +394,21 @@ export async function createEnquiryService({ user, body, io }) {
 
   await enquiry.populate(buildEnquiryPopulate());
 
-  if (enquiry.assigned_to) {
-    await createNotification(io, {
-      recipient: enquiry.assigned_to._id,
-      sender: user._id,
-      title: "New Enquiry Assigned",
-      message: `You have been assigned to enquiry: ${displayEnquiryName(enquiry)}`,
-      type: "enquiry",
-      referenceId: enquiry._id,
-    });
-  }
+  await notifyAssignee(io, {
+    recipientId: enquiry.assigned_to?._id,
+    senderId: user._id,
+    enquiry,
+  });
+  await notifyAssignee(io, {
+    recipientId: enquiry.assigned_manager_to?._id,
+    senderId: user._id,
+    enquiry,
+  });
+  await notifyAssignee(io, {
+    recipientId: enquiry.assigned_admin_to?._id,
+    senderId: user._id,
+    enquiry,
+  });
 
   await createRecentActivity({
     actor: user,
@@ -247,7 +432,9 @@ export async function getEnquiriesService({ user, query: rawQuery }) {
       err.statusCode = 400;
       throw err;
     }
-    query.enquiry_status = rawQuery.enquiry_status;
+    const status = String(rawQuery.enquiry_status);
+    const aliases = STATUS_FILTER_ALIASES[status];
+    query.enquiry_status = aliases ? { $in: aliases } : status;
   }
 
   if (rawQuery.city) {
@@ -264,11 +451,27 @@ export async function getEnquiriesService({ user, query: rawQuery }) {
     query.assigned_to = aid;
   }
 
-  if (user?.role === "admin") {
-    query.assigned_admin_to = user._id;
-  } else if (!isAdmin(user)) {
-    query.$or = [{ created_by: user._id }, { assigned_to: user._id }];
+  if (rawQuery.assigned_manager_to) {
+    const aid = parseOptionalObjectId(rawQuery.assigned_manager_to);
+    if (!aid) {
+      const err = new Error("Invalid assigned_manager_to filter");
+      err.statusCode = 400;
+      throw err;
+    }
+    query.assigned_manager_to = aid;
   }
+
+  if (rawQuery.assigned_admin_to) {
+    const aid = parseOptionalObjectId(rawQuery.assigned_admin_to);
+    if (!aid) {
+      const err = new Error("Invalid assigned_admin_to filter");
+      err.statusCode = 400;
+      throw err;
+    }
+    query.assigned_admin_to = aid;
+  }
+
+  applyEnquiryVisibilityFilter(query, user);
 
   return Enquiry.find(query).populate(buildEnquiryPopulate()).sort({ created_at: -1 });
 }
@@ -297,11 +500,13 @@ export async function updateEnquiryService({ user, enquiryId, body, io }) {
     client_representative, client_contact_number, client_email,
     client_representatives,
     assigned_to: assignedRaw,
+    assigned_manager_to: assignedManagerRaw,
     assigned_admin_to: assignedAdminRaw,
     enquiry_status, source, expected_value,
-    requested_audit_types, notes, next_followup_date,
+    requested_audit_types, requested_audits, notes, next_followup_date,
     is_converted_to_facility,
     converted_facility_id: convertedFacilityRaw,
+    accepted_quotation_id: acceptedQuotationRaw,
   } = body;
 
   const updatedFields = Object.keys(body || {});
@@ -326,32 +531,37 @@ export async function updateEnquiryService({ user, enquiryId, body, io }) {
     }
   }
 
-  if (assignedRaw !== undefined) {
-    if (assignedRaw === null || assignedRaw === "") {
-      enquiry.assigned_to = undefined;
-    } else {
-      const aid = parseOptionalObjectId(assignedRaw);
-      if (!aid) {
-        const err = new Error("Invalid assigned_to");
-        err.statusCode = 400;
-        throw err;
-      }
-      enquiry.assigned_to = aid;
+  const applyAssigneeUpdate = (raw, fieldName) => {
+    if (raw === undefined) return false;
+    if (raw === null || raw === "") {
+      enquiry[fieldName] = undefined;
+      return false;
     }
-  }
+    const aid = parseOptionalObjectId(raw);
+    if (!aid) {
+      const err = new Error(`Invalid ${fieldName}`);
+      err.statusCode = 400;
+      throw err;
+    }
+    enquiry[fieldName] = aid;
+    return true;
+  };
 
-  if (assignedAdminRaw !== undefined) {
-    if (assignedAdminRaw === null || assignedAdminRaw === "") {
-      enquiry.assigned_admin_to = undefined;
-    } else {
-      const aid = parseOptionalObjectId(assignedAdminRaw);
-      if (!aid) {
-        const err = new Error("Invalid assigned_admin_to");
-        err.statusCode = 400;
-        throw err;
-      }
-      enquiry.assigned_admin_to = aid;
-    }
+  const canAssignAll = user?.role === "super_admin";
+  const assignedAuditorUpdated = canAssignAll
+    ? applyAssigneeUpdate(assignedRaw, "assigned_to")
+    : false;
+  const assignedManagerUpdated = canAssignAll
+    ? applyAssigneeUpdate(assignedManagerRaw, "assigned_manager_to")
+    : false;
+  const assignedAdminUpdated = canAssignAll
+    ? applyAssigneeUpdate(assignedAdminRaw, "assigned_admin_to")
+    : false;
+  if (
+    enquiry_status === undefined &&
+    (assignedAuditorUpdated || assignedManagerUpdated || assignedAdminUpdated)
+  ) {
+    applyPipelineAdvance(enquiry, "assigned");
   }
 
   if (enquiry_status !== undefined) {
@@ -364,12 +574,29 @@ export async function updateEnquiryService({ user, enquiryId, body, io }) {
   }
 
   if (source !== undefined) enquiry.source = source ? String(source).trim() : "";
-  if (expected_value !== undefined) {
-    enquiry.expected_value = expected_value === "" || expected_value == null ? undefined : Number(expected_value);
+
+  const auditRows = requested_audits !== undefined
+    ? (parseRequestedAudits(requested_audits) ?? [])
+    : undefined;
+
+  if (auditRows !== undefined) {
+    enquiry.requested_audits = auditRows;
+    enquiry.requested_audit_types = auditRows.map((row) => row.audit_type);
+    enquiry.expected_value = auditRows.length > 0 ? sumRequestedAudits(auditRows) : undefined;
+  } else {
+    if (expected_value !== undefined) {
+      enquiry.expected_value = expected_value === "" || expected_value == null ? undefined : Number(expected_value);
+    }
+    if (requested_audit_types !== undefined) {
+      const types = parseRequestedAuditTypes(requested_audit_types) ?? [];
+      enquiry.requested_audit_types = types;
+      // Drop stale per-audit amounts for audits that are no longer requested.
+      enquiry.requested_audits = (enquiry.requested_audits ?? []).filter((row) =>
+        types.includes(row?.audit_type),
+      );
+    }
   }
-  if (requested_audit_types !== undefined) {
-    enquiry.requested_audit_types = parseRequestedAuditTypes(requested_audit_types) ?? [];
-  }
+
   if (notes !== undefined) enquiry.notes = notes ? String(notes).trim() : "";
 
   if (next_followup_date !== undefined) {
@@ -408,6 +635,69 @@ export async function updateEnquiryService({ user, enquiryId, body, io }) {
     }
   }
 
+  if (acceptedQuotationRaw !== undefined) {
+    if (acceptedQuotationRaw === null || acceptedQuotationRaw === "") {
+      if (String(enquiry.enquiry_status || "").toLowerCase() === "won") {
+        const err = new Error("An accepted quotation is required for won enquiries");
+        err.statusCode = 400;
+        throw err;
+      }
+      enquiry.accepted_quotation_id = undefined;
+    } else {
+      const qid = parseOptionalObjectId(acceptedQuotationRaw);
+      if (!qid) {
+        const err = new Error("Invalid accepted_quotation_id");
+        err.statusCode = 400;
+        throw err;
+      }
+      const quotation = await Quotation.findById(qid).exec();
+      if (!quotation) {
+        const err = new Error("Quotation not found");
+        err.statusCode = 400;
+        throw err;
+      }
+      if (String(quotation.status || "").toUpperCase() !== "ACCEPTED") {
+        const err = new Error("Only accepted quotations can be linked when marking an enquiry as won");
+        err.statusCode = 400;
+        throw err;
+      }
+      const linkedEnquiryId =
+        quotation.enquiryId != null ? String(quotation.enquiryId) : "";
+      if (linkedEnquiryId && linkedEnquiryId !== String(enquiry._id)) {
+        const err = new Error("Quotation does not belong to this enquiry");
+        err.statusCode = 400;
+        throw err;
+      }
+      enquiry.accepted_quotation_id = qid;
+    }
+  }
+
+  if (String(enquiry.enquiry_status || "").toLowerCase() === "won") {
+    if (!enquiry.accepted_quotation_id) {
+      const err = new Error("An accepted quotation is required before marking an enquiry as won");
+      err.statusCode = 400;
+      throw err;
+    }
+    const linkedQuotation = await Quotation.findById(enquiry.accepted_quotation_id).exec();
+    if (!linkedQuotation) {
+      const err = new Error("Accepted quotation not found");
+      err.statusCode = 400;
+      throw err;
+    }
+    if (String(linkedQuotation.status || "").toUpperCase() !== "ACCEPTED") {
+      const err = new Error("Only accepted quotations can be linked to a won enquiry");
+      err.statusCode = 400;
+      throw err;
+    }
+    const linkedEnquiryId =
+      linkedQuotation.enquiryId != null ? String(linkedQuotation.enquiryId) : "";
+    if (linkedEnquiryId && linkedEnquiryId !== String(enquiry._id)) {
+      const err = new Error("Accepted quotation does not belong to this enquiry");
+      err.statusCode = 400;
+      throw err;
+    }
+  }
+
   const updated = await enquiry.save();
   await updated.populate(buildEnquiryPopulate());
 
@@ -421,19 +711,34 @@ export async function updateEnquiryService({ user, enquiryId, body, io }) {
     meta: { updated_fields: [...new Set(updatedFields)], enquiry_status: updated.enquiry_status },
   });
 
-  if (assignedRaw !== undefined && updated.assigned_to) {
-    await createNotification(io, {
-      recipient: updated.assigned_to._id,
-      sender: user._id,
-      title: "New Enquiry Assigned",
-      message: `You have been assigned to enquiry: ${displayEnquiryName(updated)}`,
-      type: "enquiry",
-      referenceId: updated._id,
+  if (assignedAuditorUpdated) {
+    await notifyAssignee(io, {
+      recipientId: updated.assigned_to,
+      senderId: user._id,
+      enquiry: updated,
+    });
+  }
+  if (assignedManagerUpdated) {
+    await notifyAssignee(io, {
+      recipientId: updated.assigned_manager_to,
+      senderId: user._id,
+      enquiry: updated,
+    });
+  }
+  if (assignedAdminUpdated) {
+    await notifyAssignee(io, {
+      recipientId: updated.assigned_admin_to,
+      senderId: user._id,
+      enquiry: updated,
     });
   }
 
   if (enquiry_status !== undefined) {
-    const recipientId = updated.assigned_to?._id || updated.created_by?._id;
+    const recipientId =
+      updated.assigned_to?._id ||
+      updated.assigned_manager_to?._id ||
+      updated.assigned_admin_to?._id ||
+      updated.created_by?._id;
     if (recipientId) {
       await createNotification(io, {
         recipient: recipientId,
@@ -486,6 +791,42 @@ export async function getFollowUpsService({ user, enquiryId }) {
     .sort({ createdAt: -1 });
 }
 
+/** Latest follow-up outcome/remarks per accessible enquiry (for follow-up queue). */
+export async function getLatestFollowUpsService({ user }) {
+  const query = {};
+  applyEnquiryVisibilityFilter(query, user);
+  const enquiryIds = await Enquiry.find(query).distinct("_id");
+  if (enquiryIds.length === 0) return {};
+
+  const rows = await FollowUp.aggregate([
+    {
+      $match: {
+        enquiry_id: { $in: enquiryIds },
+        deleted_at: null,
+      },
+    },
+    { $sort: { followup_date: -1, createdAt: -1 } },
+    {
+      $group: {
+        _id: "$enquiry_id",
+        outcome: { $first: "$outcome" },
+        remarks: { $first: "$remarks" },
+        followup_date: { $first: "$followup_date" },
+      },
+    },
+  ]);
+
+  const map = {};
+  for (const row of rows) {
+    map[String(row._id)] = {
+      outcome: row.outcome ?? null,
+      remarks: row.remarks ?? null,
+      followup_date: row.followup_date ?? null,
+    };
+  }
+  return map;
+}
+
 export async function createFollowUpService({ user, enquiryId, body }) {
   const enquiry = await resolveAccessibleEnquiry(user, enquiryId);
   if (!enquiry) {
@@ -496,12 +837,8 @@ export async function createFollowUpService({ user, enquiryId, body }) {
 
   const { followup_date, mode, remarks, outcome, next_followup_date } = body;
 
-  if (!followup_date) {
-    const err = new Error("followup_date is required");
-    err.statusCode = 400;
-    throw err;
-  }
-  const fd = new Date(followup_date);
+  // Logged when the contact actually happened, so default to now.
+  const fd = followup_date ? new Date(followup_date) : new Date();
   if (Number.isNaN(fd.getTime())) {
     const err = new Error("Invalid followup_date");
     err.statusCode = 400;
@@ -522,13 +859,15 @@ export async function createFollowUpService({ user, enquiryId, body }) {
   const row = await FollowUp.create({
     enquiry_id: enquiry._id,
     followup_date: fd,
-    mode,
+    mode: mode || undefined,
     remarks: remarks != null ? String(remarks).trim() : undefined,
-    outcome,
+    outcome: outcome || undefined,
     next_followup_date: nextFd,
     created_by: user._id,
   });
   await row.populate("created_by", "name email role");
+
+  await savePipelineAdvance(enquiry, "follow_up");
 
   await createRecentActivity({
     actor: user,
@@ -587,9 +926,9 @@ export async function updateFollowUpService({ user, enquiryId, followUpId, body 
     }
     row.followup_date = d;
   }
-  if (mode !== undefined) row.mode = mode;
+  if (mode !== undefined) row.mode = mode || undefined;
   if (remarks !== undefined) row.remarks = String(remarks).trim();
-  if (outcome !== undefined) row.outcome = outcome;
+  if (outcome !== undefined) row.outcome = outcome || undefined;
 
   if (next_followup_date !== undefined) {
     if (next_followup_date === null || next_followup_date === "") {
@@ -702,15 +1041,27 @@ export async function createEnquiryDocumentService({ user, enquiryId, body, file
     throw err;
   }
 
-  const document_number = await generateUniqueEnquiryDocumentNumber();
+  const DOCUMENT_KINDS = ["eoi", "quotation", "other"];
+  const document_kind = DOCUMENT_KINDS.includes(String(body.document_kind))
+    ? String(body.document_kind)
+    : "other";
+
+  const document_number = await generateUniqueEnquiryDocumentNumber(document_kind);
   const row = await EnquiryDocument.create({
     enquiry_id: enquiry._id,
     document_number,
+    document_kind,
     document: docObj,
     created_by: user._id,
   });
 
   await row.populate("created_by", "name email role");
+
+  if (document_kind === "eoi") {
+    await savePipelineAdvance(enquiry, "eoi_sent");
+  } else if (document_kind === "quotation") {
+    await savePipelineAdvance(enquiry, "quoted");
+  }
 
   await createRecentActivity({
     actor: user,

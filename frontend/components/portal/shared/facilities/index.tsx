@@ -9,14 +9,7 @@ import { useRouter } from "next/navigation";
 import { DashboardLayout } from "@/components/portal/layout/dashboard-layout";
 import { Button } from "@/components/portal/ui/button";
 import { Input } from "@/components/portal/ui/input";
-import {
-  Card,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-  CardContent,
-  CardFooter,
-} from "@/components/portal/ui/card";
+import { Card } from "@/components/portal/ui/card";
 import { Tabs, TabsList, TabsTrigger } from "@/components/portal/ui/tabs";
 import {
   Select,
@@ -45,12 +38,6 @@ import {
   Building2,
   Pencil,
   Trash2,
-  MapPin,
-  User,
-  Phone,
-  Mail,
-  Calendar,
-  ArrowRight,
   FileSpreadsheet,
 } from "lucide-react";
 import {
@@ -62,10 +49,10 @@ import {
 import { FacilityUtilityAuditProgress } from "@/components/portal/shared/facility/[auditType]/[facilityId]/_components/facility-utility-audit-progress";
 import { useAppSelector } from "@/store/hooks";
 import { facilityPath } from "@/components/portal/lib/facilityRoutes";
-import { AUDIT_TYPE_OPTIONS } from "@/components/portal/lib/facilityConstants";
-import { cn } from "@/components/portal/lib/utils";
+import { AUDIT_TYPE_OPTIONS, facilityExpectedValue } from "@/components/portal/lib/facilityConstants";
+import { formatInr } from "@/components/portal/lib/quotationConstants";
 
-const PAGE_SIZE = 6;
+const PAGE_SIZE = 12;
 
 type ClosureFilter = "all" | "open" | "closed";
 
@@ -127,6 +114,10 @@ function facilitySearchHaystack(facility: Facility): string {
     facility.client_email,
     facility.facility_type,
     facility.audit_type,
+    facility.expected_value != null ? String(facility.expected_value) : null,
+    facility.budget?.tentative_budget != null
+      ? String(facility.budget.tentative_budget)
+      : null,
     closureLabel,
     facility.start_date,
     facility.audit_date,
@@ -373,31 +364,22 @@ export default function FacilitiesPage() {
 
       {/* Facilities Cards/Widgets listing */}
       {facilitiesLoading ? (
-        <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+        <div className="grid min-w-0 grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
           {Array.from({ length: 6 }).map((_, i) => (
-            <Card key={i} className="flex flex-col justify-between h-[320px] overflow-hidden">
-              <CardHeader className="p-5 pb-3">
-                <div className="flex items-center justify-between">
-                  <Skeleton className="h-4 w-24" />
-                  <Skeleton className="h-4 w-16" />
+            <Card key={i} className="flex min-w-0 flex-col gap-2 overflow-hidden py-0">
+              <div className="flex flex-col gap-2 p-3">
+                <div className="flex items-start justify-between gap-2">
+                  <Skeleton className="h-4 w-2/3" />
+                  <Skeleton className="h-4 w-16 shrink-0" />
                 </div>
-                <div className="mt-4 flex items-start gap-2.5">
-                  <Skeleton className="h-8 w-8 rounded-lg shrink-0" />
-                  <div className="space-y-2 w-full">
-                    <Skeleton className="h-5 w-2/3" />
-                    <Skeleton className="h-4 w-1/2" />
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0 flex-1 space-y-1.5">
+                    <Skeleton className="h-3 w-1/2" />
+                    <Skeleton className="h-4 w-24" />
                   </div>
+                  <Skeleton className="h-9 w-9 shrink-0 rounded-full" />
                 </div>
-              </CardHeader>
-              <CardContent className="px-5 py-4 space-y-3.5 border-y bg-muted/5">
-                <Skeleton className="h-4 w-5/6" />
-                <Skeleton className="h-4 w-3/4" />
-                <Skeleton className="h-4 w-2/3" />
-              </CardContent>
-              <CardFooter className="p-4 flex items-center justify-between">
-                <Skeleton className="h-4 w-20" />
-                <Skeleton className="h-8 w-16 rounded" />
-              </CardFooter>
+              </div>
             </Card>
           ))}
         </div>
@@ -418,189 +400,128 @@ export default function FacilitiesPage() {
           )}
         </Card>
       ) : (
-        <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+        <div className="grid min-w-0 grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
           {paginatedFacilities.map((facility) => {
-                const isClosed = isFacilityAuditClosed(facility);
+            const isClosed = isFacilityAuditClosed(facility);
+            const showProgress =
+              supportsFacilityUtilityProgress(facility.audit_type);
+            const utilityProgress = utilityProgressByFacilityId[facility._id];
+            const expectedValue = facilityExpectedValue(facility);
             return (
               <Card
                 key={facility._id}
                 onClick={() => handleRowClick(facility)}
-                className={cn(
-                  "group relative flex flex-col justify-between border-l-4 transition-all duration-300 hover:-translate-y-1 hover:shadow-md cursor-pointer overflow-hidden",
-                  isClosed
-                    ? "border-l-emerald-500 hover:border-l-emerald-600"
-                    : facility.audit_type === "Electrical Energy Audit"
-                    ? "border-l-amber-500 hover:border-l-amber-600"
-                    : facility.audit_type === "Electrical Safety Audit"
-                    ? "border-l-rose-500 hover:border-l-rose-600"
-                    : facility.audit_type === "Thermal Audit"
-                    ? "border-l-orange-500 hover:border-l-orange-600"
-                    : facility.audit_type === "Lightning Arrester Audit"
-                    ? "border-l-sky-500 hover:border-l-sky-600"
-                    : "border-l-primary hover:border-l-primary/80"
-                )}
+                className="group relative flex min-w-0 cursor-pointer flex-col gap-0 overflow-hidden border-border bg-card py-0 transition-colors hover:border-primary/40 hover:bg-muted/40"
               >
-                <CardHeader className="p-5 pb-3">
-                  <div className="flex items-start justify-between gap-2 min-w-0">
-                    <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground bg-secondary/50 px-2 py-0.5 rounded truncate max-w-[140px] inline-block shrink-0" title={facility.audit_type}>
-                      {facility.audit_type || "No Audit Type"}
-                    </span>
-                    <div className="flex items-center gap-1.5 shrink-0">
-                      <span
-                        className={`inline-flex rounded-full px-2.5 py-0.5 text-[10px] font-semibold ${
-                          isClosed
-                            ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400"
-                            : "bg-amber-100 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400"
-                        }`}
-                      >
-                        {isClosed ? "Closed" : "Open"}
-                      </span>
-                    </div>
-                  </div>
-                  <div className="mt-2 flex items-start gap-2.5 min-w-0">
-                    <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary transition-colors group-hover:bg-primary group-hover:text-primary-foreground">
-                      <Building2 className="h-4 w-4" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <CardTitle className="truncate text-base font-semibold text-foreground group-hover:text-primary transition-colors">
+                <div className="flex min-w-0 flex-col gap-2 p-3">
+                  <div className="flex min-w-0 items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <h3 className="line-clamp-2 text-sm font-semibold leading-snug text-foreground group-hover:text-primary">
                         {facility.name}
-                      </CardTitle>
-                      <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-0.5 text-[10px] font-mono text-muted-foreground">
-                        {facility.audit_number && (
-                          <span className="bg-secondary px-1.5 py-0.5 rounded shrink-0">
-                            {facility.audit_number}
-                          </span>
-                        )}
-                        {facility.enquiry_number && (
-                          <span className="bg-secondary px-1.5 py-0.5 rounded shrink-0">
-                            ENQ: {facility.enquiry_number}
-                          </span>
-                        )}
+                      </h3>
+                      <div className="mt-0.5 flex flex-wrap items-center gap-1 font-mono text-[10px] text-muted-foreground/75">
+                        {facility.audit_number ? (
+                          <span>{facility.audit_number}</span>
+                        ) : null}
+                        {facility.enquiry_number ? (
+                          <span>ENQ: {facility.enquiry_number}</span>
+                        ) : null}
                       </div>
-                      <div className="mt-1.5 flex items-center gap-1 text-xs text-muted-foreground min-w-0">
-                        <MapPin className="h-3.5 w-3.5 shrink-0" />
-                        <span className="block truncate flex-1">
-                          {facility.city}
-                          {facility.address ? `, ${facility.address}` : ""}
+                    </div>
+                    <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium capitalize leading-none text-muted-foreground">
+                      {facility.facility_type || "Facility"}
+                    </span>
+                  </div>
+
+                  <div className="flex min-w-0 items-center gap-3">
+                    <div className="min-w-0 flex-1 space-y-1.5">
+                      <p className="truncate text-xs text-muted-foreground">
+                        {facility.city || "Unknown city"}
+                      </p>
+                      {expectedValue != null ? (
+                        <p className="text-xs font-medium text-foreground">
+                          Expected value: {formatInr(expectedValue)}
+                        </p>
+                      ) : null}
+                      <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                        <span
+                          title={
+                            isClosed
+                              ? "Facility audit closed"
+                              : "Facility audit open"
+                          }
+                          className={`inline-flex max-w-full rounded-full px-2 py-0.5 text-[10px] font-medium leading-none sm:max-w-none sm:text-xs ${
+                            isClosed
+                              ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400"
+                              : "bg-amber-100 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400"
+                          }`}
+                        >
+                          {isClosed ? "Audit closed" : "Audit open"}
                         </span>
+                        {facility.audit_type ? (
+                          <span className="inline-flex rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-medium leading-none text-blue-700 dark:bg-blue-500/10 dark:text-blue-400 sm:text-xs">
+                            {facility.audit_type}
+                          </span>
+                        ) : null}
                       </div>
                     </div>
-                  </div>
-                </CardHeader>
-
-                <CardContent className="px-5 py-3 space-y-3 text-xs text-muted-foreground border-y border-muted/20 bg-muted/5 flex-1 min-w-0">
-                  {/* {facility.facility_type && (
-                    <div className="flex items-center gap-2 min-w-0">
-                      <span className="font-medium text-foreground min-w-[75px] shrink-0">Type:</span>
-                      <span className="block truncate flex-1">{facility.facility_type}</span>
-                    </div>
-                  )} */}
-
-                  {/* Client Rep info */}
-                  {/* <div className="space-y-1 min-w-0">
-                    <div className="flex items-center gap-2 text-foreground font-medium min-w-0">
-                      <User className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                      <span className="block truncate flex-1">{facility.client_representative || "No Representative"}</span>
-                    </div>
-                    {(facility.client_contact_number || facility.client_email) && (
-                      <div className="pl-[22px] space-y-0.5 text-[11px] min-w-0">
-                        {facility.client_contact_number && (
-                          <div className="flex items-center gap-1.5 min-w-0">
-                            <Phone className="h-3 w-3 text-muted-foreground/70 shrink-0" />
-                            <span className="block truncate flex-1">{facility.client_contact_number}</span>
-                          </div>
-                        )}
-                        {facility.client_email && (
-                          <div className="flex items-center gap-1.5 min-w-0">
-                            <Mail className="h-3 w-3 text-muted-foreground/70 shrink-0" />
-                            <span className="block truncate flex-1">{facility.client_email}</span>
-                          </div>
-                        )}
+                    {showProgress ? (
+                      <div
+                        className="shrink-0"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        {utilityProgressLoading ? (
+                          <Skeleton className="h-9 w-9 shrink-0 rounded-full" />
+                        ) : utilityProgress ? (
+                          <FacilityUtilityAuditProgress
+                            compact
+                            size={36}
+                            strokeWidth={3}
+                            summary={utilityProgress}
+                          />
+                        ) : null}
                       </div>
-                    )}
-                  </div> */}
-
-                  {/* Dates */}
-                  <div className="grid grid-cols-2 gap-2 pt-2 border-t border-dashed border-muted/50 text-[11px] min-w-0">
-                    <div className="min-w-0">
-                      <span className="block text-[10px] text-muted-foreground/70 uppercase truncate">Start Date</span>
-                      <div className="flex items-center gap-1 mt-0.5 text-foreground min-w-0">
-                        <Calendar className="h-3 w-3 text-muted-foreground/80 shrink-0" />
-                        <span className="block truncate flex-1">{facility.start_date ? new Date(facility.start_date).toLocaleDateString() : "—"}</span>
-                      </div>
-                    </div>
-                    <div className="min-w-0">
-                      <span className="block text-[10px] text-muted-foreground/70 uppercase truncate">Target Closure</span>
-                      <div className="flex items-center gap-1 mt-0.5 text-foreground min-w-0">
-                        <Calendar className="h-3 w-3 text-muted-foreground/80 shrink-0" />
-                        <span className="block truncate flex-1">{facility.closure_date ? new Date(facility.closure_date).toLocaleDateString() : "—"}</span>
-                      </div>
-                    </div>
+                    ) : null}
                   </div>
 
-                  {supportsFacilityUtilityProgress(facility.audit_type) ? (
+                  {canUpdateFacility || canDeleteFacility ? (
                     <div
-                      className="pt-2 border-t border-dashed border-muted/50"
+                      className="flex items-center justify-end gap-1"
                       onClick={(e) => e.stopPropagation()}
                     >
-                      {utilityProgressLoading ? (
-                        <div className="flex items-center gap-3">
-                          <Skeleton className="h-9 w-9 shrink-0 rounded-full" />
-                          <div className="flex-1 space-y-1.5">
-                            <Skeleton className="h-3 w-28" />
-                            <Skeleton className="h-3 w-36" />
-                          </div>
-                        </div>
-                      ) : utilityProgressByFacilityId[facility._id] ? (
-                        <FacilityUtilityAuditProgress
-                          size={36}
-                          strokeWidth={3}
-                          summary={utilityProgressByFacilityId[facility._id]}
-                        />
-                      ) : null}
-                    </div>
-                  ) : null}
-                </CardContent>
-
-                <CardFooter className="p-4 flex items-center justify-between gap-2">
-                  <div className="flex items-center text-xs font-semibold text-primary group-hover:underline">
-                    <span>View Details</span>
-                    <ArrowRight className="ml-1 h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
-                  </div>
-
-                  <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-muted"
-                      disabled={!canUpdateFacility || isClosed}
-                      title={
-                        !canUpdateFacility
-                          ? "You do not have permission to edit facilities."
-                          : isClosed
-                          ? "Facility audit is closed; editing is locked."
-                          : "Edit Facility"
-                      }
-                      onClick={(e) => handleEditFacility(e, facility)}
-                    >
-                      <Pencil className="h-4 w-4" />
-                      <span className="sr-only">Edit</span>
-                    </Button>
-                    {canDeleteFacility ? (
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
-                        disabled={isDeleting}
-                        title="Delete Facility"
-                        onClick={(e) => handleDeleteFacility(e, facility)}
+                        className="h-7 w-7 text-muted-foreground hover:bg-muted hover:text-foreground"
+                        disabled={!canUpdateFacility || isClosed}
+                        title={
+                          !canUpdateFacility
+                            ? "You do not have permission to edit facilities."
+                            : isClosed
+                              ? "Facility audit is closed; editing is locked."
+                              : "Edit Facility"
+                        }
+                        onClick={(e) => handleEditFacility(e, facility)}
                       >
-                        <Trash2 className="h-4 w-4" />
-                        <span className="sr-only">Delete</span>
+                        <Pencil className="h-3.5 w-3.5" />
+                        <span className="sr-only">Edit</span>
                       </Button>
-                    ) : null}
-                  </div>
-                </CardFooter>
+                      {canDeleteFacility ? (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                          disabled={isDeleting}
+                          title="Delete Facility"
+                          onClick={(e) => handleDeleteFacility(e, facility)}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                          <span className="sr-only">Delete</span>
+                        </Button>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </div>
               </Card>
             );
           })}

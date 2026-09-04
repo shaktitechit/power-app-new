@@ -10,20 +10,31 @@ export interface EnquiryUserRef {
 
 export type EnquiryStatus =
   | "new"
-  | "contacted"
-  | "in_discussion"
+  | "assigned"
+  | "follow_up"
+  | "eoi_sent"
   | "quoted"
-  | "eoq_uploaded"
-  | "negotiation"
   | "won"
   | "lost"
-  | "dropped";
+  | "dropped"
+  | "contacted"
+  | "in_discussion"
+  | "eoq_uploaded"
+  | "negotiation";
+
+export type EnquiryDocumentKind = "eoi" | "quotation" | "other";
 
 export type RequestedAuditType =
   | "Electrical Energy Audit"
   | "Electrical Safety Audit"
   | "Thermal Audit"
   | "Lightning Arrester Audit";
+
+/** One requested audit and the value expected from it. */
+export interface RequestedAudit {
+  audit_type: RequestedAuditType;
+  expected_value?: number;
+}
 
 export interface Enquiry {
   _id: string;
@@ -40,15 +51,30 @@ export interface Enquiry {
     email?: string;
   }[];
   assigned_to?: string | EnquiryUserRef | null;
+  assigned_manager_to?: string | EnquiryUserRef | null;
   assigned_admin_to?: string | EnquiryUserRef | null;
   enquiry_status: EnquiryStatus;
   source?: string;
+  /** Total of `requested_audits[].expected_value`. */
   expected_value?: number;
   requested_audit_types?: RequestedAuditType[];
+  requested_audits?: RequestedAudit[];
   notes?: string;
   next_followup_date?: string;
   is_converted_to_facility?: boolean;
   converted_facility_id?: string | { _id?: string; name?: string; city?: string; status?: string };
+  accepted_quotation_id?:
+    | string
+    | {
+        _id?: string;
+        quotationRef?: string;
+        status?: string;
+        quotationDate?: string;
+        financials?: {
+          grandTotal?: number;
+          roundedGrandTotal?: number;
+        };
+      };
   created_by: string | EnquiryUserRef;
   deleted_at?: string | null;
   created_at?: string;
@@ -94,6 +120,7 @@ export interface EnquiryDocument {
         enquiry_status?: EnquiryStatus;
       };
   document_number?: string;
+  document_kind?: EnquiryDocumentKind;
   document: EnquiryDocumentDetails;
   created_by: string | EnquiryUserRef;
   deleted_at?: string | null;
@@ -105,6 +132,8 @@ export interface GetEnquiriesQueryArgs {
   enquiry_status?: EnquiryStatus;
   city?: string;
   assigned_to?: string;
+  assigned_manager_to?: string;
+  assigned_admin_to?: string;
 }
 
 export interface CreateEnquiryRequest {
@@ -117,11 +146,14 @@ export interface CreateEnquiryRequest {
   client_email?: string;
   client_representatives?: Enquiry["client_representatives"];
   assigned_to?: string | null;
+  assigned_manager_to?: string | null;
   assigned_admin_to?: string | null;
   enquiry_status?: EnquiryStatus;
   source?: string;
   expected_value?: number;
   requested_audit_types?: RequestedAuditType[];
+  /** Server derives `expected_value` and `requested_audit_types` from this. */
+  requested_audits?: RequestedAudit[];
   notes?: string;
   next_followup_date?: string | null;
 }
@@ -137,23 +169,28 @@ export interface UpdateEnquiryRequest {
   client_email?: string;
   client_representatives?: Enquiry["client_representatives"];
   assigned_to?: string | null;
+  assigned_manager_to?: string | null;
   assigned_admin_to?: string | null;
   enquiry_status?: EnquiryStatus;
   source?: string;
   expected_value?: number | null;
   requested_audit_types?: RequestedAuditType[];
+  /** Server derives `expected_value` and `requested_audit_types` from this. */
+  requested_audits?: RequestedAudit[];
   notes?: string;
   next_followup_date?: string | null;
   is_converted_to_facility?: boolean;
   converted_facility_id?: string | null;
+  accepted_quotation_id?: string | null;
 }
 
 export interface CreateFollowUpRequest {
   enquiryId: string;
-  followup_date: string;
-  mode?: FollowUp["mode"];
+  /** Defaults to the server's current time when omitted. */
+  followup_date?: string;
+  mode?: FollowUp["mode"] | null;
   remarks?: string;
-  outcome?: FollowUp["outcome"];
+  outcome?: FollowUp["outcome"] | null;
   next_followup_date?: string | null;
 }
 
@@ -161,15 +198,16 @@ export interface UpdateFollowUpRequest {
   enquiryId: string;
   followUpId: string;
   followup_date?: string;
-  mode?: FollowUp["mode"];
+  mode?: FollowUp["mode"] | null;
   remarks?: string;
-  outcome?: FollowUp["outcome"];
+  outcome?: FollowUp["outcome"] | null;
   next_followup_date?: string | null;
 }
 
 export interface CreateEnquiryDocumentRequest {
   enquiryId: string;
   document_number?: string;
+  document_kind?: EnquiryDocumentKind;
   document?: EnquiryDocumentDetails;
   document_url?: string;
   file?: File;
@@ -220,6 +258,17 @@ export interface FollowUpDetailResponse {
   data: FollowUp;
 }
 
+export interface LatestFollowUpSummary {
+  outcome?: FollowUp["outcome"] | null;
+  remarks?: string | null;
+  followup_date?: string | null;
+}
+
+export interface LatestFollowUpsResponse {
+  success: boolean;
+  data: Record<string, LatestFollowUpSummary>;
+}
+
 export interface EnquiryDocumentListResponse {
   success: boolean;
   count: number;
@@ -244,6 +293,10 @@ function followUpListTag(enquiryId: string) {
   return { type: "FollowUp" as const, id: `ENQUIRY-${enquiryId}` };
 }
 
+function followUpLatestTag() {
+  return { type: "FollowUp" as const, id: "LATEST" };
+}
+
 function enquiryDocumentListTag(enquiryId: string) {
   return { type: "EnquiryDocument" as const, id: `ENQUIRY-${enquiryId}` };
 }
@@ -262,6 +315,9 @@ const buildEnquiryDocumentFormData = (data: Partial<CreateEnquiryDocumentRequest
   }
   if (data.caption !== undefined && data.caption !== null) {
     formData.append("caption", data.caption);
+  }
+  if (data.document_kind) {
+    formData.append("document_kind", data.document_kind);
   }
   if (data.file) {
     formData.append("documents", data.file);
@@ -349,6 +405,14 @@ export const enquiryApiSlice = apiSlice.injectEndpoints({
       ],
     }),
 
+    getLatestFollowUps: builder.query<LatestFollowUpsResponse, void>({
+      query: () => ({
+        url: "/v1/enquiries/follow-ups/latest",
+        method: "GET",
+      }),
+      providesTags: [followUpLatestTag()],
+    }),
+
     getFollowUpById: builder.query<
       FollowUpDetailResponse,
       { enquiryId: string; followUpId: string }
@@ -374,6 +438,7 @@ export const enquiryApiSlice = apiSlice.injectEndpoints({
       }),
       invalidatesTags: (_result, _error, { enquiryId }) => [
         followUpListTag(enquiryId),
+        followUpLatestTag(),
         { type: "Enquiry", id: enquiryId },
       ],
     }),
@@ -389,6 +454,7 @@ export const enquiryApiSlice = apiSlice.injectEndpoints({
       }),
       invalidatesTags: (_result, _error, { enquiryId, followUpId }) => [
         followUpListTag(enquiryId),
+        followUpLatestTag(),
         { type: "FollowUp", id: followUpId },
         { type: "Enquiry", id: enquiryId },
       ],
@@ -404,6 +470,7 @@ export const enquiryApiSlice = apiSlice.injectEndpoints({
       }),
       invalidatesTags: (_result, _error, { enquiryId, followUpId }) => [
         followUpListTag(enquiryId),
+        followUpLatestTag(),
         { type: "FollowUp", id: followUpId },
         { type: "Enquiry", id: enquiryId },
       ],
@@ -497,6 +564,7 @@ export const {
   useUpdateEnquiryMutation,
   useDeleteEnquiryMutation,
   useGetFollowUpsQuery,
+  useGetLatestFollowUpsQuery,
   useGetFollowUpByIdQuery,
   useCreateFollowUpMutation,
   useUpdateFollowUpMutation,

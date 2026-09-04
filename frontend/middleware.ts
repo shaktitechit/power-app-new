@@ -71,6 +71,14 @@ export function middleware(req: NextRequest) {
     if (subPath.startsWith("pending-quotation") && role !== "super_admin") {
       return NextResponse.redirect(new URL(`/${portalRole}/dashboard`, req.url));
     }
+    if (
+      (subPath.startsWith("quotations") || subPath.startsWith("terms-conditions")) &&
+      role !== "super_admin" &&
+      role !== "admin" &&
+      role !== "manager"
+    ) {
+      return NextResponse.redirect(new URL(`/${portalRole}/dashboard`, req.url));
+    }
   } else {
     // If it's a known top-level app route or old portal route (like "/portal/admin"), redirect to "/admin/..."
     const rootPaths = [
@@ -78,6 +86,8 @@ export function middleware(req: NextRequest) {
       "facilities",
       "facility",
       "enquiries",
+      "quotations",
+      "terms-conditions",
       "submited-enquiries",
       "pending-quotation",
       "settings",

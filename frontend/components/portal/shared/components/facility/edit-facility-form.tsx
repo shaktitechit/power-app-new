@@ -259,6 +259,7 @@ export function EditFacilityForm({
       tentative_budget: "",
       actual_budget: "",
     },
+    expected_value: "",
   });
 
   const [submitError, setSubmitError] = useState("");
@@ -307,6 +308,12 @@ export function EditFacilityForm({
         tentative_budget: facility.budget?.tentative_budget != null ? String(facility.budget.tentative_budget) : "",
         actual_budget: facility.budget?.actual_budget != null ? String(facility.budget.actual_budget) : "",
       },
+      expected_value:
+        facility.expected_value != null
+          ? String(facility.expected_value)
+          : facility.budget?.tentative_budget != null
+            ? String(facility.budget.tentative_budget)
+            : "",
     });
 
     setSubmitError("");
@@ -373,6 +380,10 @@ export function EditFacilityForm({
               tentative_budget: formData.budget.tentative_budget !== "" ? Number(formData.budget.tentative_budget) : null,
               actual_budget: formData.budget.actual_budget !== "" ? Number(formData.budget.actual_budget) : null,
             },
+            expected_value:
+              formData.expected_value !== ""
+                ? Number(formData.expected_value)
+                : null,
           }).unwrap(),
 
         loading: "Updating facility...",
@@ -715,6 +726,18 @@ export function EditFacilityForm({
                         placeholder="e.g. 3"
                         value={formData.budget.no_planned_site_visits}
                         onChange={(e) => setFormData((prev) => ({ ...prev, budget: { ...prev.budget, no_planned_site_visits: e.target.value } }))}
+                        disabled={isBusy}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="edit_expected_value">Expected Value (₹)</Label>
+                      <Input
+                        id="edit_expected_value"
+                        type="number"
+                        min="0"
+                        placeholder="Quoted amount for this audit"
+                        value={formData.expected_value}
+                        onChange={(e) => setFormData((prev) => ({ ...prev, expected_value: e.target.value }))}
                         disabled={isBusy}
                       />
                     </div>

@@ -34,6 +34,10 @@ export function useParams() {
     parsed.user_id = pathSegments[1];
   } else if (pathSegments[0] === "enquiries" && pathSegments.length >= 2) {
     parsed.enquiryId = pathSegments[1];
+  } else if (pathSegments[0] === "quotations" && pathSegments.length >= 2) {
+    parsed.quotationId = pathSegments[1];
+  } else if (pathSegments[0] === "terms-conditions" && pathSegments.length >= 2) {
+    parsed.termsConditionsId = pathSegments[1];
   }
 
   return parsed;

@@ -3,23 +3,55 @@
 import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/portal/ui/button";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/portal/ui/select";
-import { Input } from "@/components/portal/ui/input";
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/portal/ui/dialog";
+import { Checkbox } from "@/components/portal/ui/checkbox";
 import {
   GoogleSheetGrid,
-  exportSheetRowsToCsv,
-  type SheetColumn,
   type SheetRow,
 } from "@/components/portal/shared/components/google-sheet-grid";
-import { AUDIT_TYPE_OPTIONS } from "@/components/portal/lib/facilityConstants";
+import { FacilityListFilterPanel } from "@/components/portal/shared/components/facility/facility-list-filter-panel";
+import { useCompanyBranding } from "@/components/portal/shared/components/company-branding-provider";
+import {
+  buildFacilityExcelSheetRows,
+  buildFacilityExportRows,
+  defaultFacilityExportColumnKeys,
+  FACILITY_EXPORT_COLUMNS,
+  facilityExportSheetColumns,
+  resolveFacilityExportColumns,
+  type FacilityExportColumnKey,
+} from "@/components/portal/lib/facilityExport";
+import {
+  countActiveFacilityListFilters,
+  DEFAULT_FACILITY_LIST_FILTERS,
+  deriveUniqueFacilityAuditors,
+  filterFacilitiesByAuditTab,
+  filterFacilityList,
+  type FacilityAuditTab,
+  type FacilityListFilters,
+} from "@/components/portal/lib/facilityListFilters";
+import {
+  buildFacilityListPdfBlob,
+  facilityListPdfFilename,
+  type FacilityListPdfOrientation,
+} from "@/components/portal/lib/facilityListPdf";
 import { type Facility } from "@/store/slices/facilityApiSlice";
-import { Download, FileSpreadsheet, X, FilterX } from "lucide-react";
+import { useGetDefaultCompanyQuery } from "@/store/slices/companyApiSlice";
+import {
+  Columns3,
+  Download,
+  FileSpreadsheet,
+  FileText,
+  Loader2,
+  SlidersHorizontal,
+  X,
+} from "lucide-react";
 import { cn } from "@/components/portal/lib/utils";
+import { toast } from "sonner";
 
 interface FacilitiesSheetModalProps {
   facilities: Facility[];
@@ -27,44 +59,54 @@ interface FacilitiesSheetModalProps {
   onOpenChange: (open: boolean) => void;
 }
 
-const COLUMNS: SheetColumn[] = [
-  { key: "name", label: "Facility Name", width: 220 },
-  { key: "audit_number", label: "Audit Number", width: 150 },
-  { key: "enquiry_number", label: "Enquiry Number", width: 150 },
-  { key: "city", label: "City", width: 120 },
-  { key: "address", label: "Address", width: 260 },
-  { key: "facility_type", label: "Facility Type", width: 150 },
-  { key: "audit_type", label: "Audit Type", width: 220 },
-  { key: "status", label: "Status", width: 100 },
-  { key: "start_date", label: "Start Date", width: 120 },
-  { key: "closure_date", label: "Target Closure", width: 120 },
-  { key: "auditor_name", label: "Auditor Name", width: 160 },
-  { key: "auditor_email", label: "Auditor Email", width: 180 },
-  { key: "client_representative", label: "Client Representative", width: 180 },
-  { key: "client_contact_number", label: "Client Contact", width: 130 },
-  { key: "client_email", label: "Client Email", width: 180 },
-];
-
-function isFacilityAuditClosed(facility: Facility): boolean {
-  return Boolean(facility.audit_closure?.closed_at);
-}
+const TAB_LABELS: Record<FacilityAuditTab, string> = {
+  all: "All Facilities",
+  open: "Open Audits",
+  closed: "Closed Audits",
+};
 
 export function FacilitiesSheetModal({
   facilities,
   open,
   onOpenChange,
 }: FacilitiesSheetModalProps) {
-  const [selectedTab, setSelectedTab] = useState<"all" | "open" | "closed">("all");
+  const [selectedTab, setSelectedTab] = useState<FacilityAuditTab>("all");
+  const [filters, setFilters] = useState<FacilityListFilters>(
+    DEFAULT_FACILITY_LIST_FILTERS,
+  );
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [columnsOpen, setColumnsOpen] = useState(false);
+  const [exportColumnKeys, setExportColumnKeys] = useState<FacilityExportColumnKey[]>(
+    defaultFacilityExportColumnKeys,
+  );
+  const [isExporting, setIsExporting] = useState(false);
+  const [pdfGenerating, setPdfGenerating] = useState<FacilityListPdfOrientation | null>(
+    null,
+  );
 
-  // Filters State
-  const [auditTypeFilter, setAuditTypeFilter] = useState<string>("all");
-  const [auditorFilter, setAuditorFilter] = useState<string>("all");
-  const [startDateFrom, setStartDateFrom] = useState<string>("");
-  const [startDateTo, setStartDateTo] = useState<string>("");
-  const [closureDateFrom, setClosureDateFrom] = useState<string>("");
-  const [closureDateTo, setClosureDateTo] = useState<string>("");
+  const { displayName, logoSrc, primaryColor } = useCompanyBranding();
+  const { data: companyRes } = useGetDefaultCompanyQuery();
 
-  // Lock scroll when open
+  const selectedExportColumns = useMemo(
+    () => resolveFacilityExportColumns(exportColumnKeys),
+    [exportColumnKeys],
+  );
+
+  const gridColumns = useMemo(
+    () => facilityExportSheetColumns(selectedExportColumns),
+    [selectedExportColumns],
+  );
+
+  const activeFiltersCount = useMemo(
+    () => countActiveFacilityListFilters(filters),
+    [filters],
+  );
+
+  const uniqueAuditors = useMemo(
+    () => deriveUniqueFacilityAuditors(facilities),
+    [facilities],
+  );
+
   useEffect(() => {
     if (!open) return;
     const prev = document.body.style.overflow;
@@ -74,207 +116,91 @@ export function FacilitiesSheetModal({
     };
   }, [open]);
 
-  // Helper to extract and resolve all auditors (populated junction + legacy fallback)
-  const getFacilityAuditors = useMemo(() => {
-    return (f: Facility) => {
-      const list: { name: string; email: string; key: string }[] = [];
+  const filteredFacilities = useMemo(
+    () => filterFacilityList(facilities, filters),
+    [facilities, filters],
+  );
 
-      // 1. Resolve from populated junction table (assignedAuditors)
-      if (f.assignedAuditors && Array.isArray(f.assignedAuditors)) {
-        f.assignedAuditors.forEach((assign) => {
-          const user = assign.user_id;
-          if (user && typeof user === "object") {
-            list.push({
-              name: user.name || "",
-              email: user.email || "",
-              key: user.email || user._id || "",
-            });
-          }
-        });
+  const openFacilities = useMemo(
+    () => filterFacilitiesByAuditTab(filteredFacilities, "open"),
+    [filteredFacilities],
+  );
+
+  const closedFacilities = useMemo(
+    () => filterFacilitiesByAuditTab(filteredFacilities, "closed"),
+    [filteredFacilities],
+  );
+
+  const activeFacilities = useMemo(
+    () => filterFacilitiesByAuditTab(filteredFacilities, selectedTab),
+    [filteredFacilities, selectedTab],
+  );
+
+  const sheetRows = useMemo<SheetRow[]>(() => {
+    const exportRows = buildFacilityExportRows(activeFacilities, selectedExportColumns);
+    return exportRows.map((row) => {
+      const sheetRow: SheetRow = {};
+      for (const column of selectedExportColumns) {
+        sheetRow[column.key] = row[column.key];
       }
-
-      // 2. Legacy fallback to auditor_id
-      if (f.auditor_id) {
-        const aud = f.auditor_id;
-        const key = aud.email || aud._id || "";
-        if (key && !list.some((item) => item.key === key)) {
-          list.push({
-            name: aud.name || "",
-            email: aud.email || "",
-            key: key,
-          });
-        }
-      }
-
-      return list;
-    };
-  }, []);
-
-  // Derive unique list of auditors from active data for the dropdown filter
-  const uniqueAuditors = useMemo(() => {
-    const list = new Set<string>();
-    const mapping: Record<string, string> = {};
-
-    facilities.forEach((f) => {
-      const auditors = getFacilityAuditors(f);
-      auditors.forEach((info) => {
-        if (info.key) {
-          list.add(info.key);
-          mapping[info.key] = info.name || info.email || "Auditor";
-        }
-      });
+      return sheetRow;
     });
+  }, [activeFacilities, selectedExportColumns]);
 
-    return Array.from(list).map((key) => ({
-      key,
-      name: mapping[key],
-    }));
-  }, [facilities, getFacilityAuditors]);
-
-  const clearFilters = () => {
-    setAuditTypeFilter("all");
-    setAuditorFilter("all");
-    setStartDateFrom("");
-    setStartDateTo("");
-    setClosureDateFrom("");
-    setClosureDateTo("");
+  const toggleExportColumn = (key: FacilityExportColumnKey, checked: boolean) => {
+    setExportColumnKeys((current) => {
+      if (checked) {
+        if (current.includes(key)) return current;
+        const next = [...current, key];
+        return FACILITY_EXPORT_COLUMNS.map((column) => column.key).filter((columnKey) =>
+          next.includes(columnKey),
+        );
+      }
+      if (current.length <= 1) return current;
+      return current.filter((columnKey) => columnKey !== key);
+    });
   };
 
-  // Filter facilities based on active selectors
-  const filteredFacilities = useMemo(() => {
-    return facilities.filter((f) => {
-      // Audit Type
-      if (auditTypeFilter !== "all" && f.audit_type !== auditTypeFilter) {
-        return false;
-      }
+  const selectAllExportColumns = () => {
+    setExportColumnKeys(FACILITY_EXPORT_COLUMNS.map((column) => column.key));
+  };
 
-      // Auditor / Team
-      if (auditorFilter !== "all") {
-        const auditors = getFacilityAuditors(f);
-        const hasMatch = auditors.some((info) => info.key === auditorFilter);
-        if (!hasMatch) return false;
-      }
-
-      // Start Date Range
-      if (f.start_date) {
-        const startMs = new Date(f.start_date).getTime();
-        if (startDateFrom && startMs < new Date(startDateFrom).getTime()) {
-          return false;
-        }
-        if (startDateTo && startMs > new Date(startDateTo).getTime()) {
-          return false;
-        }
-      } else if (startDateFrom || startDateTo) {
-        return false;
-      }
-
-      // Target Closure Date Range
-      if (f.closure_date) {
-        const closureMs = new Date(f.closure_date).getTime();
-        if (closureDateFrom && closureMs < new Date(closureDateFrom).getTime()) {
-          return false;
-        }
-        if (closureDateTo && closureMs > new Date(closureDateTo).getTime()) {
-          return false;
-        }
-      } else if (closureDateFrom || closureDateTo) {
-        return false;
-      }
-
-      return true;
-    });
-  }, [
-    facilities,
-    auditTypeFilter,
-    auditorFilter,
-    startDateFrom,
-    startDateTo,
-    closureDateFrom,
-    closureDateTo,
-    getFacilityAuditors,
-  ]);
-
-  // Distribute into Open vs. Closed categories
-  const openFacilities = useMemo(() => {
-    return filteredFacilities.filter((f) => !isFacilityAuditClosed(f));
-  }, [filteredFacilities]);
-
-  const closedFacilities = useMemo(() => {
-    return filteredFacilities.filter((f) => isFacilityAuditClosed(f));
-  }, [filteredFacilities]);
-
-  const activeFacilities = useMemo(() => {
-    if (selectedTab === "open") return openFacilities;
-    if (selectedTab === "closed") return closedFacilities;
-    return filteredFacilities;
-  }, [selectedTab, openFacilities, closedFacilities, filteredFacilities]);
-
-  // Transform active facilities into SheetRow formats
-  const sheetRows = useMemo<SheetRow[]>(() => {
-    return activeFacilities.map((f) => {
-      const auditors = getFacilityAuditors(f);
-      const auditorNames = auditors.map((a) => a.name).filter(Boolean).join(", ") || "—";
-      const auditorEmails = auditors.map((a) => a.email).filter(Boolean).join(", ") || "—";
-      const isClosed = isFacilityAuditClosed(f);
-
-      return {
-        name: f.name || "—",
-        audit_number: f.audit_number || "—",
-        enquiry_number: f.enquiry_number || "—",
-        city: f.city || "—",
-        address: f.address || "—",
-        facility_type: f.facility_type || "—",
-        audit_type: f.audit_type || "—",
-        status: isClosed ? "Closed" : "Open",
-        start_date: f.start_date ? new Date(f.start_date).toLocaleDateString() : "—",
-        closure_date: f.closure_date ? new Date(f.closure_date).toLocaleDateString() : "—",
-        auditor_name: auditorNames,
-        auditor_email: auditorEmails,
-        client_representative: f.client_representative || "—",
-        client_contact_number: f.client_contact_number || "—",
-        client_email: f.client_email || "—",
-      };
-    });
-  }, [activeFacilities, getFacilityAuditors]);
-
-  const [isExporting, setIsExporting] = useState(false);
+  const resetExportColumns = () => {
+    setExportColumnKeys(defaultFacilityExportColumnKeys());
+  };
 
   const handleExportXlsx = async () => {
+    if (activeFacilities.length === 0 || selectedExportColumns.length === 0) return;
     try {
       setIsExporting(true);
       const ExcelJS = (await import("exceljs")).default;
       const workbook = new ExcelJS.Workbook();
-      const worksheet = workbook.addWorksheet(
-        selectedTab === "open" ? "Open Audits" : selectedTab === "closed" ? "Closed Audits" : "All Audits"
-      );
+      const worksheet = workbook.addWorksheet(TAB_LABELS[selectedTab]);
 
-      // Define columns layout
-      worksheet.columns = COLUMNS.map((col) => ({
+      worksheet.columns = selectedExportColumns.map((col) => ({
         header: col.label,
         key: col.key,
         width: col.width ? col.width / 8 : 15,
       }));
 
-      // Add sheet rows
-      sheetRows.forEach((row) => {
-        const rowData: Record<string, any> = {};
-        COLUMNS.forEach((col) => {
-          rowData[col.key] = row[col.key] ?? "";
+      const rows = buildFacilityExcelSheetRows(activeFacilities, selectedExportColumns);
+      rows.forEach((row) => {
+        const rowData: Record<string, string> = {};
+        selectedExportColumns.forEach((col) => {
+          rowData[col.key] = row[col.label] ?? "";
         });
         worksheet.addRow(rowData);
       });
 
-      // Style header row
       const headerRow = worksheet.getRow(1);
       headerRow.font = { bold: true, color: { argb: "FFFFFFFF" } };
       headerRow.fill = {
         type: "pattern",
         pattern: "solid",
-        fgColor: { argb: "FF4F46E5" }, // premium indigo primary color
+        fgColor: { argb: "FF4F46E5" },
       };
       headerRow.height = 24;
 
-      // Add borders and align cells
       worksheet.eachRow((row, rowNumber) => {
         row.eachCell((cell) => {
           cell.border = {
@@ -286,7 +212,12 @@ export function FacilitiesSheetModal({
           if (rowNumber > 1) {
             cell.font = { size: 10, name: "Arial" };
           } else {
-            cell.font = { size: 11, name: "Arial", bold: true, color: { argb: "FFFFFFFF" } };
+            cell.font = {
+              size: 11,
+              name: "Arial",
+              bold: true,
+              color: { argb: "FFFFFFFF" },
+            };
             cell.alignment = { vertical: "middle", horizontal: "center" };
           }
         });
@@ -307,222 +238,264 @@ export function FacilitiesSheetModal({
       URL.revokeObjectURL(url);
     } catch (error) {
       console.error("XLSX export failed:", error);
+      toast.error("Failed to export facilities spreadsheet.");
     } finally {
       setIsExporting(false);
+    }
+  };
+
+  const handleExportPdf = async (orientation: FacilityListPdfOrientation) => {
+    if (activeFacilities.length === 0 || selectedExportColumns.length === 0) return;
+    setPdfGenerating(orientation);
+    try {
+      const blob = await buildFacilityListPdfBlob({
+        rows: activeFacilities,
+        columns: selectedExportColumns,
+        company: companyRes?.data,
+        logoSrc,
+        brandName: displayName,
+        primaryColor,
+        orientation,
+        tabLabel: TAB_LABELS[selectedTab],
+      });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = facilityListPdfFilename(orientation, selectedTab);
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error(error);
+      toast.error("Failed to generate facilities PDF.");
+    } finally {
+      setPdfGenerating(null);
     }
   };
 
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-background text-foreground animate-in fade-in duration-200">
-      {/* Header */}
-      <header className="flex shrink-0 items-center justify-between border-b border-border bg-muted/30 px-4 py-3 sm:px-6">
-        <div className="flex min-w-0 items-center gap-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
-            <FileSpreadsheet className="h-5 w-5" />
+    <>
+      <div className="fixed inset-0 z-50 flex flex-col bg-background text-foreground animate-in fade-in duration-200">
+        <header className="flex shrink-0 items-center justify-between border-b border-border bg-muted/30 px-4 py-3 sm:px-6">
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+              <FileSpreadsheet className="h-5 w-5" />
+            </div>
+            <div className="min-w-0">
+              <h2 className="truncate text-base font-semibold">
+                Facilities Spreadsheet View
+              </h2>
+              <p className="text-xs text-muted-foreground">
+                Review facilities, filter by type and dates, choose columns, and export.
+              </p>
+            </div>
           </div>
-          <div className="min-w-0">
-            <h2 className="truncate text-base font-semibold">
-              Facilities Spreadsheet View
-            </h2>
-            <p className="text-xs text-muted-foreground">
-              Review and audit all facilities, filter by type, auditor, and date schedules in real-time.
-            </p>
-          </div>
-        </div>
-        <Button
-          type="button"
-          variant="outline"
-          size="icon"
-          onClick={() => onOpenChange(false)}
-          aria-label="Close sheet modal"
-        >
-          <X className="h-4 w-4" />
-        </Button>
-      </header>
-
-      {/* Filter Toolbar */}
-      <div className="flex shrink-0 flex-col gap-3 border-b border-border bg-muted/10 p-4 sm:px-6">
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-6">
-          {/* Audit Type */}
-          <div className="flex flex-col gap-1.5">
-            <label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-              Audit Type
-            </label>
-            <Select value={auditTypeFilter} onValueChange={setAuditTypeFilter}>
-              <SelectTrigger className="h-9 bg-background">
-                <SelectValue placeholder="All Audits" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Audits</SelectItem>
-                {AUDIT_TYPE_OPTIONS.map((opt) => (
-                  <SelectItem key={opt} value={opt}>
-                    {opt}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          {/* Team / Auditor */}
-          <div className="flex flex-col gap-1.5">
-            <label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-              Auditor / Team
-            </label>
-            <Select value={auditorFilter} onValueChange={setAuditorFilter}>
-              <SelectTrigger className="h-9 bg-background">
-                <SelectValue placeholder="All Auditors" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Auditors</SelectItem>
-                {uniqueAuditors.map((auditor) => (
-                  <SelectItem key={auditor.key} value={auditor.key}>
-                    {auditor.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          {/* Start Date From */}
-          <div className="flex flex-col gap-1.5">
-            <label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-              Start Date (From)
-            </label>
-            <Input
-              type="date"
-              className="h-9 bg-background"
-              value={startDateFrom}
-              onChange={(e) => setStartDateFrom(e.target.value)}
-            />
-          </div>
-
-          {/* Start Date To */}
-          <div className="flex flex-col gap-1.5">
-            <label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-              Start Date (To)
-            </label>
-            <Input
-              type="date"
-              className="h-9 bg-background"
-              value={startDateTo}
-              onChange={(e) => setStartDateTo(e.target.value)}
-            />
-          </div>
-
-          {/* Closure Date From */}
-          <div className="flex flex-col gap-1.5">
-            <label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-              Closure (From)
-            </label>
-            <Input
-              type="date"
-              className="h-9 bg-background"
-              value={closureDateFrom}
-              onChange={(e) => setClosureDateFrom(e.target.value)}
-            />
-          </div>
-
-          {/* Closure Date To */}
-          <div className="flex flex-col gap-1.5">
-            <label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-              Closure (To)
-            </label>
-            <Input
-              type="date"
-              className="h-9 bg-background"
-              value={closureDateTo}
-              onChange={(e) => setClosureDateTo(e.target.value)}
-            />
-          </div>
-        </div>
-
-        {/* Clear Filters Button */}
-        <div className="flex items-center justify-end">
           <Button
             type="button"
-            variant="ghost"
-            size="sm"
-            onClick={clearFilters}
-            className="h-8 text-xs text-muted-foreground hover:text-foreground"
+            variant="outline"
+            size="icon"
+            onClick={() => onOpenChange(false)}
+            aria-label="Close sheet modal"
           >
-            <FilterX className="mr-1.5 h-3.5 w-3.5" />
-            Reset Filters
+            <X className="h-4 w-4" />
           </Button>
+        </header>
+
+        <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-border bg-muted/20 px-4 py-3 sm:px-6">
+          <div className="flex gap-1 rounded-lg border border-border bg-muted/40 p-1">
+            {(["all", "open", "closed"] as const).map((tab) => {
+              const count =
+                tab === "all"
+                  ? filteredFacilities.length
+                  : tab === "open"
+                    ? openFacilities.length
+                    : closedFacilities.length;
+              return (
+                <button
+                  key={tab}
+                  type="button"
+                  onClick={() => setSelectedTab(tab)}
+                  className={cn(
+                    "rounded-md px-4 py-1.5 text-xs font-semibold transition",
+                    selectedTab === tab
+                      ? "bg-background text-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  {TAB_LABELS[tab]}
+                  <span className="ml-1.5 text-[10px] font-normal text-muted-foreground">
+                    ({count})
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="gap-2"
+              onClick={() => setFiltersOpen(true)}
+            >
+              <SlidersHorizontal className="h-4 w-4" />
+              Filters
+              {activeFiltersCount > 0 ? (
+                <span className="rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold text-primary">
+                  {activeFiltersCount}
+                </span>
+              ) : null}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="gap-2"
+              onClick={() => setColumnsOpen(true)}
+            >
+              <Columns3 className="h-4 w-4" />
+              Columns
+              <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground">
+                {selectedExportColumns.length}
+              </span>
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => void handleExportXlsx()}
+              disabled={
+                isExporting ||
+                activeFacilities.length === 0 ||
+                selectedExportColumns.length === 0
+              }
+              className="gap-2"
+            >
+              <Download className="h-4 w-4" />
+              {isExporting ? "Exporting..." : "Excel"}
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => void handleExportPdf("portrait")}
+              disabled={
+                pdfGenerating != null ||
+                activeFacilities.length === 0 ||
+                selectedExportColumns.length === 0
+              }
+              className="gap-2"
+            >
+              {pdfGenerating === "portrait" ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <FileText className="h-4 w-4" />
+              )}
+              PDF portrait
+            </Button>
+            <Button
+              size="sm"
+              onClick={() => void handleExportPdf("landscape")}
+              disabled={
+                pdfGenerating != null ||
+                activeFacilities.length === 0 ||
+                selectedExportColumns.length === 0
+              }
+              className="gap-2"
+            >
+              {pdfGenerating === "landscape" ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <FileText className="h-4 w-4" />
+              )}
+              PDF landscape
+            </Button>
+          </div>
         </div>
+
+        <main className="flex min-h-0 flex-1 flex-col overflow-hidden bg-muted/5 p-4 sm:p-6">
+          <div className="mb-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+            <span>
+              {activeFacilities.length} row{activeFacilities.length === 1 ? "" : "s"}
+            </span>
+            <span>•</span>
+            <span>
+              {selectedExportColumns.length} column
+              {selectedExportColumns.length === 1 ? "" : "s"}
+            </span>
+            {activeFiltersCount > 0 ? (
+              <>
+                <span>•</span>
+                <span>{activeFiltersCount} active filter{activeFiltersCount === 1 ? "" : "s"}</span>
+              </>
+            ) : null}
+          </div>
+          <GoogleSheetGrid
+            fillHeight
+            columns={gridColumns}
+            rows={sheetRows}
+            emptyMessage={`No ${selectedTab} facilities match the selected filters.`}
+          />
+        </main>
       </div>
 
-      {/* Sheet Tabs + Actions bar */}
-      <div className="flex shrink-0 items-center justify-between border-b border-border bg-muted/20 px-4 py-3 sm:px-6">
-        <div className="flex gap-1 rounded-lg border border-border bg-muted/40 p-1">
-          <button
-            type="button"
-            onClick={() => setSelectedTab("all")}
-            className={cn(
-              "rounded-md px-4 py-1.5 text-xs font-semibold transition",
-              selectedTab === "all"
-                ? "bg-background text-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground",
-            )}
-          >
-            All Facilities
-            <span className="ml-1.5 text-[10px] font-normal text-muted-foreground">
-              ({filteredFacilities.length})
-            </span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setSelectedTab("open")}
-            className={cn(
-              "rounded-md px-4 py-1.5 text-xs font-semibold transition",
-              selectedTab === "open"
-                ? "bg-background text-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground",
-            )}
-          >
-            Open Audits
-            <span className="ml-1.5 text-[10px] font-normal text-muted-foreground">
-              ({openFacilities.length})
-            </span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setSelectedTab("closed")}
-            className={cn(
-              "rounded-md px-4 py-1.5 text-xs font-semibold transition",
-              selectedTab === "closed"
-                ? "bg-background text-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground",
-            )}
-          >
-            Closed Audits
-            <span className="ml-1.5 text-[10px] font-normal text-muted-foreground">
-              ({closedFacilities.length})
-            </span>
-          </button>
-        </div>
+      <Dialog open={filtersOpen} onOpenChange={setFiltersOpen}>
+        <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>Filter facilities</DialogTitle>
+          </DialogHeader>
+          <FacilityListFilterPanel
+            filters={filters}
+            onChange={setFilters}
+            uniqueAuditors={uniqueAuditors}
+          />
+          <DialogFooter>
+            <Button type="button" onClick={() => setFiltersOpen(false)}>
+              Done
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={handleExportXlsx}
-          disabled={isExporting}
-        >
-          <Download className="mr-2 h-4 w-4" />
-          {isExporting ? "Exporting..." : "Export XLSX"}
-        </Button>
-      </div>
-
-      {/* Main Grid View */}
-      <main className="flex min-h-0 flex-1 flex-col overflow-hidden p-4 sm:p-6 bg-muted/5">
-        <GoogleSheetGrid
-          fillHeight
-          columns={COLUMNS}
-          rows={sheetRows}
-          emptyMessage={`No ${selectedTab} facilities match the selected filters.`}
-        />
-      </main>
-    </div>
+      <Dialog open={columnsOpen} onOpenChange={setColumnsOpen}>
+        <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Select columns</DialogTitle>
+          </DialogHeader>
+          <div className="mb-3 flex flex-wrap justify-end gap-2">
+            <Button type="button" variant="ghost" size="sm" onClick={selectAllExportColumns}>
+              Select all
+            </Button>
+            <Button type="button" variant="ghost" size="sm" onClick={resetExportColumns}>
+              Reset
+            </Button>
+          </div>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            {FACILITY_EXPORT_COLUMNS.map((column) => {
+              const checked = exportColumnKeys.includes(column.key);
+              return (
+                <label
+                  key={column.key}
+                  className="flex cursor-pointer items-center gap-2 rounded-md border border-border/60 bg-background px-2.5 py-2 text-sm"
+                >
+                  <Checkbox
+                    checked={checked}
+                    onCheckedChange={(value) =>
+                      toggleExportColumn(column.key, value === true)
+                    }
+                  />
+                  <span className="truncate">{column.label}</span>
+                </label>
+              );
+            })}
+          </div>
+          <DialogFooter>
+            <Button type="button" onClick={() => setColumnsOpen(false)}>
+              Done
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }

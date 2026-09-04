@@ -8,6 +8,7 @@ import {
   deleteEnquiry,
   getFollowUps,
   createFollowUp,
+  getLatestFollowUps,
   getFollowUpById,
   updateFollowUp,
   deleteFollowUp,
@@ -24,6 +25,7 @@ const router = express.Router();
 
 router.route("/").post(protect, createEnquiry).get(protect, getEnquiries);
 
+router.get("/follow-ups/latest", protect, getLatestFollowUps);
 
 router.post("/:enquiryId/facility", protect, uploadDocuments, createFacilityFromEnquiry);
 

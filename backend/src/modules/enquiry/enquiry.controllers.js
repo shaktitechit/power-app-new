@@ -7,6 +7,7 @@ import {
   deleteEnquiryService,
   getFollowUpsService,
   createFollowUpService,
+  getLatestFollowUpsService,
   getFollowUpByIdService,
   updateFollowUpService,
   deleteFollowUpService,
@@ -59,6 +60,12 @@ export const deleteEnquiry = asyncHandler(async (req, res) => {
 });
 
 // ─── Follow-up handlers ───────────────────────────────────────────────────────
+
+// GET /api/v1/enquiries/follow-ups/latest
+export const getLatestFollowUps = asyncHandler(async (req, res) => {
+  const data = await getLatestFollowUpsService({ user: req.user });
+  return res.status(200).json({ success: true, data });
+});
 
 // GET /api/v1/enquiries/:enquiryId/follow-ups
 export const getFollowUps = asyncHandler(async (req, res) => {

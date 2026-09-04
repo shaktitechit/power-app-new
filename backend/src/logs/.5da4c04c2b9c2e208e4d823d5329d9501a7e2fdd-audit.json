@@ -1,0 +1,20 @@
+{
+    "keep": {
+        "days": true,
+        "amount": 14
+    },
+    "auditLog": "/app/backend/src/logs/.5da4c04c2b9c2e208e4d823d5329d9501a7e2fdd-audit.json",
+    "files": [
+        {
+            "date": 1788434605544,
+            "name": "/app/backend/src/logs/slow-api-2026-09-03.log",
+            "hash": "0fcd05fc45d27d6893a2e8ccc1893919907cb01c26091c2b44817cf70e293924"
+        },
+        {
+            "date": 1788497470906,
+            "name": "/app/backend/src/logs/slow-api-2026-09-04.log",
+            "hash": "926b7c21334f41da670edd0bce4463cb7f2b29c64afa697bbba630edd022e703"
+        }
+    ],
+    "hashType": "sha256"
+}

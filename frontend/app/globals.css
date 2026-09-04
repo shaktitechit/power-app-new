@@ -83,6 +83,26 @@
   --success-foreground: oklch(0.13 0.005 285);
 }
 
+html[data-company-branding="true"] {
+  --primary: var(--company-primary);
+  --primary-foreground: var(--company-primary-foreground);
+  --ring: var(--company-primary);
+  --accent: color-mix(in srgb, var(--company-primary) 14%, var(--background));
+  --accent-foreground: var(--company-primary);
+  --sidebar-primary: var(--company-primary);
+  --sidebar-primary-foreground: var(--company-primary-foreground);
+  --sidebar-ring: var(--company-primary);
+  --sidebar-accent: color-mix(in srgb, var(--company-secondary) 12%, var(--sidebar));
+  --chart-1: var(--company-primary);
+  --chart-2: var(--company-secondary);
+}
+
+html.dark[data-company-branding="true"] {
+  --accent: var(--company-primary);
+  --accent-foreground: var(--company-primary-foreground);
+  --sidebar-accent: color-mix(in srgb, var(--company-secondary) 18%, var(--sidebar));
+}
+
 @theme inline {
   --font-sans: 'Geist', 'Geist Fallback';
   --font-mono: 'Geist Mono', 'Geist Mono Fallback';
@@ -193,4 +213,13 @@
   [data-sonner-toaster] {
     display: none !important;
   }
+}
+
+.rich-text-editor .tiptap p.is-editor-empty:first-child::before,
+.rich-text-editor .tiptap p.is-empty:first-child::before {
+  color: var(--muted-foreground);
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
 }

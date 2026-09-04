@@ -10,6 +10,7 @@ import {
   FileText,
   Users,
   Activity,
+  Receipt,
 } from "lucide-react";
 import type { NavItem } from "../layout/nav-types";
 
@@ -18,6 +19,7 @@ export const navItems: NavItem[] = [
   { title: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { title: "Facilities", href: "/facilities", icon: Building2 },
   { title: "Enquiries", href: "/enquiries", icon: MessageSquare },
+  { title: "Quotations", href: "/quotations", icon: Receipt },
   {
     title: "Pending approval",
     icon: ListChecks,

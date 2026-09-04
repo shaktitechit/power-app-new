@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import Image from "next/image";
 import { usePathname } from "next/navigation";
+import { useCompanyBranding } from "@/components/portal/shared/components/company-branding-provider";
+import { DEFAULT_COMPANY_LOGO } from "@/components/portal/lib/companyBranding";
 import { cn } from "@/components/portal/lib/utils";
 
 import {
@@ -54,6 +55,7 @@ export function Sidebar({
   userRole,
 }: SidebarProps) {
   const pathname = usePathname();
+  const { displayName, logoSrc } = useCompanyBranding();
   const iconsOnlyCollapsed = isCollapsed && !isMobileOpen;
   const [pendingApprovalExpanded, setPendingApprovalExpanded] = useState(() =>
     isSubmittedOrPendingPath(pathname),
@@ -133,19 +135,19 @@ export function Sidebar({
             onClick={handleLinkClick}
           >
             <div className="relative h-8 w-8 shrink-0 overflow-hidden rounded-lg bg-white ring-1 ring-sidebar-border/60">
-              <Image
-                src="/spspl-logo.jpeg"
-                alt="Shakti Powers"
-                fill
-                className="object-contain p-0.5"
-                sizes="64px"
-                priority
+              <img
+                src={logoSrc}
+                alt={displayName}
+                className="h-full w-full object-contain p-0.5"
+                onError={(event) => {
+                  event.currentTarget.src = DEFAULT_COMPANY_LOGO;
+                }}
               />
             </div>
 
             {(!isCollapsed || isMobileOpen) && (
               <span className="truncate text-lg font-semibold text-sidebar-foreground">
-                Shakti Powers
+                {displayName}
               </span>
             )}
           </Link>

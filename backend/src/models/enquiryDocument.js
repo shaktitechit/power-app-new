@@ -15,6 +15,12 @@ const enquiryDocumentSchema = new mongoose.Schema(
       trim: true,
     },
 
+    document_kind: {
+      type: String,
+      enum: ["eoi", "quotation", "other"],
+      default: "other",
+    },
+
     document: {
       type: documentSchema,
       required: true,

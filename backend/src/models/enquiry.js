@@ -2,6 +2,29 @@ import mongoose from "mongoose";
 
 import { softDeletePlugin } from "./plugins/softDelete.js";
 
+const AUDIT_TYPES = [
+    "Electrical Energy Audit",
+    "Electrical Safety Audit",
+    "Thermal Audit",
+    "Lightning Arrester Audit",
+];
+
+const requestedAuditSchema = new mongoose.Schema(
+    {
+        audit_type: {
+            type: String,
+            required: true,
+            enum: AUDIT_TYPES,
+        },
+        expected_value: {
+            type: Number,
+            min: 0,
+            default: 0,
+        },
+    },
+    { _id: false },
+);
+
 const enquirySchema = new mongoose.Schema({
 
     enquiry_number: {
@@ -68,6 +91,11 @@ const enquirySchema = new mongoose.Schema({
         ref: "User",
     },
 
+    assigned_manager_to: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+    },
+
     assigned_admin_to: {
         type: mongoose.Schema.Types.ObjectId,
         ref: "User",
@@ -77,33 +105,36 @@ const enquirySchema = new mongoose.Schema({
         type: String,
         enum: [
             "new",
-            "contacted",
-            "in_discussion",
+            "assigned",
+            "follow_up",
+            "eoi_sent",
             "quoted",
-            "eoq_uploaded",
-            "negotiation",
             "won",
             "lost",
-            "dropped"
+            "dropped",
+            "contacted",
+            "in_discussion",
+            "eoq_uploaded",
+            "negotiation",
         ],
         default: "new",
     },
 
     source: String,
 
+    // Total of requested_audits[].expected_value.
     expected_value: Number,
 
     requested_audit_types: [
         {
             type: String,
-            enum: [
-                "Electrical Energy Audit",
-                "Electrical Safety Audit",
-                "Thermal Audit",
-                "Lightning Arrester Audit"
-            ],
+            enum: AUDIT_TYPES,
         }
     ],
+
+    // Per-audit breakdown of expected_value; requested_audit_types mirrors the
+    // audit types here so existing consumers keep working.
+    requested_audits: [requestedAuditSchema],
 
     notes: String,
 
@@ -120,6 +151,12 @@ const enquirySchema = new mongoose.Schema({
     converted_facility_id: {
         type: mongoose.Schema.Types.ObjectId,
         ref: "Facility",
+    },
+
+    /** Quotation accepted when the lead was marked won. */
+    accepted_quotation_id: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Quotation",
     },
 
     created_by: {
@@ -164,8 +201,10 @@ enquirySchema.pre("save", async function() {
 
 enquirySchema.plugin(softDeletePlugin);
 
-// List/sort pipelines by assignee + funnel stage (prefix covers assigned_to-only filters)
+// List/sort pipelines by assignee + funnel stage
 enquirySchema.index({ assigned_to: 1, enquiry_status: 1, updated_at: -1 });
+enquirySchema.index({ assigned_manager_to: 1, enquiry_status: 1, updated_at: -1 });
+enquirySchema.index({ assigned_admin_to: 1, enquiry_status: 1, updated_at: -1 });
 
 // Creator-owned lists (sales pipeline views)
 enquirySchema.index({ created_by: 1, created_at: -1 });

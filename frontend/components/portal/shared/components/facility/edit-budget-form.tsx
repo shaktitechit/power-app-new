@@ -16,6 +16,7 @@ import {
   useUpdateFacilityMutation,
 } from "@/store/slices/facilityApiSlice";
 import { toastHandler } from "@/components/portal/lib/toast";
+import { facilityExpectedValue } from "@/components/portal/lib/facilityConstants";
 
 interface EditBudgetFormProps {
   open: boolean;
@@ -43,6 +44,7 @@ export function EditBudgetForm({
   const [formData, setFormData] = useState({
     no_of_persons: "",
     no_planned_site_visits: "",
+    expected_value: "",
     tentative_budget: "",
     actual_budget: "",
   });
@@ -59,6 +61,10 @@ export function EditBudgetForm({
         facility.budget?.no_planned_site_visits != null
           ? String(facility.budget.no_planned_site_visits)
           : "",
+      expected_value: (() => {
+        const value = facilityExpectedValue(facility);
+        return value != null ? String(value) : "";
+      })(),
       tentative_budget:
         facility.budget?.tentative_budget != null
           ? String(facility.budget.tentative_budget)
@@ -78,6 +84,10 @@ export function EditBudgetForm({
         action: () =>
           updateFacility({
             id: facilityId,
+            expected_value:
+              formData.expected_value !== ""
+                ? Number(formData.expected_value)
+                : null,
             budget: {
               no_of_persons:
                 formData.no_of_persons !== ""
@@ -153,6 +163,24 @@ export function EditBudgetForm({
                 disabled={isBusy}
               />
             </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="expected_value">Expected Value (₹)</Label>
+            <Input
+              id="expected_value"
+              type="number"
+              min="0"
+              placeholder="Quoted amount for this audit"
+              value={formData.expected_value}
+              onChange={(e) =>
+                setFormData((prev) => ({
+                  ...prev,
+                  expected_value: e.target.value,
+                }))
+              }
+              disabled={isBusy}
+            />
           </div>
 
           <div className="space-y-2">

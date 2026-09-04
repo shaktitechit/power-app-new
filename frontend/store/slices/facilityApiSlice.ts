@@ -76,6 +76,7 @@ export interface Facility {
     tentative_budget?: number | null;
     actual_budget?: number | null;
   };
+  expected_value?: number | null;
   created_at?: string;
   updated_at?: string;
   createdAt?: string;
@@ -109,6 +110,16 @@ export interface CreateFacilityRequest {
     tentative_budget?: number | null;
     actual_budget?: number | null;
   };
+  /** Per-audit tentative/actual amounts when creating multiple facilities at once. */
+  audit_budgets?: Record<
+    string,
+    {
+      tentative_budget?: number | null;
+      actual_budget?: number | null;
+      expected_value?: number | null;
+    }
+  >;
+  expected_value?: number | null;
   enquiry_number?: string;
 }
 
@@ -142,6 +153,7 @@ export interface UpdateFacilityRequest {
     tentative_budget?: number | null;
     actual_budget?: number | null;
   };
+  expected_value?: number | null;
   enquiry_number?: string;
 }
 
@@ -271,6 +283,17 @@ const buildFacilityFormData = (
 
   if (data.budget !== undefined) {
     formData.append("budget", JSON.stringify(data.budget));
+  }
+
+  if (data.expected_value !== undefined) {
+    formData.append(
+      "expected_value",
+      data.expected_value === null ? "" : String(data.expected_value),
+    );
+  }
+
+  if (data.audit_budgets !== undefined) {
+    formData.append("audit_budgets", JSON.stringify(data.audit_budgets));
   }
 
   return formData;

@@ -12,32 +12,29 @@ import { Input } from "@/components/portal/ui/input";
 import { Label } from "@/components/portal/ui/label";
 import { Button } from "@/components/portal/ui/button";
 import { Textarea } from "@/components/portal/ui/textarea";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/portal/ui/select";
 import { useAssignableUsersQuery } from "@/store/slices/userApiSlice";
 import { useCreateEnquiryMutation } from "@/store/slices/enquiryApiSlice";
 import { toastHandler } from "@/components/portal/lib/toast";
 import { useAppSelector } from "@/store/hooks";
 import { toast } from "sonner";
-import {
-  ENQUIRY_STATUS_OPTIONS,
-  REQUESTED_AUDIT_TYPE_OPTIONS,
-} from "@/components/portal/lib/enquiryConstants";
-import type {
-  EnquiryStatus,
-  RequestedAuditType,
-} from "@/store/slices/enquiryApiSlice";
+import { datetimeLocalToIso } from "@/components/portal/lib/enquiryConstants";
+import { canAssignEnquiryRoles } from "@/components/portal/lib/enquiryAccess";
 import {
   emptyClientRepresentative,
   EnquiryClientRepresentativesFields,
   sanitizeEnquiryClientRepresentatives,
   type EnquiryClientRepresentative,
 } from "./enquiry-client-representatives-fields";
+import {
+  ENQUIRY_UNASSIGNED,
+  EnquiryAssignmentFields,
+} from "./enquiry-assignment-fields";
+import {
+  EnquiryRequestedAuditsFields,
+  findInvalidRequestedAudit,
+  sanitizeEnquiryRequestedAudits,
+  type EnquiryRequestedAudit,
+} from "./enquiry-requested-audits-fields";
 
 interface CreateEnquiryFormProps {
   open: boolean;
@@ -45,7 +42,7 @@ interface CreateEnquiryFormProps {
   onComplete: () => void;
 }
 
-const UNASSIGNED = "__none__";
+const UNASSIGNED = ENQUIRY_UNASSIGNED;
 
 export function CreateEnquiryForm({
   open,
@@ -59,81 +56,32 @@ export function CreateEnquiryForm({
     EnquiryClientRepresentative[]
   >([emptyClientRepresentative()]);
   const [assignedTo, setAssignedTo] = useState<string>(UNASSIGNED);
+  const [assignedManagerTo, setAssignedManagerTo] = useState<string>(UNASSIGNED);
   const [assignedAdminTo, setAssignedAdminTo] = useState<string>(UNASSIGNED);
-  const [enquiryStatus, setEnquiryStatus] = useState<EnquiryStatus>("new");
   const [source, setSource] = useState("");
-  const [expectedValue, setExpectedValue] = useState("");
   const [notes, setNotes] = useState("");
   const [nextFollowupDate, setNextFollowupDate] = useState("");
-  const [auditTypes, setAuditTypes] = useState<Set<RequestedAuditType>>(
-    new Set(),
-  );
+  const [requestedAudits, setRequestedAudits] = useState<
+    EnquiryRequestedAudit[]
+  >([]);
 
   const { data: assignableRes } = useAssignableUsersQuery(undefined, {
     skip: !open,
   });
   const assignableUsers = assignableRes?.data ?? [];
-  const assignableAdmins = useMemo(() => {
-    return assignableUsers.filter((u) => u.role === "admin");
-  }, [assignableUsers]);
-  const assignableAuditorsAndManagers = useMemo(() => {
-    return assignableUsers.filter((u) => u.role === "auditor" || u.role === "manager");
-  }, [assignableUsers]);
   const currentUser = useAppSelector((state) => state.auth.user);
-
-  const finalAssignableAdmins = useMemo(() => {
-    const list = [...assignableAdmins];
-    if (currentUser?._id && currentUser.role === "admin") {
-      if (!list.some((u) => u._id === currentUser._id)) {
-        list.unshift({
-          _id: currentUser._id,
-          name: currentUser.name,
-          email: currentUser.email,
-          role: currentUser.role,
-        } as any);
-      }
-    }
-    return list;
-  }, [assignableAdmins, currentUser]);
-  const finalAssignableAuditorsAndManagers = useMemo(() => {
-    const list = [...assignableAuditorsAndManagers];
-    if (currentUser?._id && (currentUser.role === "auditor" || currentUser.role === "manager")) {
-      if (!list.some((u) => u._id === currentUser._id)) {
-        list.unshift({
-          _id: currentUser._id,
-          name: currentUser.name,
-          email: currentUser.email,
-          role: currentUser.role,
-        } as any);
-      }
-    }
-    return list;
-  }, [assignableAuditorsAndManagers, currentUser]);
+  const canAssignAll = canAssignEnquiryRoles(currentUser?.role);
 
   useEffect(() => {
     if (!open || !currentUser?._id) return;
-    if (currentUser.role === "admin") {
-      setAssignedAdminTo(currentUser._id);
-      setAssignedTo(UNASSIGNED);
-    } else if (currentUser.role === "auditor" || currentUser.role === "manager") {
-      setAssignedTo(currentUser._id);
-      setAssignedAdminTo(UNASSIGNED);
-    } else {
-      setAssignedTo(UNASSIGNED);
-      setAssignedAdminTo(UNASSIGNED);
-    }
+    setAssignedTo(currentUser.role === "auditor" ? currentUser._id : UNASSIGNED);
+    setAssignedManagerTo(
+      currentUser.role === "manager" ? currentUser._id : UNASSIGNED,
+    );
+    setAssignedAdminTo(currentUser.role === "admin" ? currentUser._id : UNASSIGNED);
   }, [open, currentUser]);
 
   const [createEnquiry, { isLoading }] = useCreateEnquiryMutation();
-
-  const toggleAuditType = (t: RequestedAuditType) => {
-    setAuditTypes((prev) => {
-      const next = new Set(prev);
-      if (next.has(t)) next.delete(t);
-      else next.add(t);
-      return next;
-    });
-  };
 
   const reset = () => {
     setName("");
@@ -141,13 +89,12 @@ export function CreateEnquiryForm({
     setAddress("");
     setClientRepresentatives([emptyClientRepresentative()]);
     setAssignedTo(UNASSIGNED);
+    setAssignedManagerTo(UNASSIGNED);
     setAssignedAdminTo(UNASSIGNED);
-    setEnquiryStatus("new");
     setSource("");
-    setExpectedValue("");
     setNotes("");
     setNextFollowupDate("");
-    setAuditTypes(new Set());
+    setRequestedAudits([]);
   };
 
   const handleClose = (next: boolean) => {
@@ -163,12 +110,11 @@ export function CreateEnquiryForm({
     e.preventDefault();
     if (submitDisabled) return;
 
-    const evRaw =
-      expectedValue.trim() === ""
-        ? undefined
-        : Number(expectedValue.trim());
-    if (evRaw !== undefined && Number.isNaN(evRaw)) {
-      toast.error("Expected value must be a valid number.");
+    const invalidAudit = findInvalidRequestedAudit(requestedAudits);
+    if (invalidAudit) {
+      toast.error(
+        `Expected value for ${invalidAudit.audit_type} must be a positive number.`,
+      );
       return;
     }
 
@@ -185,19 +131,31 @@ export function CreateEnquiryForm({
       client_representative: primaryRep?.name || undefined,
       client_contact_number: primaryRep?.contact_number || undefined,
       client_email: primaryRep?.email || undefined,
-      assigned_to:
-        assignedTo === UNASSIGNED ? undefined : assignedTo || undefined,
-      assigned_admin_to:
-        assignedAdminTo === UNASSIGNED ? undefined : assignedAdminTo || undefined,
-      enquiry_status: enquiryStatus,
+      ...(canAssignAll
+        ? {
+            assigned_to:
+              assignedTo === UNASSIGNED ? undefined : assignedTo || undefined,
+            assigned_manager_to:
+              assignedManagerTo === UNASSIGNED
+                ? undefined
+                : assignedManagerTo || undefined,
+            assigned_admin_to:
+              assignedAdminTo === UNASSIGNED
+                ? undefined
+                : assignedAdminTo || undefined,
+          }
+        : {
+            assigned_to:
+              currentUser?.role === "auditor" ? currentUser._id : undefined,
+            assigned_manager_to:
+              currentUser?.role === "manager" ? currentUser._id : undefined,
+            assigned_admin_to:
+              currentUser?.role === "admin" ? currentUser._id : undefined,
+          }),
       source: source.trim() || undefined,
-      expected_value: evRaw,
-      requested_audit_types:
-        auditTypes.size > 0 ? Array.from(auditTypes) : undefined,
+      requested_audits: sanitizeEnquiryRequestedAudits(requestedAudits),
       notes: notes.trim() || undefined,
-      next_followup_date: nextFollowupDate.trim()
-        ? nextFollowupDate.trim()
-        : undefined,
+      next_followup_date: datetimeLocalToIso(nextFollowupDate),
     };
 
     try {
@@ -218,7 +176,7 @@ export function CreateEnquiryForm({
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
         <DialogHeader>
           <DialogTitle>Create enquiry</DialogTitle>
         </DialogHeader>
@@ -244,24 +202,6 @@ export function CreateEnquiryForm({
                 required
               />
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="enq-status">Pipeline status</Label>
-              <Select
-                value={enquiryStatus}
-                onValueChange={(v) => setEnquiryStatus(v as EnquiryStatus)}
-              >
-                <SelectTrigger id="enq-status">
-                  <SelectValue placeholder="Status" />
-                </SelectTrigger>
-                <SelectContent>
-                  {ENQUIRY_STATUS_OPTIONS.map((o) => (
-                    <SelectItem key={o.value} value={o.value}>
-                      {o.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
           </div>
 
           <div className="space-y-2">
@@ -279,50 +219,17 @@ export function CreateEnquiryForm({
             onChange={setClientRepresentatives}
           />
 
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-2">
-              <Label>Assigned to</Label>
-              <Select
-                value={assignedTo}
-                onValueChange={setAssignedTo}
-                disabled={currentUser?.role === "auditor" || currentUser?.role === "manager"}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Unassigned" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={UNASSIGNED}>Unassigned</SelectItem>
-                   {finalAssignableAuditorsAndManagers.map((u) => (
-                    <SelectItem key={u._id} value={u._id}>
-                      {u.name}
-                      {u.email ? ` (${u.email})` : ""}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Assigned Admin</Label>
-              <Select
-                value={assignedAdminTo}
-                onValueChange={setAssignedAdminTo}
-                disabled={currentUser?.role === "admin"}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Unassigned" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={UNASSIGNED}>Unassigned</SelectItem>
-                   {finalAssignableAdmins.map((u) => (
-                    <SelectItem key={u._id} value={u._id}>
-                      {u.name}
-                      {u.email ? ` (${u.email})` : ""}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
+          <EnquiryAssignmentFields
+            mode="create"
+            assignedTo={assignedTo}
+            assignedManagerTo={assignedManagerTo}
+            assignedAdminTo={assignedAdminTo}
+            onAssignedToChange={setAssignedTo}
+            onAssignedManagerToChange={setAssignedManagerTo}
+            onAssignedAdminToChange={setAssignedAdminTo}
+            assignableUsers={assignableUsers}
+            currentUser={currentUser}
+          />
 
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
@@ -336,46 +243,21 @@ export function CreateEnquiryForm({
             </div>
           </div>
 
+          <EnquiryRequestedAuditsFields
+            idPrefix="enq"
+            value={requestedAudits}
+            onChange={setRequestedAudits}
+          />
+
           <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="enq-ev">Expected value</Label>
-              <Input
-                id="enq-ev"
-                type="number"
-                min={0}
-                step="any"
-                value={expectedValue}
-                onChange={(e) => setExpectedValue(e.target.value)}
-              />
-            </div>
             <div className="space-y-2">
               <Label htmlFor="enq-nfd">Next follow-up</Label>
               <Input
                 id="enq-nfd"
-                type="date"
+                type="datetime-local"
                 value={nextFollowupDate}
                 onChange={(e) => setNextFollowupDate(e.target.value)}
               />
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <Label>Requested audit types</Label>
-            <div className="flex flex-wrap gap-2">
-              {REQUESTED_AUDIT_TYPE_OPTIONS.map((o) => (
-                <label
-                  key={o.value}
-                  className="flex cursor-pointer items-center gap-2 rounded-md border border-border px-2 py-1.5 text-sm"
-                >
-                  <input
-                    type="checkbox"
-                    checked={auditTypes.has(o.value)}
-                    onChange={() => toggleAuditType(o.value)}
-                    className="rounded border-input"
-                  />
-                  <span>{o.label}</span>
-                </label>
-              ))}
             </div>
           </div>
 

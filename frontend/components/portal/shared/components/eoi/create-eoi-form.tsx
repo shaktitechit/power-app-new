@@ -1,0 +1,461 @@
+"use client";
+
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/portal/ui/dialog";
+import { Input } from "@/components/portal/ui/input";
+import { Label } from "@/components/portal/ui/label";
+import { Button } from "@/components/portal/ui/button";
+import { Textarea } from "@/components/portal/ui/textarea";
+import { RichTextEditor } from "@/components/portal/ui/rich-text-editor";
+import { isEmptyRichHtml, sanitizeRichHtml } from "@/components/portal/lib/richText";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/portal/ui/popover";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/portal/ui/command";
+import { Check, ChevronsUpDown } from "lucide-react";
+import { toast } from "sonner";
+import { useGetEnquiryByIdQuery } from "@/store/slices/enquiryApiSlice";
+import {
+  useCreateEoiMutation,
+  useGetEoiSignatoriesQuery,
+  useUpdateEoiMutation,
+  type ExpressionOfInterest,
+} from "@/store/slices/eoiApiSlice";
+import { getEnquiryClientRepresentatives } from "@/components/portal/shared/components/enquiry/enquiry-client-representatives-fields";
+import { toastHandler } from "@/components/portal/lib/toast";
+import {
+  DEFAULT_EOI_CLOSE,
+  DEFAULT_EOI_SALUTATION,
+  defaultEoiBody,
+  defaultEoiSubject,
+  eoiBodyForEditor,
+  eoiEnquiryId,
+} from "@/components/portal/lib/eoiConstants";
+import { formatRoleLabel } from "@/components/portal/lib/authRoles";
+import {
+  isDefaultSignatoryDesignation,
+  signatoryDesignationForRole,
+} from "@/components/portal/lib/signatoryDesignation";
+import { cn } from "@/components/portal/lib/utils";
+import { useAppSelector } from "@/store/hooks";
+
+interface CreateEoiFormProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onComplete: () => void;
+  enquiryId?: string;
+  eoi?: ExpressionOfInterest;
+}
+
+const NONE = "";
+const SIGNATORY_ROLES = ["super_admin", "admin", "manager"];
+
+function toDateInputValue(value?: string | null) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function todayInputValue() {
+  return toDateInputValue(new Date().toISOString());
+}
+
+function signatoryIdFromEoi(eoi: ExpressionOfInterest) {
+  const userId = eoi.signatory?.userId;
+  if (!userId) return NONE;
+  return typeof userId === "string" ? userId : String(userId._id || NONE);
+}
+
+function joinParts(...parts: Array<string | undefined | null>) {
+  return parts.map((part) => String(part || "").trim()).filter(Boolean).join(", ");
+}
+
+export function CreateEoiForm({
+  open,
+  onOpenChange,
+  onComplete,
+  enquiryId: presetEnquiryId,
+  eoi,
+}: CreateEoiFormProps) {
+  const [signatoryId, setSignatoryId] = useState(NONE);
+  const [signatoryDesignation, setSignatoryDesignation] = useState("");
+  const [signatoryOpen, setSignatoryOpen] = useState(false);
+  const [eoiDate, setEoiDate] = useState("");
+  const [designation, setDesignation] = useState("");
+  const [organization, setOrganization] = useState("");
+  const [address, setAddress] = useState("");
+  const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
+  const [subject, setSubject] = useState("");
+  const [salutation, setSalutation] = useState(DEFAULT_EOI_SALUTATION);
+  const [body, setBody] = useState("");
+  const [complimentaryClose, setComplimentaryClose] = useState(DEFAULT_EOI_CLOSE);
+  const [editorKey, setEditorKey] = useState(0);
+
+  const signatoryTriggerRef = useRef<HTMLButtonElement>(null);
+  const [signatoryPopoverWidth, setSignatoryPopoverWidth] = useState<number | undefined>();
+
+  const currentUser = useAppSelector((state) => state.auth.user);
+  const { data: enquiryRes } = useGetEnquiryByIdQuery(presetEnquiryId || "", {
+    skip: !open || !presetEnquiryId,
+  });
+  const { data: signatoriesRes } = useGetEoiSignatoriesQuery(undefined, { skip: !open });
+  const enquiry = enquiryRes?.data;
+  const signatories = signatoriesRes?.data ?? [];
+  const [createEoi, { isLoading: creating }] = useCreateEoiMutation();
+  const [updateEoi, { isLoading: updating }] = useUpdateEoiMutation();
+  const isEdit = Boolean(eoi);
+  const isLoading = creating || updating;
+  const prefillKeyRef = useRef("");
+
+  const selectedSignatory = useMemo(
+    () => signatories.find((user) => user._id === signatoryId),
+    [signatories, signatoryId],
+  );
+
+  useEffect(() => {
+    if (!open) {
+      prefillKeyRef.current = "";
+      return;
+    }
+    if (!eoi && presetEnquiryId && !enquiry) return;
+
+    const prefillKey = eoi?._id
+      ? `edit:${eoi._id}`
+      : `create:${presetEnquiryId || ""}:${enquiry?._id || ""}`;
+    if (prefillKeyRef.current === prefillKey) return;
+    prefillKeyRef.current = prefillKey;
+
+    setSignatoryOpen(false);
+    if (eoi) {
+      setSignatoryId(signatoryIdFromEoi(eoi));
+      setSignatoryDesignation(eoi.signatory?.designation || "");
+      setEoiDate(toDateInputValue(eoi.eoiDate) || todayInputValue());
+      setDesignation(eoi.recipient?.designation || "");
+      setOrganization(eoi.recipient?.organization || "");
+      setAddress(eoi.recipient?.address || "");
+      setEmail(eoi.recipient?.email || "");
+      setPhone(eoi.recipient?.phone || "");
+      setSubject(eoi.subject || "");
+      setSalutation(eoi.salutation || DEFAULT_EOI_SALUTATION);
+      setBody(eoiBodyForEditor(eoi.body));
+      setComplimentaryClose(eoi.complimentaryClose || DEFAULT_EOI_CLOSE);
+      setEditorKey((key) => key + 1);
+      return;
+    }
+
+    const reps = getEnquiryClientRepresentatives(enquiry);
+    const primary = reps[0];
+    const selfIsSignatory = Boolean(
+      currentUser?._id && SIGNATORY_ROLES.includes(currentUser.role),
+    );
+    setSignatoryId(selfIsSignatory ? currentUser?._id ?? NONE : NONE);
+    setSignatoryDesignation(
+      selfIsSignatory ? signatoryDesignationForRole(currentUser?.role) : "",
+    );
+    setEoiDate(todayInputValue());
+    setDesignation(enquiry?.client_representative || primary?.name || "The Chief Executive Officer");
+    setOrganization(enquiry?.name || "");
+    setAddress(joinParts(enquiry?.address, enquiry?.city));
+    setEmail(enquiry?.client_email || primary?.email || "");
+    setPhone(enquiry?.client_contact_number || primary?.contact_number || "");
+    setSubject(defaultEoiSubject(enquiry));
+    setSalutation(DEFAULT_EOI_SALUTATION);
+    setBody(defaultEoiBody(enquiry));
+    setComplimentaryClose(DEFAULT_EOI_CLOSE);
+    setEditorKey((key) => key + 1);
+  }, [open, eoi, enquiry, presetEnquiryId, currentUser?._id, currentUser?.role]);
+
+  useEffect(() => {
+    if (!signatoryOpen) return;
+    const el = signatoryTriggerRef.current;
+    if (!el) return;
+    const observer = new ResizeObserver(() => setSignatoryPopoverWidth(el.offsetWidth));
+    observer.observe(el);
+    setSignatoryPopoverWidth(el.offsetWidth);
+    return () => observer.disconnect();
+  }, [signatoryOpen]);
+
+  const handleSubmit = async () => {
+    if (!designation.trim() || !organization.trim()) {
+      toast.error("Recipient designation and organization are required.");
+      return;
+    }
+    if (!subject.trim()) {
+      toast.error("Subject is required.");
+      return;
+    }
+    if (isEmptyRichHtml(body)) {
+      toast.error("Letter body is required.");
+      return;
+    }
+    if (!signatoryId) {
+      toast.error("Select a signatory.");
+      return;
+    }
+
+    const payload = {
+      ...(presetEnquiryId && !isEdit ? { enquiryId: presetEnquiryId } : {}),
+      eoiDate: eoiDate || undefined,
+      subject: subject.trim(),
+      salutation: salutation.trim() || DEFAULT_EOI_SALUTATION,
+      body: sanitizeRichHtml(body),
+      complimentaryClose: complimentaryClose.trim() || DEFAULT_EOI_CLOSE,
+      recipient: {
+        designation: designation.trim(),
+        organization: organization.trim(),
+        address: address.trim(),
+        email: email.trim(),
+        phone: phone.trim(),
+      },
+      signatory: {
+        userId: signatoryId,
+        name: selectedSignatory?.name,
+        designation:
+          signatoryDesignation.trim() ||
+          signatoryDesignationForRole(selectedSignatory?.role) ||
+          undefined,
+        phone: selectedSignatory?.phone,
+      },
+    };
+
+    try {
+      await toastHandler({
+        loading: isEdit ? "Updating EOI…" : "Creating EOI…",
+        success: isEdit ? "EOI updated." : "EOI created.",
+        action: () =>
+          isEdit && eoi
+            ? updateEoi({ id: eoi._id, ...payload }).unwrap()
+            : createEoi(payload).unwrap(),
+      });
+      onOpenChange(false);
+      onComplete();
+    } catch {
+      /* toastHandler already surfaced the error */
+    }
+  };
+
+  const canSubmit =
+    Boolean(designation.trim()) &&
+    Boolean(organization.trim()) &&
+    Boolean(subject.trim()) &&
+    !isEmptyRichHtml(body) &&
+    Boolean(signatoryId);
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
+        <DialogHeader>
+          <DialogTitle>{isEdit ? "Edit EOI" : "Create EOI"}</DialogTitle>
+        </DialogHeader>
+
+        <div className="grid gap-4 py-2 sm:grid-cols-2">
+          {presetEnquiryId || eoi ? (
+            <div className="space-y-1.5 sm:col-span-2">
+              <Label>Enquiry</Label>
+              <Input
+                value={
+                  enquiry
+                    ? `${enquiry.enquiry_number ? `${enquiry.enquiry_number} — ` : ""}${enquiry.name}`
+                    : eoi
+                      ? eoiEnquiryId(eoi) || "Linked enquiry"
+                      : ""
+                }
+                disabled
+              />
+            </div>
+          ) : null}
+
+          <div className="space-y-1.5">
+            <Label>Date</Label>
+            <Input
+              type="date"
+              value={eoiDate}
+              onChange={(event) => setEoiDate(event.target.value)}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label>To (designation)</Label>
+            <Input
+              value={designation}
+              onChange={(event) => setDesignation(event.target.value)}
+              placeholder="The Chief Executive Officer"
+            />
+          </div>
+          <div className="space-y-1.5 sm:col-span-2">
+            <Label>Organization</Label>
+            <Input
+              value={organization}
+              onChange={(event) => setOrganization(event.target.value)}
+              placeholder="Cantonment Board, Delhi Cantonment"
+            />
+          </div>
+          <div className="space-y-1.5 sm:col-span-2">
+            <Label>Address</Label>
+            <Textarea
+              value={address}
+              onChange={(event) => setAddress(event.target.value)}
+              rows={2}
+              placeholder="Optional address"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Email</Label>
+            <Input
+              type="email"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              placeholder="recipient@email.com"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Phone</Label>
+            <Input
+              value={phone}
+              onChange={(event) => setPhone(event.target.value)}
+              placeholder="Optional"
+            />
+          </div>
+          <div className="space-y-1.5 sm:col-span-2">
+            <Label>Subject</Label>
+            <Input
+              value={subject}
+              onChange={(event) => setSubject(event.target.value)}
+              placeholder="Submission of Expression of Interest (EOI)…"
+            />
+          </div>
+          <div className="space-y-1.5 sm:col-span-2">
+            <Label>Salutation</Label>
+            <Input
+              value={salutation}
+              onChange={(event) => setSalutation(event.target.value)}
+              placeholder="Dear Sir,"
+            />
+          </div>
+          <div className="space-y-1.5 sm:col-span-2">
+            <Label>Letter body</Label>
+            <RichTextEditor
+              key={editorKey}
+              value={body}
+              onChange={setBody}
+              placeholder="Write the covering letter…"
+              className="min-h-[12rem]"
+            />
+          </div>
+          <div className="space-y-1.5 sm:col-span-2">
+            <Label>Complimentary close</Label>
+            <Textarea
+              value={complimentaryClose}
+              onChange={(event) => setComplimentaryClose(event.target.value)}
+              rows={2}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Signatory</Label>
+            <Popover open={signatoryOpen} onOpenChange={setSignatoryOpen} modal>
+              <PopoverTrigger asChild>
+                <button
+                  ref={signatoryTriggerRef}
+                  type="button"
+                  role="combobox"
+                  aria-expanded={signatoryOpen}
+                  className={cn(
+                    "flex h-9 w-full min-w-0 items-center justify-between rounded-md border border-input bg-background px-3 py-1.5 text-sm shadow-xs",
+                    "transition-colors hover:bg-accent/50 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2",
+                  )}
+                >
+                  <span className={cn("truncate text-left", !selectedSignatory && "text-muted-foreground")}>
+                    {selectedSignatory
+                      ? `${selectedSignatory.name} (${formatRoleLabel(selectedSignatory.role)})`
+                      : "Select admin, super admin, or manager"}
+                  </span>
+                  <ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50" />
+                </button>
+              </PopoverTrigger>
+              <PopoverContent
+                align="start"
+                className="p-0"
+                style={{ width: signatoryPopoverWidth ? `${signatoryPopoverWidth}px` : undefined }}
+                onOpenAutoFocus={(event) => event.preventDefault()}
+              >
+                <Command>
+                  <CommandInput placeholder="Search name, email, or role…" />
+                  <CommandList>
+                    <CommandEmpty>No eligible signatories found.</CommandEmpty>
+                    <CommandGroup>
+                      {signatories.map((user) => (
+                        <CommandItem
+                          key={user._id}
+                          value={`${user.name} ${user.email ?? ""} ${user.role} ${formatRoleLabel(user.role)}`}
+                          onSelect={() => {
+                            setSignatoryId(user._id);
+                            setSignatoryDesignation((current) =>
+                              isDefaultSignatoryDesignation(current)
+                                ? signatoryDesignationForRole(user.role)
+                                : current,
+                            );
+                            setSignatoryOpen(false);
+                          }}
+                        >
+                          <Check
+                            className={cn(
+                              "h-4 w-4",
+                              signatoryId === user._id ? "opacity-100" : "opacity-0",
+                            )}
+                          />
+                          <span className="min-w-0 flex-1 truncate">{user.name}</span>
+                          <span className="shrink-0 text-xs text-muted-foreground">
+                            {formatRoleLabel(user.role)}
+                          </span>
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                  </CommandList>
+                </Command>
+              </PopoverContent>
+            </Popover>
+          </div>
+          <div className="space-y-1.5">
+            <Label>Signatory designation</Label>
+            <Input
+              value={signatoryDesignation}
+              onChange={(event) => setSignatoryDesignation(event.target.value)}
+              placeholder="Director"
+            />
+            <p className="text-xs text-muted-foreground">
+              Printed under the signature on the EOI letter.
+            </p>
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button onClick={handleSubmit} disabled={!canSubmit || isLoading}>
+            {isLoading ? "Saving…" : isEdit ? "Save changes" : "Create EOI"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}

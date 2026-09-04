@@ -48,7 +48,10 @@ import { toastHandler } from "@/components/portal/lib/toast";
 import { AuditSectionSkeleton } from "@/components/portal/shared/components/electrical-audit/utility-audit/audit-skeleton";
 import { toast } from "sonner";
 import { useAppSelector } from "@/store/hooks";
-import { cnHideUtilityAuditEdits } from "@/components/portal/lib/electrical-audit/utility-audit-edits-visibility";
+import {
+  cnHideUtilityAuditEdits,
+  isUtilityAuditRecordEditsLocked,
+} from "@/components/portal/lib/electrical-audit/utility-audit-edits-visibility";
 import {
   AUDIT_DOCUMENTS_PANEL_CLASS,
   AUDIT_DOC_LINK_INLINE,
@@ -306,6 +309,11 @@ export function TransformerAuditRecordSection({
     })[0];
   }, [records]);
 
+  const recordEditsLocked = isUtilityAuditRecordEditsLocked(
+    auditStepLocked,
+    latestRecord?.is_completed,
+  );
+
   const [form, setForm] =
     useState<TransformerAuditFormState>(createEmptyForm());
   const [excelImporting, setExcelImporting] = useState(false);
@@ -382,13 +390,13 @@ export function TransformerAuditRecordSection({
     const base = latestRecord ? recordToForm(latestRecord) : createEmptyForm();
     const perUnitCost =
       derivedFormValues.perUnitCostFromBilling ?? base.per_unit_cost_rs;
-    if (latestRecord && initialEditing && !auditStepLocked) {
+    if (latestRecord && initialEditing && !recordEditsLocked) {
       base.isEditing = true;
     }
     setForm({ ...base, per_unit_cost_rs: perUnitCost });
     setFromDate(toDateInput(gridCostSummary?.fromDate));
     setToDate(toDateInput(gridCostSummary?.toDate));
-  }, [latestRecord, derivedFormValues, gridCostSummary, initialEditing, auditStepLocked]);
+  }, [latestRecord, derivedFormValues, gridCostSummary, initialEditing, recordEditsLocked]);
 
   // Sync auto-calculated fields back into form state when inputs change
   useEffect(() => {
@@ -403,9 +411,9 @@ export function TransformerAuditRecordSection({
   }, [calculatedValues]);
 
   useEffect(() => {
-    if (!auditStepLocked) return;
+    if (!recordEditsLocked) return;
     setForm((prev) => ({ ...prev, isEditing: false }));
-  }, [auditStepLocked]);
+  }, [recordEditsLocked]);
 
   const updateForm = (key: keyof TransformerAuditFormState, value: string) => {
     setForm((prev) => ({
@@ -514,6 +522,11 @@ export function TransformerAuditRecordSection({
   };
 
   const handleSave = async () => {
+    if (recordEditsLocked && !form.isNew) {
+      toast.error("Cannot modify a completed audit record");
+      return;
+    }
+
     const payload = {
       transformer_id: transformerId,
       utility_account_id: utilityAccountId,
@@ -628,7 +641,7 @@ export function TransformerAuditRecordSection({
 
           <div
             className={cnHideUtilityAuditEdits(
-              auditStepLocked,
+              recordEditsLocked,
               "flex flex-wrap items-center gap-2",
             )}
           >

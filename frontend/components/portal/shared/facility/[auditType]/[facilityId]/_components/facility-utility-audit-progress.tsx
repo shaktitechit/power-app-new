@@ -19,6 +19,7 @@ interface FacilityUtilityAuditProgressProps {
   size?: number;
   strokeWidth?: number;
   className?: string;
+  compact?: boolean;
 }
 
 function summarizeFacilityUtilityProgress(utilityAccounts: UtilityAccount[]) {
@@ -79,6 +80,7 @@ export function FacilityUtilityAuditProgress({
   size = 48,
   strokeWidth = 4,
   className,
+  compact = false,
 }: FacilityUtilityAuditProgressProps) {
   const computedSummary = useMemo(() => {
     if (summaryProp) return summaryProp;
@@ -132,8 +134,27 @@ export function FacilityUtilityAuditProgress({
     </div>
   );
 
+  const progressLabel = compact ? (
+    <p className="whitespace-nowrap text-[10px] leading-tight text-muted-foreground">
+      {summary.completedAccounts}/{summary.totalAccounts}
+    </p>
+  ) : (
+    <div className="min-w-0 flex-1">
+      <p className="text-xs font-medium text-foreground">Utility audit progress</p>
+      <p className="text-[11px] text-muted-foreground">
+        {summary.completedAccounts}/{summary.totalAccounts} submitted ·{" "}
+        {summary.percentage}% overall
+      </p>
+    </div>
+  );
+
   return (
-    <div className="flex min-w-0 items-center gap-2.5">
+    <div
+      className={cn(
+        "flex items-center",
+        compact ? "shrink-0 gap-1.5" : "min-w-0 gap-2.5",
+      )}
+    >
       {summary.breakdown.length === 0 ? (
         progressRing
       ) : (
@@ -179,14 +200,7 @@ export function FacilityUtilityAuditProgress({
           </HoverCardContent>
         </HoverCard>
       )}
-
-      <div className="min-w-0 flex-1">
-        <p className="text-xs font-medium text-foreground">Utility audit progress</p>
-        <p className="text-[11px] text-muted-foreground">
-          {summary.completedAccounts}/{summary.totalAccounts} submitted ·{" "}
-          {summary.percentage}% overall
-        </p>
-      </div>
+      {progressLabel}
     </div>
   );
 }

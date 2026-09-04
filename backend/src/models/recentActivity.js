@@ -62,6 +62,8 @@ const recentActivitySchema = new mongoose.Schema(
         "enquiry",
         "follow_up",
         "enquiry_document",
+        "quotation",
+        "expression_of_interest",
         "utility_billing",
         "solar_generation",
         "transformer_audit",

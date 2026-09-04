@@ -501,7 +501,13 @@ export const getDashboardSummaryService = async ({ user }) => {
 export const getDashboardRecentFacilitiesService = async ({ user, limit = 6 }) => {
   const parsedLimit = Math.min(Math.max(Number(limit) || 6, 1), 20);
   const facilityIds = await getAccessibleFacilityIds(user);
-  const facilityQuery = isAdmin(user) ? {} : { _id: { $in: facilityIds } };
+  const facilityQuery = {
+    ...(isAdmin(user) ? {} : { _id: { $in: facilityIds } }),
+    $or: [
+      { "audit_closure.closed_at": { $exists: false } },
+      { "audit_closure.closed_at": null },
+    ],
+  };
   const updatedField = getModelUpdatedField(Facility) || "updatedAt";
   const createdField = getModelCreatedField(Facility) || "createdAt";
 

@@ -12,6 +12,7 @@ import { Server } from "socket.io";
 import connectDB from "./config/db.js";
 import { assertFileManagementConfig } from "./config/fileManagement.js";
 import { assertOpenRouterConfig } from "./config/openRouter.js";
+import { assertMicrosoftGraphConfig } from "./config/microsoftGraph.js";
 import { registerV1ApiRoutes } from "./registerV1ApiRoutes.js";
 
 import requestContextMiddleware from "./middlewares/requestContextMiddleware.js";
@@ -24,6 +25,7 @@ import socketServer from "./socket/socketServer.js";
 
 assertFileManagementConfig();
 assertOpenRouterConfig();
+assertMicrosoftGraphConfig();
 
 const frontendOrigins = (process.env.FRONTEND_URL ?? "https://power.spspl.com")
   .split(",")

@@ -18,6 +18,81 @@ import {
 } from "../shared/electrical-audit.helpers.js";
 import { buildUtilityProgressMapForFacilities } from "../dashboard/facility-utility-progress.js";
 
+function parseNumberOrNull(v) {
+  const n = Number(v);
+  return v !== undefined && v !== null && v !== "" && !Number.isNaN(n) ? n : null;
+}
+
+function parseSharedBudget(budgetRaw) {
+  if (budgetRaw === undefined) return undefined;
+  let b = budgetRaw;
+  if (typeof budgetRaw === "string") {
+    try {
+      b = JSON.parse(budgetRaw);
+    } catch {
+      return undefined;
+    }
+  }
+  return {
+    no_of_persons: parseNumberOrNull(b?.no_of_persons),
+    no_planned_site_visits: parseNumberOrNull(b?.no_planned_site_visits),
+    tentative_budget: parseNumberOrNull(b?.tentative_budget),
+    actual_budget: parseNumberOrNull(b?.actual_budget),
+  };
+}
+
+function parseAuditBudgetsMap(raw) {
+  if (raw == null) return undefined;
+  let map = raw;
+  if (typeof raw === "string") {
+    try {
+      map = JSON.parse(raw);
+    } catch {
+      return undefined;
+    }
+  }
+  if (!map || typeof map !== "object" || Array.isArray(map)) return undefined;
+
+  const out = {};
+  for (const [auditType, values] of Object.entries(map)) {
+    if (!auditType) continue;
+    out[auditType] = {
+      tentative_budget: parseNumberOrNull(values?.tentative_budget),
+      actual_budget: parseNumberOrNull(values?.actual_budget),
+      expected_value: parseNumberOrNull(values?.expected_value),
+    };
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
+function lookupAuditBudgetEntry(auditBudgetsMap, auditType) {
+  if (!auditBudgetsMap || !auditType) return undefined;
+  if (auditBudgetsMap[auditType]) return auditBudgetsMap[auditType];
+  const normalized = String(auditType).trim().toLowerCase();
+  const matchedKey = Object.keys(auditBudgetsMap).find(
+    (key) => key.trim().toLowerCase() === normalized,
+  );
+  return matchedKey ? auditBudgetsMap[matchedKey] : undefined;
+}
+
+function resolveFacilityExpectedValue(_facilityBudget, perAudit) {
+  if (perAudit?.expected_value != null) return perAudit.expected_value;
+  return null;
+}
+
+/** Shared headcount/visits plus per-audit amounts when creating multiple facilities. */
+function resolveFacilityBudget(currentAuditType, sharedBudget, auditBudgetsMap) {
+  const perAudit = lookupAuditBudgetEntry(auditBudgetsMap, currentAuditType);
+  if (!sharedBudget && !perAudit) return undefined;
+  return {
+    no_of_persons: sharedBudget?.no_of_persons ?? null,
+    no_planned_site_visits: sharedBudget?.no_planned_site_visits ?? null,
+    tentative_budget:
+      perAudit?.tentative_budget ?? sharedBudget?.tentative_budget ?? null,
+    actual_budget: perAudit?.actual_budget ?? sharedBudget?.actual_budget ?? null,
+  };
+}
+
 export const createFacilityService = async ({ user, body, files, io }) => {
   const {
     name,
@@ -35,6 +110,7 @@ export const createFacilityService = async ({ user, body, files, io }) => {
     auditor_ids,
     client_representatives,
     budget: budgetRaw,
+    audit_budgets: auditBudgetsRaw,
     enquiry_number,
   } = body;
 
@@ -102,25 +178,19 @@ export const createFacilityService = async ({ user, body, files, io }) => {
     }
   });
 
-  const parseNumberOrNull = (v) => {
-    const n = Number(v);
-    return v !== undefined && v !== null && v !== "" && !isNaN(n) ? n : null;
-  };
-  let parsedBudget = undefined;
-  if (budgetRaw !== undefined) {
-    const b = typeof budgetRaw === "string" ? JSON.parse(budgetRaw) : budgetRaw;
-    parsedBudget = {
-      no_of_persons: parseNumberOrNull(b?.no_of_persons),
-      no_planned_site_visits: parseNumberOrNull(b?.no_planned_site_visits),
-      tentative_budget: parseNumberOrNull(b?.tentative_budget),
-      actual_budget: parseNumberOrNull(b?.actual_budget),
-    };
-  }
+  const parsedBudget = parseSharedBudget(budgetRaw);
+  const parsedAuditBudgets = parseAuditBudgetsMap(auditBudgetsRaw);
 
   const createdFacilities = [];
 
   for (const currentAuditType of selectedAuditTypes) {
     const facilityId = new mongoose.Types.ObjectId();
+    const perAudit = lookupAuditBudgetEntry(parsedAuditBudgets, currentAuditType);
+    const facilityBudget = resolveFacilityBudget(
+      currentAuditType,
+      parsedBudget,
+      parsedAuditBudgets,
+    );
     const facility = await Facility.create({
       _id: facilityId,
       owner_user_id: user._id,
@@ -142,7 +212,8 @@ export const createFacilityService = async ({ user, body, files, io }) => {
       enquiry_number: enquiry_number ? String(enquiry_number).trim() : undefined,
       auditor_id: resolveAuditorId(user, body) || parsedAuditorIds[0] || undefined,
       documents: uploadedDocuments,
-      ...(parsedBudget !== undefined && { budget: parsedBudget }),
+      expected_value: resolveFacilityExpectedValue(facilityBudget, perAudit),
+      ...(facilityBudget !== undefined && { budget: facilityBudget }),
     });
 
     if (parsedAuditorIds.length > 0) {
@@ -258,6 +329,7 @@ export const createFacilityFromEnquiryService = async ({ user, enquiryId, body, 
     auditor_ids,
     client_representatives,
     budget: budgetRaw,
+    audit_budgets: auditBudgetsRaw,
   } = body;
 
   if (!name || !city) {
@@ -320,25 +392,19 @@ export const createFacilityFromEnquiryService = async ({ user, enquiryId, body, 
     }
   });
 
-  const parseNumberOrNull = (v) => {
-    const n = Number(v);
-    return v !== undefined && v !== null && v !== "" && !isNaN(n) ? n : null;
-  };
-  let parsedBudget = undefined;
-  if (budgetRaw !== undefined) {
-    const b = typeof budgetRaw === "string" ? JSON.parse(budgetRaw) : budgetRaw;
-    parsedBudget = {
-      no_of_persons: parseNumberOrNull(b?.no_of_persons),
-      no_planned_site_visits: parseNumberOrNull(b?.no_planned_site_visits),
-      tentative_budget: parseNumberOrNull(b?.tentative_budget),
-      actual_budget: parseNumberOrNull(b?.actual_budget),
-    };
-  }
+  const parsedBudget = parseSharedBudget(budgetRaw);
+  const parsedAuditBudgets = parseAuditBudgetsMap(auditBudgetsRaw);
 
   const createdFacilities = [];
 
   for (const currentAuditType of selectedAuditTypes) {
     const facilityId = new mongoose.Types.ObjectId();
+    const perAudit = lookupAuditBudgetEntry(parsedAuditBudgets, currentAuditType);
+    const facilityBudget = resolveFacilityBudget(
+      currentAuditType,
+      parsedBudget,
+      parsedAuditBudgets,
+    );
     const facility = await Facility.create({
       _id: facilityId,
       owner_user_id: user._id,
@@ -361,7 +427,8 @@ export const createFacilityFromEnquiryService = async ({ user, enquiryId, body, 
       enquiry_number: enquiry.enquiry_number,
       auditor_id: resolveAuditorId(user, body) || parsedAuditorIds[0] || undefined,
       documents: uploadedDocuments,
-      ...(parsedBudget !== undefined && { budget: parsedBudget }),
+      expected_value: resolveFacilityExpectedValue(facilityBudget, perAudit),
+      ...(facilityBudget !== undefined && { budget: facilityBudget }),
     });
 
     if (parsedAuditorIds.length > 0) {
@@ -595,6 +662,7 @@ export const updateFacilityService = async ({ user, facilityId, body, files, io 
     budget: budgetRaw,
     removed_document_ids,
     enquiry_number,
+    expected_value: expectedValueRaw,
   } = body;
 
   const facility = await resolveAccessibleFacility(user, facilityId);
@@ -689,6 +757,17 @@ export const updateFacilityService = async ({ user, facilityId, body, files, io 
       tentative_budget: parseNumberOrNull(b?.tentative_budget),
       actual_budget: parseNumberOrNull(b?.actual_budget),
     };
+    if (expectedValueRaw === undefined && b?.tentative_budget != null && b.tentative_budget !== "") {
+      facility.expected_value = parseNumberOrNull(b.tentative_budget);
+    }
+  }
+
+  if (expectedValueRaw !== undefined) {
+    const parseNumberOrNull = (v) => {
+      const n = Number(v);
+      return v !== undefined && v !== null && v !== "" && !isNaN(n) ? n : null;
+    };
+    facility.expected_value = parseNumberOrNull(expectedValueRaw);
   }
 
   let parsedRemovedDocIds = [];

@@ -27,6 +27,13 @@ import {
 
 import { useAssignableUsersQuery } from "@/store/slices/userApiSlice";
 import type { Enquiry } from "@/store/slices/enquiryApiSlice";
+import { useGetQuotationsQuery } from "@/store/slices/quotationApiSlice";
+import {
+  formatInr,
+  resolveAcceptedQuotationForEnquiry,
+  quotationAuditAmounts,
+  quotationAuditTypes,
+} from "@/components/portal/lib/quotationConstants";
 import {
   useCreateFacilityMutation,
   useCreateFacilityFromEnquiryMutation,
@@ -59,6 +66,77 @@ type ClientRepresentative = {
   contact_number: string;
   email: string;
 };
+
+type AuditBudgetDraft = {
+  tentative_budget: string;
+  actual_budget: string;
+};
+
+function emptyAuditBudgetDraft(): AuditBudgetDraft {
+  return { tentative_budget: "", actual_budget: "" };
+}
+
+function sumBudgetField(
+  auditTypes: string[],
+  auditBudgets: Record<string, AuditBudgetDraft>,
+  field: keyof AuditBudgetDraft,
+) {
+  return auditTypes.reduce((total, type) => {
+    const raw = auditBudgets[type]?.[field];
+    const amount = Number(raw);
+    return total + (raw !== "" && Number.isFinite(amount) ? amount : 0);
+  }, 0);
+}
+
+function resolveUserBudgetField(
+  auditType: string,
+  field: keyof AuditBudgetDraft,
+  auditBudgets: Record<string, AuditBudgetDraft>,
+): number | null {
+  const raw = auditBudgets[auditType]?.[field];
+  if (raw !== "" && Number.isFinite(Number(raw))) return Number(raw);
+  return null;
+}
+
+function resolveQuotedExpectedValue(
+  auditType: string,
+  quotedAmounts: Record<string, number>,
+  enquiryAmounts: Record<string, number>,
+  fromEnquiry: boolean,
+): number | null {
+  if (quotedAmounts[auditType] != null && Number.isFinite(Number(quotedAmounts[auditType]))) {
+    return Number(quotedAmounts[auditType]);
+  }
+  if (
+    fromEnquiry &&
+    enquiryAmounts[auditType] != null &&
+    Number.isFinite(Number(enquiryAmounts[auditType]))
+  ) {
+    return Number(enquiryAmounts[auditType]);
+  }
+  return null;
+}
+
+function quotedExpectedAmount(
+  auditType: string,
+  quotedAmounts: Record<string, number>,
+  enquiryAmounts: Record<string, number>,
+  fromEnquiry: boolean,
+): number | null {
+  return resolveQuotedExpectedValue(
+    auditType,
+    quotedAmounts,
+    enquiryAmounts,
+    fromEnquiry,
+  );
+}
+
+function enquiryAcceptedQuotationId(enquiry: Enquiry): string | undefined {
+  const ref = enquiry.accepted_quotation_id;
+  if (!ref) return undefined;
+  if (typeof ref === "string") return ref;
+  return ref._id;
+}
 
 /** `YYYY-MM-DD` for `<input type="date" />` using local calendar date */
 function getTodayLocalDateString(): string {
@@ -259,12 +337,26 @@ export function CreateFacilityForm({
     budget: {
       no_of_persons: "",
       no_planned_site_visits: "",
-      tentative_budget: "",
-      actual_budget: "",
     },
   });
 
   const [submitError, setSubmitError] = useState("");
+  const [auditBudgets, setAuditBudgets] = useState<
+    Record<string, AuditBudgetDraft>
+  >({});
+  const [enquiryAuditAmounts, setEnquiryAuditAmounts] = useState<
+    Record<string, number>
+  >({});
+  const [quotedAuditAmounts, setQuotedAuditAmounts] = useState<
+    Record<string, number>
+  >({});
+  const [prefillSource, setPrefillSource] = useState<string | null>(null);
+
+  const { data: acceptedQuotationsRes, isFetching: quotationsLoading } =
+    useGetQuotationsQuery(
+      { enquiryId: fromEnquiry?._id, status: "ACCEPTED" },
+      { skip: !open || !fromEnquiry?._id },
+    );
 
   const updateField = (
     field: keyof typeof formData,
@@ -284,19 +376,57 @@ export function CreateFacilityForm({
       audit_types: [AUDIT_TYPE_OPTIONS[0]],
       auditor_ids: [],
       closure_date: "",
-      budget: { no_of_persons: "", no_planned_site_visits: "", tentative_budget: "", actual_budget: "" },
+      budget: { no_of_persons: "", no_planned_site_visits: "" },
     });
 
     setSubmitError("");
     setStep(1);
+    setQuotedAuditAmounts({});
+    setPrefillSource(null);
+    setAuditBudgets({});
+    setEnquiryAuditAmounts({});
   };
 
   useEffect(() => {
     if (!open || !fromEnquiry) return;
+    if (quotationsLoading) return;
 
     const optionSet = new Set<string>(
       AUDIT_TYPE_OPTIONS as unknown as string[],
     );
+    const acceptedQuotation = fromEnquiry
+      ? resolveAcceptedQuotationForEnquiry(
+          acceptedQuotationsRes?.data ?? [],
+          enquiryAcceptedQuotationId(fromEnquiry),
+        )
+      : null;
+    const quotedAmounts = acceptedQuotation
+      ? quotationAuditAmounts(acceptedQuotation)
+      : {};
+    setQuotedAuditAmounts(quotedAmounts);
+    setPrefillSource(
+      acceptedQuotation?.quotationRef
+        ? `Accepted quotation ${acceptedQuotation.quotationRef}`
+        : null,
+    );
+
+    const customer = acceptedQuotation?.customer;
+    const repsFromQuotation =
+      customer &&
+      (customer.kindAttn?.trim() ||
+        customer.name?.trim() ||
+        customer.email?.trim() ||
+        customer.phone?.trim() ||
+        customer.mobile?.trim())
+        ? [
+            {
+              name: customer.kindAttn?.trim() || customer.name?.trim() || "",
+              contact_number:
+                customer.phone?.trim() || customer.mobile?.trim() || "",
+              email: customer.email?.trim() || "",
+            },
+          ]
+        : null;
 
     const repsFromEnquiry = (fromEnquiry.client_representatives ?? []).filter(
       (r) =>
@@ -306,7 +436,8 @@ export function CreateFacilityForm({
     );
 
     const clientRepresentativesMapped: ClientRepresentative[] =
-      repsFromEnquiry.length > 0
+      repsFromQuotation ??
+      (repsFromEnquiry.length > 0
         ? repsFromEnquiry.map((r) => ({
             name: r.name ?? "",
             contact_number: r.contact_number ?? "",
@@ -318,30 +449,96 @@ export function CreateFacilityForm({
               contact_number: fromEnquiry.client_contact_number ?? "",
               email: fromEnquiry.client_email ?? "",
             },
-          ];
+          ]);
 
-    const preferredAudits = (fromEnquiry.requested_audit_types ?? []).filter(
-      (t) => optionSet.has(t),
-    );
+    const quotationAudits = acceptedQuotation
+      ? quotationAuditTypes(acceptedQuotation)
+      : [];
+    const preferredAudits =
+      quotationAudits.length > 0
+        ? quotationAudits
+        : (fromEnquiry.requested_audit_types ?? []).filter((t) =>
+            optionSet.has(t),
+          );
+
+    const enquiryAmounts: Record<string, number> = {};
+    for (const row of fromEnquiry.requested_audits ?? []) {
+      if (row.audit_type && row.expected_value != null) {
+        enquiryAmounts[row.audit_type] = Number(row.expected_value);
+      }
+    }
+    setEnquiryAuditAmounts(enquiryAmounts);
+
+    const resolvedAudits =
+      preferredAudits.length > 0 ? preferredAudits : [AUDIT_TYPE_OPTIONS[0]];
+    const nextAuditBudgets: Record<string, AuditBudgetDraft> = {};
+    for (const type of resolvedAudits) {
+      nextAuditBudgets[type] = emptyAuditBudgetDraft();
+    }
+    setAuditBudgets(nextAuditBudgets);
 
     setFormData((prev) => ({
       ...prev,
-      name: fromEnquiry.name ?? "",
+      name:
+        customer?.name?.trim() ||
+        fromEnquiry.name ||
+        "",
       city: fromEnquiry.city ?? "",
-      address: fromEnquiry.address ?? "",
+      address: customer?.address?.trim() || fromEnquiry.address || "",
       client_representatives:
         clientRepresentativesMapped.some(
           (r) => r.name || r.contact_number || r.email,
         )
           ? clientRepresentativesMapped
           : [{ name: "", contact_number: "", email: "" }],
-      audit_types:
-        preferredAudits.length > 0
-          ? preferredAudits
-          : [AUDIT_TYPE_OPTIONS[0]],
+      audit_types: resolvedAudits,
       start_date: getTodayLocalDateString(),
     }));
-  }, [open, fromEnquiry]);
+  }, [open, fromEnquiry, acceptedQuotationsRes?.data, quotationsLoading]);
+
+  // Keep an empty budget row for every selected audit type.
+  useEffect(() => {
+    if (!open) return;
+    setAuditBudgets((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      for (const type of formData.audit_types) {
+        if (!next[type]) {
+          next[type] = emptyAuditBudgetDraft();
+          changed = true;
+        }
+      }
+      for (const type of Object.keys(next)) {
+        if (!formData.audit_types.includes(type)) {
+          delete next[type];
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [open, formData.audit_types]);
+
+  const toggleAuditType = (type: string) => {
+    const isSelected = formData.audit_types.includes(type);
+    if (isSelected) {
+      updateField(
+        "audit_types",
+        formData.audit_types.filter((auditType) => auditType !== type),
+      );
+      setAuditBudgets((prev) => {
+        const next = { ...prev };
+        delete next[type];
+        return next;
+      });
+      return;
+    }
+
+    updateField("audit_types", [...formData.audit_types, type]);
+    setAuditBudgets((prev) => ({
+      ...prev,
+      [type]: prev[type] ?? emptyAuditBudgetDraft(),
+    }));
+  };
 
   // File upload logic removed
 
@@ -352,6 +549,33 @@ export function CreateFacilityForm({
       formData.audit_types.length > 0
     );
   }, [formData.name, formData.city, formData.audit_types]);
+
+  const budgetTotals = useMemo(
+    () => ({
+      tentative: sumBudgetField(
+        formData.audit_types,
+        auditBudgets,
+        "tentative_budget",
+      ),
+      actual: sumBudgetField(formData.audit_types, auditBudgets, "actual_budget"),
+    }),
+    [formData.audit_types, auditBudgets],
+  );
+
+  const updateAuditBudget = (
+    auditType: string,
+    field: keyof AuditBudgetDraft,
+    value: string,
+  ) => {
+    setAuditBudgets((prev) => ({
+      ...prev,
+      [auditType]: {
+        tentative_budget: prev[auditType]?.tentative_budget ?? "",
+        actual_budget: prev[auditType]?.actual_budget ?? "",
+        [field]: value,
+      },
+    }));
+  };
 
   const handleSubmit = async () => {
     setSubmitError("");
@@ -392,15 +616,30 @@ export function CreateFacilityForm({
           formData.budget.no_planned_site_visits !== ""
             ? Number(formData.budget.no_planned_site_visits)
             : null,
-        tentative_budget:
-          formData.budget.tentative_budget !== ""
-            ? Number(formData.budget.tentative_budget)
-            : null,
-        actual_budget:
-          formData.budget.actual_budget !== ""
-            ? Number(formData.budget.actual_budget)
-            : null,
       },
+      audit_budgets: Object.fromEntries(
+        formData.audit_types.map((auditType) => [
+          auditType,
+          {
+            tentative_budget: resolveUserBudgetField(
+              auditType,
+              "tentative_budget",
+              auditBudgets,
+            ),
+            actual_budget: resolveUserBudgetField(
+              auditType,
+              "actual_budget",
+              auditBudgets,
+            ),
+            expected_value: resolveQuotedExpectedValue(
+              auditType,
+              quotedAuditAmounts,
+              enquiryAuditAmounts,
+              Boolean(fromEnquiry),
+            ),
+          },
+        ]),
+      ),
     };
 
     try {
@@ -417,8 +656,12 @@ export function CreateFacilityForm({
           ? "Creating facility from enquiry…"
           : "Creating facility...",
         success: fromEnquiry
-          ? "Facility created and linked to the enquiry."
-          : "Facility created successfully",
+          ? formData.audit_types.length > 1
+            ? `${formData.audit_types.length} facilities created and linked to the enquiry.`
+            : "Facility created and linked to the enquiry."
+          : formData.audit_types.length > 1
+            ? `${formData.audit_types.length} facilities created successfully.`
+            : "Facility created successfully",
       });
 
       onComplete();
@@ -451,6 +694,17 @@ export function CreateFacilityForm({
               : "Create New Facility"}
           </DialogTitle>
         </DialogHeader>
+
+        {fromEnquiry && prefillSource ? (
+          <p className="-mt-2 text-xs text-muted-foreground">
+            Prefilled from {prefillSource}.
+          </p>
+        ) : null}
+        {fromEnquiry && quotationsLoading ? (
+          <p className="-mt-2 text-xs text-muted-foreground">
+            Loading accepted quotation…
+          </p>
+        ) : null}
 
         {/* Stepper Progress Bar */}
         <div className="mb-6 mt-2 border-b pb-5">
@@ -536,16 +790,17 @@ export function CreateFacilityForm({
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-1.5">
                   {AUDIT_TYPE_OPTIONS.map((type) => {
                     const isSelected = formData.audit_types.includes(type);
+                    const quotedAmount = quotedExpectedAmount(
+                      type,
+                      quotedAuditAmounts,
+                      enquiryAuditAmounts,
+                      Boolean(fromEnquiry),
+                    );
                     return (
                       <button
                         key={type}
                         type="button"
-                        onClick={() => {
-                          const nextTypes = isSelected
-                            ? formData.audit_types.filter((t) => t !== type)
-                            : [...formData.audit_types, type];
-                          updateField("audit_types", nextTypes);
-                        }}
+                        onClick={() => toggleAuditType(type)}
                         className={`flex items-center justify-between rounded-lg border-2 p-3.5 text-left transition-all duration-200 hover:bg-accent/40 ${
                           isSelected
                             ? "border-primary bg-primary/5 shadow-sm"
@@ -553,9 +808,16 @@ export function CreateFacilityForm({
                         }`}
                         disabled={isSavingFacility}
                       >
-                        <span className={`text-sm font-medium ${isSelected ? "text-foreground" : ""}`}>
-                          {type}
-                        </span>
+                        <div className="min-w-0 pr-3">
+                          <span className={`block text-sm font-medium ${isSelected ? "text-foreground" : ""}`}>
+                            {type}
+                          </span>
+                          {quotedAmount != null && quotedAmount > 0 ? (
+                            <span className="mt-0.5 block text-xs font-semibold text-primary">
+                              Quoted {formatInr(quotedAmount)}
+                            </span>
+                          ) : null}
+                        </div>
                         <div
                           className={`flex h-5 w-5 shrink-0 items-center justify-center rounded border transition-all ${
                             isSelected
@@ -738,8 +1000,10 @@ export function CreateFacilityForm({
           {/* Step 3: Budget Information */}
           {step === 3 && (
             <div className="space-y-4">
-              <h3 className="text-sm font-semibold text-foreground border-b pb-2 mb-2">Budget Information</h3>
-              <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
+              <h3 className="text-sm font-semibold text-foreground border-b pb-2 mb-2">
+                Budget Information
+              </h3>
+              <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
                 <div className="space-y-2">
                   <Label htmlFor="no_of_persons">No. of Persons</Label>
                   <Input
@@ -748,7 +1012,12 @@ export function CreateFacilityForm({
                     min="0"
                     placeholder="e.g. 5"
                     value={formData.budget.no_of_persons}
-                    onChange={(e) => setFormData((prev) => ({ ...prev, budget: { ...prev.budget, no_of_persons: e.target.value } }))}
+                    onChange={(e) =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        budget: { ...prev.budget, no_of_persons: e.target.value },
+                      }))
+                    }
                     disabled={isSavingFacility}
                   />
                 </div>
@@ -760,33 +1029,122 @@ export function CreateFacilityForm({
                     min="0"
                     placeholder="e.g. 3"
                     value={formData.budget.no_planned_site_visits}
-                    onChange={(e) => setFormData((prev) => ({ ...prev, budget: { ...prev.budget, no_planned_site_visits: e.target.value } }))}
+                    onChange={(e) =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        budget: {
+                          ...prev.budget,
+                          no_planned_site_visits: e.target.value,
+                        },
+                      }))
+                    }
                     disabled={isSavingFacility}
                   />
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="tentative_budget">Tentative Budget (₹)</Label>
-                  <Input
-                    id="tentative_budget"
-                    type="number"
-                    min="0"
-                    placeholder="e.g. 50000"
-                    value={formData.budget.tentative_budget}
-                    onChange={(e) => setFormData((prev) => ({ ...prev, budget: { ...prev.budget, tentative_budget: e.target.value } }))}
-                    disabled={isSavingFacility}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="actual_budget">Actual Budget (₹)</Label>
-                  <Input
-                    id="actual_budget"
-                    type="number"
-                    min="0"
-                    placeholder="e.g. 45000"
-                    value={formData.budget.actual_budget}
-                    onChange={(e) => setFormData((prev) => ({ ...prev, budget: { ...prev.budget, actual_budget: e.target.value } }))}
-                    disabled={isSavingFacility}
-                  />
+              </div>
+
+              <div className="space-y-3">
+                <Label>Per audit budget</Label>
+                {formData.audit_types.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">
+                    Select at least one audit type on the previous step.
+                  </p>
+                ) : (
+                  formData.audit_types.map((auditType) => {
+                    const quotedExpected = quotedExpectedAmount(
+                      auditType,
+                      quotedAuditAmounts,
+                      enquiryAuditAmounts,
+                      Boolean(fromEnquiry),
+                    );
+
+                    return (
+                    <div
+                      key={auditType}
+                      className="rounded-lg border border-border bg-card p-4"
+                    >
+                      <p className="mb-3 text-sm font-medium text-foreground">
+                        {auditType}
+                      </p>
+                      {quotedExpected != null && quotedExpected > 0 ? (
+                        <div className="mb-4 rounded-md border border-primary/20 bg-primary/5 px-3 py-2">
+                          <p className="text-xs text-muted-foreground">
+                            Expected value from quotation
+                          </p>
+                          <p className="text-sm font-semibold text-primary">
+                            {formatInr(quotedExpected)}
+                          </p>
+                        </div>
+                      ) : fromEnquiry ? (
+                        <p className="mb-4 text-xs text-muted-foreground">
+                          No quoted amount found for this audit in the accepted quotation.
+                        </p>
+                      ) : null}
+                      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                        <div className="space-y-2">
+                          <Label htmlFor={`${auditType}-tentative`}>
+                            Tentative budget (₹)
+                          </Label>
+                          <Input
+                            id={`${auditType}-tentative`}
+                            type="number"
+                            min="0"
+                            placeholder="Enter tentative budget"
+                            value={auditBudgets[auditType]?.tentative_budget ?? ""}
+                            onChange={(e) =>
+                              updateAuditBudget(
+                                auditType,
+                                "tentative_budget",
+                                e.target.value,
+                              )
+                            }
+                            disabled={isSavingFacility}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor={`${auditType}-actual`}>
+                            Actual budget (₹)
+                          </Label>
+                          <Input
+                            id={`${auditType}-actual`}
+                            type="number"
+                            min="0"
+                            placeholder="Enter actual budget"
+                            value={auditBudgets[auditType]?.actual_budget ?? ""}
+                            onChange={(e) =>
+                              updateAuditBudget(
+                                auditType,
+                                "actual_budget",
+                                e.target.value,
+                              )
+                            }
+                            disabled={isSavingFacility}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                    );
+                  })
+                )}
+              </div>
+
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-border bg-muted/40 px-3 py-2">
+                <span className="text-sm font-medium">Combined budget</span>
+                <div className="flex flex-wrap gap-4 text-sm">
+                  <span>
+                    Tentative:{" "}
+                    <span className="font-semibold text-primary">
+                      {budgetTotals.tentative > 0
+                        ? formatInr(budgetTotals.tentative)
+                        : "—"}
+                    </span>
+                  </span>
+                  <span>
+                    Actual:{" "}
+                    <span className="font-semibold text-primary">
+                      {budgetTotals.actual > 0 ? formatInr(budgetTotals.actual) : "—"}
+                    </span>
+                  </span>
                 </div>
               </div>
             </div>

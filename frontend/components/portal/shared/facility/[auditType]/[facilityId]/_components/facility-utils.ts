@@ -3,7 +3,7 @@ import { isDataSheetSectionIncluded } from "@/components/portal/lib/electrical-a
 import { ALL_DATASHEET_SECTIONS } from "@/components/portal/lib/electrical-audit/utility-data-sheet-sections";
 import type { UtilityAccount } from "@/store/slices/electrical-audit/utilityApiSlice";
 
-export const UTILITY_ACCOUNTS_PAGE_SIZE = 10;
+export const UTILITY_ACCOUNTS_PAGE_SIZE = 12;
 
 export type UtilityAccountStatusFilter = "all" | "completed" | "pending";
 

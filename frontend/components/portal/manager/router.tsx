@@ -4,7 +4,13 @@ import { notFound } from "next/navigation";
 import Analytics from "@/components/portal/shared/analytics";
 import Dashboard from "@/components/portal/shared/dashboard";
 import Enquiries from "@/components/portal/shared/enquiries";
+import EnquiryAnalytics from "@/components/portal/shared/enquiries/analytics";
+import EnquiryFollowUps from "@/components/portal/shared/enquiries/follow-ups";
 import EnquiryDetails from "@/components/portal/shared/enquiries/[enquiryId]";
+import Quotations from "@/components/portal/shared/quotations";
+import QuotationDetails from "@/components/portal/shared/quotations/[quotationId]";
+import TermsConditions from "@/components/portal/shared/terms-conditions";
+import TermsConditionsDetails from "@/components/portal/shared/terms-conditions/[termsConditionsId]";
 import Facilities from "@/components/portal/shared/facilities";
 import FacilityAuditType from "@/components/portal/shared/facility/[auditType]";
 import FacilityDetails from "@/components/portal/shared/facility/[auditType]/[facilityId]";
@@ -26,7 +32,19 @@ export function render(segments: string[]) {
 
   if (segments[0] === "enquiries") {
     if (segments.length === 1) return <Enquiries />;
+    if (segments[1] === "analytics") return <EnquiryAnalytics />;
+    if (segments[1] === "follow-ups") return <EnquiryFollowUps />;
     if (segments.length === 2) return <EnquiryDetails />;
+  }
+
+  if (segments[0] === "quotations") {
+    if (segments.length === 1) return <Quotations />;
+    if (segments.length === 2) return <QuotationDetails />;
+  }
+
+  if (segments[0] === "terms-conditions") {
+    if (segments.length === 1) return <TermsConditions />;
+    if (segments.length === 2) return <TermsConditionsDetails />;
   }
 
   if (segments[0] === "profile") {

@@ -1,6 +1,6 @@
 "use client";
 
-import { canEditEnquiry } from "@/components/portal/lib/enquiryAccess";
+import { assigneeLabel, filterEnquiriesForUser } from "@/components/portal/lib/enquiryAccess";
 import { EnquiryStatusPill } from "@/components/portal/shared/components/enquiry/enquiry-status-pill";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -28,19 +28,29 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/portal/ui/dialog";
-import { Plus, Search, MessageSquare, FileSpreadsheet, Download, FilterX } from "lucide-react";
+import { Plus, Search, MessageSquare, FileSpreadsheet, Download, BarChart3, CalendarClock, FileText, Loader2, Columns3, SlidersHorizontal } from "lucide-react";
+import Link from "next/link";
+import { Checkbox } from "@/components/portal/ui/checkbox";
+import { toast } from "sonner";
+import { useCompanyBranding } from "@/components/portal/shared/components/company-branding-provider";
+import { useGetDefaultCompanyQuery } from "@/store/slices/companyApiSlice";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/portal/ui/select";
-import { Label } from "@/components/portal/ui/label";
+  ENQUIRY_EXPORT_COLUMNS,
+  buildEnquiryExcelSheetRows,
+  defaultEnquiryExportColumnKeys,
+  enquiryExportCellValue,
+  resolveEnquiryExportColumns,
+  type EnquiryExportColumnKey,
+} from "@/components/portal/lib/enquiryExport";
+import {
+  buildEnquiryListPdfBlob,
+  enquiryListPdfFilename,
+  type EnquiryListPdfOrientation,
+} from "@/components/portal/lib/enquiryListPdf";
+import { Tabs, TabsList, TabsTrigger } from "@/components/portal/ui/tabs";
 import { useAssignableUsersQuery } from "@/store/slices/userApiSlice";
 import {
-  ENQUIRY_STATUS_OPTIONS,
-  REQUESTED_AUDIT_TYPE_OPTIONS,
+  ENQUIRY_PIPELINE_STEPS,
 } from "@/components/portal/lib/enquiryConstants";
 import {
   type Enquiry,
@@ -48,98 +58,16 @@ import {
   useDeleteEnquiryMutation,
 } from "@/store/slices/enquiryApiSlice";
 import { useAppSelector } from "@/store/hooks";
-import { enquirySearchHaystack } from "@/components/portal/lib/enquirySearchHaystack";
+import { EnquiryListFilterPanel } from "@/components/portal/shared/components/enquiry/enquiry-list-filter-panel";
+import {
+  countActiveEnquiryListFilters,
+  filterEnquiryList,
+  matchesEnquiryPipelineTab,
+  type EnquiryListFilters,
+  type EnquiryPipelineTab,
+} from "@/components/portal/lib/enquiryListFilters";
 
 const PAGE_SIZE = 10;
-
-function checkNextFollowUp(dateStr: string | undefined, range: string, fromDate?: string, toDate?: string) {
-  if (!dateStr) return false;
-  const d = new Date(dateStr);
-  const now = new Date();
-  now.setHours(0, 0, 0, 0);
-  const dTime = d.getTime();
-
-  if (range === "custom") {
-    const start = fromDate ? new Date(fromDate) : null;
-    const end = toDate ? new Date(toDate) : null;
-    if (start) {
-      start.setHours(0, 0, 0, 0);
-      if (dTime < start.getTime()) return false;
-    }
-    if (end) {
-      end.setHours(23, 59, 59, 999);
-      if (dTime > end.getTime()) return false;
-    }
-    return true;
-  }
-
-  if (range === "today") {
-    const today = new Date();
-    return d.toDateString() === today.toDateString();
-  }
-  if (range === "tomorrow") {
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    return d.toDateString() === tomorrow.toDateString();
-  }
-  if (range === "this_week") {
-    const next7 = new Date();
-    next7.setDate(next7.getDate() + 7);
-    return dTime >= now.getTime() && dTime <= next7.getTime();
-  }
-  if (range === "next_week") {
-    const next14 = new Date();
-    next14.setDate(next14.getDate() + 14);
-    return dTime >= now.getTime() && dTime <= next14.getTime();
-  }
-  return true;
-}
-
-function checkCreatedAt(dateStr: string | undefined, range: string, fromDate?: string, toDate?: string) {
-  if (!dateStr) return false;
-  const d = new Date(dateStr);
-  const dTime = d.getTime();
-  const now = new Date();
-
-  if (range === "custom") {
-    const start = fromDate ? new Date(fromDate) : null;
-    const end = toDate ? new Date(toDate) : null;
-    if (start) {
-      start.setHours(0, 0, 0, 0);
-      if (dTime < start.getTime()) return false;
-    }
-    if (end) {
-      end.setHours(23, 59, 59, 999);
-      if (dTime > end.getTime()) return false;
-    }
-    return true;
-  }
-
-  if (range === "today") {
-    return d.toDateString() === now.toDateString();
-  }
-  if (range === "yesterday") {
-    const yesterday = new Date();
-    yesterday.setDate(yesterday.getDate() - 1);
-    return d.toDateString() === yesterday.toDateString();
-  }
-  if (range === "last_week") {
-    const limit = new Date();
-    limit.setDate(limit.getDate() - 7);
-    return dTime >= limit.getTime() && dTime <= now.getTime();
-  }
-  if (range === "last_month") {
-    const limit = new Date();
-    limit.setDate(limit.getDate() - 30);
-    return dTime >= limit.getTime() && dTime <= now.getTime();
-  }
-  if (range === "3_months") {
-    const limit = new Date();
-    limit.setDate(limit.getDate() - 90);
-    return dTime >= limit.getTime() && dTime <= now.getTime();
-  }
-  return true;
-}
 
 export default function EnquiriesPage() {
   const router = useRouter();
@@ -151,8 +79,9 @@ export default function EnquiriesPage() {
     null,
   );
   const [filterAuditType, setFilterAuditType] = useState("all");
-  const [filterStatus, setFilterStatus] = useState("all");
+  const [pipelineTab, setPipelineTab] = useState<EnquiryPipelineTab>("all");
   const [filterAssignedTo, setFilterAssignedTo] = useState("all");
+  const [filterAssignedManager, setFilterAssignedManager] = useState("all");
   const [filterAssignedAdmin, setFilterAssignedAdmin] = useState("all");
   const [filterFollowUpRange, setFilterFollowUpRange] = useState("all");
 
@@ -162,10 +91,110 @@ export default function EnquiriesPage() {
   const [filterCreatedAtFrom, setFilterCreatedAtFrom] = useState("");
   const [filterCreatedAtTo, setFilterCreatedAtTo] = useState("");
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [exportFiltersOpen, setExportFiltersOpen] = useState(false);
+  const [exportColumnsOpen, setExportColumnsOpen] = useState(false);
+  const [exportColumnKeys, setExportColumnKeys] = useState<EnquiryExportColumnKey[]>(
+    defaultEnquiryExportColumnKeys,
+  );
+  const [pdfGenerating, setPdfGenerating] = useState<EnquiryListPdfOrientation | null>(null);
+  const [exportFilters, setExportFilters] = useState<EnquiryListFilters>({
+    searchQuery: "",
+    pipelineTab: "all",
+    filterAuditType: "all",
+    filterAssignedTo: "all",
+    filterAssignedManager: "all",
+    filterAssignedAdmin: "all",
+    filterFollowUpRange: "all",
+    filterFollowUpFrom: "",
+    filterFollowUpTo: "",
+    filterCreatedAtRange: "all",
+    filterCreatedAtFrom: "",
+    filterCreatedAtTo: "",
+  });
 
+  const { displayName, logoSrc, primaryColor } = useCompanyBranding();
+  const { data: companyRes } = useGetDefaultCompanyQuery();
 
   const user = useAppSelector((state) => state.auth.user);
-  const userId = user?._id?.toString();
+
+  const selectedExportColumns = useMemo(
+    () => resolveEnquiryExportColumns(exportColumnKeys),
+    [exportColumnKeys],
+  );
+
+  const toggleExportColumn = (key: EnquiryExportColumnKey, checked: boolean) => {
+    setExportColumnKeys((current) => {
+      if (checked) {
+        if (current.includes(key)) return current;
+        const next = [...current, key];
+        return ENQUIRY_EXPORT_COLUMNS.map((column) => column.key).filter((columnKey) =>
+          next.includes(columnKey),
+        );
+      }
+      if (current.length <= 1) return current;
+      return current.filter((columnKey) => columnKey !== key);
+    });
+  };
+
+  const selectAllExportColumns = () => {
+    setExportColumnKeys(ENQUIRY_EXPORT_COLUMNS.map((column) => column.key));
+  };
+
+  const resetExportColumns = () => {
+    setExportColumnKeys(defaultEnquiryExportColumnKeys());
+  };
+
+  const listFilters = useMemo(
+    (): EnquiryListFilters => ({
+      searchQuery,
+      pipelineTab,
+      filterAuditType,
+      filterAssignedTo,
+      filterAssignedManager,
+      filterAssignedAdmin,
+      filterFollowUpRange,
+      filterFollowUpFrom,
+      filterFollowUpTo,
+      filterCreatedAtRange,
+      filterCreatedAtFrom,
+      filterCreatedAtTo,
+    }),
+    [
+      searchQuery,
+      pipelineTab,
+      filterAuditType,
+      filterAssignedTo,
+      filterAssignedManager,
+      filterAssignedAdmin,
+      filterFollowUpRange,
+      filterFollowUpFrom,
+      filterFollowUpTo,
+      filterCreatedAtRange,
+      filterCreatedAtFrom,
+      filterCreatedAtTo,
+    ],
+  );
+
+  const applyListFilters = (next: EnquiryListFilters) => {
+    setSearchQuery(next.searchQuery);
+    setPipelineTab(next.pipelineTab);
+    setFilterAuditType(next.filterAuditType);
+    setFilterAssignedTo(next.filterAssignedTo);
+    setFilterAssignedManager(next.filterAssignedManager);
+    setFilterAssignedAdmin(next.filterAssignedAdmin);
+    setFilterFollowUpRange(next.filterFollowUpRange);
+    setFilterFollowUpFrom(next.filterFollowUpFrom);
+    setFilterFollowUpTo(next.filterFollowUpTo);
+    setFilterCreatedAtRange(next.filterCreatedAtRange);
+    setFilterCreatedAtFrom(next.filterCreatedAtFrom);
+    setFilterCreatedAtTo(next.filterCreatedAtTo);
+  };
+
+  const handleOpenPreview = () => {
+    setExportFilters(listFilters);
+    setPreviewOpen(true);
+  };
 
   const canCreateEnquiry = Boolean(user);
 
@@ -177,167 +206,102 @@ export default function EnquiriesPage() {
 
   const { data: assignableRes } = useAssignableUsersQuery();
   const assignableUsers = assignableRes?.data ?? [];
-  const assignableAuditorsAndManagers = useMemo(() => {
-    return assignableUsers.filter((u) => u.role === "auditor" || u.role === "manager");
+  const assignableAuditors = useMemo(() => {
+    return assignableUsers.filter((u) => u.role === "auditor");
+  }, [assignableUsers]);
+  const assignableManagers = useMemo(() => {
+    return assignableUsers.filter((u) => u.role === "manager");
   }, [assignableUsers]);
   const assignableAdmins = useMemo(() => {
     return assignableUsers.filter((u) => u.role === "admin");
   }, [assignableUsers]);
 
-  const activeFiltersCount = useMemo(() => {
-    let count = 0;
-    if (filterAuditType && filterAuditType !== "all") count++;
-    if (filterStatus && filterStatus !== "all") count++;
-    if (filterAssignedTo && filterAssignedTo !== "all") count++;
-    if (filterAssignedAdmin && filterAssignedAdmin !== "all") count++;
-    if (filterFollowUpRange && filterFollowUpRange !== "today") {
-      if (filterFollowUpRange !== "custom" || filterFollowUpFrom || filterFollowUpTo) count++;
-    }
-    if (filterCreatedAtRange && filterCreatedAtRange !== "all") {
-      if (filterCreatedAtRange !== "custom" || filterCreatedAtFrom || filterCreatedAtTo) count++;
-    }
-    return count;
-  }, [
-    filterAuditType,
-    filterStatus,
-    filterAssignedTo,
-    filterAssignedAdmin,
-    filterFollowUpRange,
-    filterFollowUpFrom,
-    filterFollowUpTo,
-    filterCreatedAtRange,
-    filterCreatedAtFrom,
-    filterCreatedAtTo,
-  ]);
-
-  const handleClearAllFilters = () => {
-    setFilterAuditType("all");
-    setFilterStatus("all");
-    setFilterAssignedTo("all");
-    setFilterAssignedAdmin("all");
-    setFilterFollowUpRange("today");
-    setFilterFollowUpFrom("");
-    setFilterFollowUpTo("");
-    setFilterCreatedAtRange("all");
-    setFilterCreatedAtFrom("");
-    setFilterCreatedAtTo("");
-  };
-
-  const handleExportExcel = () => {
-    const wsData = filtered.map((row) => ({
-      "Enquiry Number": row.enquiry_number ?? "",
-      "Name/Organisation": row.name ?? "",
-      City: row.city ?? "",
-      Address: row.address ?? "",
-      Status: row.enquiry_status ?? "",
-      "Assigned To":
-        row.assigned_to && typeof row.assigned_to === "object"
-          ? row.assigned_to.name ?? row.assigned_to.email ?? ""
-          : row.assigned_to ?? "",
-      "Assigned Admin":
-        row.assigned_admin_to && typeof row.assigned_admin_to === "object"
-          ? row.assigned_admin_to.name ?? row.assigned_admin_to.email ?? ""
-          : row.assigned_admin_to ?? "",
-      "Expected Value": row.expected_value ?? "",
-      "Audit Types": row.requested_audit_types?.join(", ") ?? "",
-      "Next Follow Up": row.next_followup_date
-        ? new Date(row.next_followup_date).toLocaleDateString()
-        : "",
-      "Created At": row.created_at
-        ? new Date(row.created_at).toLocaleDateString()
-        : "",
-      Notes: row.notes ?? "",
-    }));
-
+  const handleExportExcel = (rows: Enquiry[]) => {
+    if (selectedExportColumns.length === 0) return;
+    const wsData = buildEnquiryExcelSheetRows(rows, selectedExportColumns);
     const worksheet = XLSX.utils.json_to_sheet(wsData);
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, "Enquiries");
     XLSX.writeFile(workbook, `enquiries_export_${new Date().toISOString().split("T")[0]}.xlsx`);
   };
 
+  const handleExportPdf = async (
+    orientation: EnquiryListPdfOrientation,
+    rows: Enquiry[],
+  ) => {
+    if (rows.length === 0 || selectedExportColumns.length === 0) return;
+    setPdfGenerating(orientation);
+    try {
+      const blob = await buildEnquiryListPdfBlob({
+        rows,
+        columns: selectedExportColumns,
+        company: companyRes?.data,
+        logoSrc,
+        brandName: displayName,
+        primaryColor,
+        orientation,
+      });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = enquiryListPdfFilename(orientation);
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error(error);
+      toast.error("Failed to generate enquiries PDF.");
+    } finally {
+      setPdfGenerating(null);
+    }
+  };
+
   const [deleteEnquiry, { isLoading: isDeleting }] =
     useDeleteEnquiryMutation();
 
-  const enquiries = useMemo(() => {
-    const raw = data?.data ?? [];
-    if (user?.role === "admin") {
-      return raw.filter((item) => {
-        const adminId =
-          item.assigned_admin_to && typeof item.assigned_admin_to === "object"
-            ? item.assigned_admin_to._id
-            : item.assigned_admin_to;
-        return adminId === user?._id;
-      });
+  const enquiries = useMemo(
+    () => filterEnquiriesForUser(data?.data ?? [], user),
+    [data, user],
+  );
+
+  const pipelineCounts = useMemo(() => {
+    const counts: Record<EnquiryPipelineTab, number> = {
+      all: enquiries.length,
+      new: 0,
+      assigned: 0,
+      follow_up: 0,
+      eoi_sent: 0,
+      quoted: 0,
+      decision: 0,
+    };
+    for (const row of enquiries) {
+      for (const step of ENQUIRY_PIPELINE_STEPS) {
+        if (matchesEnquiryPipelineTab(row, step.key)) {
+          counts[step.key]++;
+        }
+      }
     }
-    return raw;
-  }, [data, user]);
+    return counts;
+  }, [enquiries]);
 
-  const filtered = useMemo(() => {
-    let list = enquiries;
+  const filtered = useMemo(
+    () => filterEnquiryList(enquiries, listFilters),
+    [enquiries, listFilters],
+  );
 
-    // 1. Search Query
-    const q = searchQuery.trim().toLowerCase();
-    if (q) {
-      list = list.filter((row) => enquirySearchHaystack(row).includes(q));
-    }
+  const exportFiltered = useMemo(
+    () => filterEnquiryList(enquiries, exportFilters),
+    [enquiries, exportFilters],
+  );
 
-    // 2. Audit Type
-    if (filterAuditType && filterAuditType !== "all") {
-      list = list.filter((row) =>
-        row.requested_audit_types?.includes(filterAuditType as any)
-      );
-    }
+  const listActiveFiltersCount = useMemo(
+    () => countActiveEnquiryListFilters(listFilters),
+    [listFilters],
+  );
 
-    // 3. Status
-    if (filterStatus && filterStatus !== "all") {
-      list = list.filter((row) => row.enquiry_status === filterStatus);
-    }
-
-    // 4. Assigned to
-    if (filterAssignedTo && filterAssignedTo !== "all") {
-      list = list.filter((row) => {
-        const id = typeof row.assigned_to === "object" && row.assigned_to !== null
-          ? row.assigned_to._id
-          : row.assigned_to;
-        return id === filterAssignedTo;
-      });
-    }
-
-    // 5. Assigned Admin
-    if (filterAssignedAdmin && filterAssignedAdmin !== "all") {
-      list = list.filter((row) => {
-        const id = typeof row.assigned_admin_to === "object" && row.assigned_admin_to !== null
-          ? row.assigned_admin_to._id
-          : row.assigned_admin_to;
-        return id === filterAssignedAdmin;
-      });
-    }
-
-    // 6. Next Follow Up Date Range
-    if (filterFollowUpRange && filterFollowUpRange !== "all") {
-      list = list.filter((row) => checkNextFollowUp(row.next_followup_date, filterFollowUpRange, filterFollowUpFrom, filterFollowUpTo));
-    }
-
-    // 7. Created At Date Range
-    if (filterCreatedAtRange && filterCreatedAtRange !== "all") {
-      list = list.filter((row) => checkCreatedAt(row.created_at || (row.created_by && typeof row.created_by === "object" && row.created_by.created_at) || undefined, filterCreatedAtRange, filterCreatedAtFrom, filterCreatedAtTo));
-    }
-
-    return list;
-  }, [
-    enquiries,
-    searchQuery,
-    filterAuditType,
-    filterStatus,
-    filterAssignedTo,
-    filterAssignedAdmin,
-    filterFollowUpRange,
-    filterFollowUpFrom,
-    filterFollowUpTo,
-    filterCreatedAtRange,
-    filterCreatedAtFrom,
-    filterCreatedAtTo,
-  ]);
+  const exportActiveFiltersCount = useMemo(
+    () => countActiveEnquiryListFilters(exportFilters),
+    [exportFilters],
+  );
 
   const totalFiltered = filtered.length;
   const totalPages =
@@ -347,9 +311,10 @@ export default function EnquiriesPage() {
     setPage(1);
   }, [
     searchQuery,
+    pipelineTab,
     filterAuditType,
-    filterStatus,
     filterAssignedTo,
+    filterAssignedManager,
     filterAssignedAdmin,
     filterFollowUpRange,
     filterFollowUpFrom,
@@ -433,30 +398,41 @@ export default function EnquiriesPage() {
     },
     {
       key: "assigned_to",
-      header: "Assigned",
+      header: "Auditor",
       hideOnMobile: true,
       render: (row) => {
-        const a = row.assigned_to;
-        if (!a) return <span className="text-muted-foreground">—</span>;
-        if (typeof a === "object")
-          return (
-            <span className="text-foreground">{a.name ?? a.email ?? "—"}</span>
-          );
-        return <span className="font-mono text-xs">{String(a)}</span>;
+        const label = assigneeLabel(row.assigned_to);
+        return label ? (
+          <span className="text-foreground">{label}</span>
+        ) : (
+          <span className="text-muted-foreground">—</span>
+        );
+      },
+    },
+    {
+      key: "assigned_manager_to",
+      header: "Manager",
+      hideOnMobile: true,
+      render: (row) => {
+        const label = assigneeLabel(row.assigned_manager_to);
+        return label ? (
+          <span className="text-foreground">{label}</span>
+        ) : (
+          <span className="text-muted-foreground">—</span>
+        );
       },
     },
     {
       key: "assigned_admin_to",
-      header: "Assigned Admin",
+      header: "Admin",
       hideOnMobile: true,
       render: (row) => {
-        const a = row.assigned_admin_to;
-        if (!a) return <span className="text-muted-foreground">—</span>;
-        if (typeof a === "object")
-          return (
-            <span className="text-foreground">{a.name ?? a.email ?? "—"}</span>
-          );
-        return <span className="font-mono text-xs">{String(a)}</span>;
+        const label = assigneeLabel(row.assigned_admin_to);
+        return label ? (
+          <span className="text-foreground">{label}</span>
+        ) : (
+          <span className="text-muted-foreground">—</span>
+        );
       },
     },
     {
@@ -507,7 +483,32 @@ export default function EnquiriesPage() {
         <div className="flex w-full sm:w-auto items-center gap-2 flex-wrap sm:flex-nowrap">
           <Button
             variant="outline"
-            onClick={() => setPreviewOpen(true)}
+            onClick={() => setFiltersOpen(true)}
+            className="w-full sm:w-auto gap-2"
+          >
+            <SlidersHorizontal className="h-4 w-4 text-primary" />
+            Filters
+            {listActiveFiltersCount > 0 ? (
+              <span className="rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold text-primary">
+                {listActiveFiltersCount}
+              </span>
+            ) : null}
+          </Button>
+          <Button variant="outline" asChild className="w-full sm:w-auto gap-2">
+            <Link href="/enquiries/analytics">
+              <BarChart3 className="h-4 w-4 text-primary" />
+              Analytics
+            </Link>
+          </Button>
+          <Button variant="outline" asChild className="w-full sm:w-auto gap-2">
+            <Link href="/enquiries/follow-ups">
+              <CalendarClock className="h-4 w-4 text-primary" />
+              Follow-ups
+            </Link>
+          </Button>
+          <Button
+            variant="outline"
+            onClick={handleOpenPreview}
             className="w-full sm:w-auto gap-2"
           >
             <FileSpreadsheet className="h-4 w-4 text-emerald-600" />
@@ -515,7 +516,7 @@ export default function EnquiriesPage() {
           </Button>
           <Button
             variant="outline"
-            onClick={handleExportExcel}
+            onClick={() => handleExportExcel(filtered)}
             className="w-full sm:w-auto gap-2"
             disabled={filtered.length === 0}
           >
@@ -534,188 +535,32 @@ export default function EnquiriesPage() {
         </div>
       </div>
 
-      <div className="mb-4 rounded-lg border border-border bg-muted/10 p-4">
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
-          <div className="space-y-1.5">
-            <Label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-              Audit Type
-            </Label>
-            <Select value={filterAuditType} onValueChange={setFilterAuditType}>
-              <SelectTrigger className="h-9 bg-background">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Audit Types</SelectItem>
-                {REQUESTED_AUDIT_TYPE_OPTIONS.map((o) => (
-                  <SelectItem key={o.value} value={o.value}>
-                    {o.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="space-y-1.5">
-            <Label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-              Pipeline Status
-            </Label>
-            <Select value={filterStatus} onValueChange={setFilterStatus}>
-              <SelectTrigger className="h-9 bg-background">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Statuses</SelectItem>
-                {ENQUIRY_STATUS_OPTIONS.map((o) => (
-                  <SelectItem key={o.value} value={o.value}>
-                    {o.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="space-y-1.5">
-            <Label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-              Assigned User
-            </Label>
-            <Select value={filterAssignedTo} onValueChange={setFilterAssignedTo}>
-              <SelectTrigger className="h-9 bg-background">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Assigned Users</SelectItem>
-                {assignableAuditorsAndManagers.map((u) => (
-                  <SelectItem key={u._id} value={u._id}>
-                    {u.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="space-y-1.5">
-            <Label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-              Assigned Admin
-            </Label>
-            <Select value={filterAssignedAdmin} onValueChange={setFilterAssignedAdmin}>
-              <SelectTrigger className="h-9 bg-background">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Assigned Admins</SelectItem>
-                {assignableAdmins.map((u) => (
-                  <SelectItem key={u._id} value={u._id}>
-                    {u.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="space-y-1.5">
-            <Label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-              Next Follow Up
-            </Label>
-            <Select value={filterFollowUpRange} onValueChange={setFilterFollowUpRange}>
-              <SelectTrigger className="h-9 bg-background">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Dates</SelectItem>
-                <SelectItem value="today">Today</SelectItem>
-                <SelectItem value="tomorrow">Tomorrow</SelectItem>
-                <SelectItem value="this_week">This Week (Next 7 Days)</SelectItem>
-                <SelectItem value="next_week">Next 2 Weeks (Next 14 Days)</SelectItem>
-                <SelectItem value="custom">Custom Range…</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="space-y-1.5">
-            <Label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-              Created At
-            </Label>
-            <Select value={filterCreatedAtRange} onValueChange={setFilterCreatedAtRange}>
-              <SelectTrigger className="h-9 bg-background">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Time</SelectItem>
-                <SelectItem value="today">Today</SelectItem>
-                <SelectItem value="yesterday">Yesterday</SelectItem>
-                <SelectItem value="last_week">Last 7 Days</SelectItem>
-                <SelectItem value="last_month">Last 30 Days</SelectItem>
-                <SelectItem value="3_months">Last 90 Days</SelectItem>
-                <SelectItem value="custom">Custom Range…</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-
-        {(filterFollowUpRange === "custom" || filterCreatedAtRange === "custom") && (
-          <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-            {filterFollowUpRange === "custom" && (
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <Label className="text-[10px] text-muted-foreground">Follow-up From</Label>
-                  <Input
-                    type="date"
-                    value={filterFollowUpFrom}
-                    onChange={(e) => setFilterFollowUpFrom(e.target.value)}
-                    className="mt-1 h-9 bg-background text-xs"
-                  />
-                </div>
-                <div>
-                  <Label className="text-[10px] text-muted-foreground">Follow-up To</Label>
-                  <Input
-                    type="date"
-                    value={filterFollowUpTo}
-                    onChange={(e) => setFilterFollowUpTo(e.target.value)}
-                    className="mt-1 h-9 bg-background text-xs"
-                  />
-                </div>
-              </div>
-            )}
-            {filterCreatedAtRange === "custom" && (
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <Label className="text-[10px] text-muted-foreground">Created From</Label>
-                  <Input
-                    type="date"
-                    value={filterCreatedAtFrom}
-                    onChange={(e) => setFilterCreatedAtFrom(e.target.value)}
-                    className="mt-1 h-9 bg-background text-xs"
-                  />
-                </div>
-                <div>
-                  <Label className="text-[10px] text-muted-foreground">Created To</Label>
-                  <Input
-                    type="date"
-                    value={filterCreatedAtTo}
-                    onChange={(e) => setFilterCreatedAtTo(e.target.value)}
-                    className="mt-1 h-9 bg-background text-xs"
-                  />
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {activeFiltersCount > 0 && (
-          <div className="mt-3 flex justify-end">
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={handleClearAllFilters}
-              className="h-8 text-xs text-muted-foreground hover:text-foreground"
+      <Tabs
+        value={pipelineTab}
+        onValueChange={(value) => setPipelineTab(value as EnquiryPipelineTab)}
+        className="mb-4"
+      >
+        <TabsList className="flex h-auto w-full flex-wrap justify-start gap-1 p-1">
+          <TabsTrigger value="all" className="gap-1.5 px-3 py-2 text-xs sm:text-sm">
+            All
+            <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-semibold tabular-nums">
+              {pipelineCounts.all}
+            </span>
+          </TabsTrigger>
+          {ENQUIRY_PIPELINE_STEPS.map((step) => (
+            <TabsTrigger
+              key={step.key}
+              value={step.key}
+              className="gap-1.5 px-3 py-2 text-xs sm:text-sm"
             >
-              <FilterX className="mr-1.5 h-3.5 w-3.5" />
-              Reset Filters
-            </Button>
-          </div>
-        )}
-      </div>
+              {step.label}
+              <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-semibold tabular-nums">
+                {pipelineCounts[step.key]}
+              </span>
+            </TabsTrigger>
+          ))}
+        </TabsList>
+      </Tabs>
 
       <EnquiriesTable
         columns={columns}
@@ -791,71 +636,102 @@ export default function EnquiriesPage() {
         />
       ) : null}
 
-      <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
-        <DialogContent className="w-[80vw] sm:max-w-[80vw] max-w-[80vw] h-[80vh] sm:max-h-[80vh] max-h-[80vh] flex flex-col">
+      <Dialog open={filtersOpen} onOpenChange={setFiltersOpen}>
+        <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-3xl">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-lg font-semibold">
-              <span>Excel Export Preview</span>
-              <span className="text-xs font-normal text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
-                {filtered.length} rows to export
-              </span>
-            </DialogTitle>
+            <DialogTitle>Filter enquiries</DialogTitle>
+          </DialogHeader>
+          <EnquiryListFilterPanel
+            filters={listFilters}
+            onChange={applyListFilters}
+            assignableAuditors={assignableAuditors}
+            assignableManagers={assignableManagers}
+            assignableAdmins={assignableAdmins}
+          />
+          <DialogFooter>
+            <Button type="button" onClick={() => setFiltersOpen(false)}>
+              Done
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
+        <DialogContent fullscreen className="min-h-0">
+          <DialogHeader className="shrink-0">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <DialogTitle className="flex flex-wrap items-center gap-2 text-lg font-semibold">
+                <span>Export preview</span>
+                <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-normal text-muted-foreground">
+                  {exportFiltered.length} rows • {selectedExportColumns.length} columns
+                </span>
+              </DialogTitle>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="gap-2"
+                  onClick={() => setExportFiltersOpen(true)}
+                >
+                  <SlidersHorizontal className="h-4 w-4" />
+                  Filters
+                  {exportActiveFiltersCount > 0 ? (
+                    <span className="rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold text-primary">
+                      {exportActiveFiltersCount}
+                    </span>
+                  ) : null}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="gap-2"
+                  onClick={() => setExportColumnsOpen(true)}
+                >
+                  <Columns3 className="h-4 w-4" />
+                  Columns
+                  <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground">
+                    {selectedExportColumns.length}
+                  </span>
+                </Button>
+              </div>
+            </div>
           </DialogHeader>
 
-          <div className="flex-1 overflow-auto border rounded-md my-4">
-            <table className="w-full text-sm border-collapse">
-              <thead className="bg-muted sticky top-0 z-10">
+          <div className="min-h-0 flex-1 overflow-auto rounded-md border">
+            <table className="w-full border-collapse text-sm">
+              <thead className="sticky top-0 z-10 bg-muted">
                 <tr className="border-b">
-                  <th className="p-2.5 text-left font-medium border-r whitespace-nowrap">Enquiry Number</th>
-                  <th className="p-2.5 text-left font-medium border-r whitespace-nowrap">Name/Organisation</th>
-                  <th className="p-2.5 text-left font-medium border-r whitespace-nowrap">City</th>
-                  <th className="p-2.5 text-left font-medium border-r whitespace-nowrap">Address</th>
-                  <th className="p-2.5 text-left font-medium border-r whitespace-nowrap">Status</th>
-                  <th className="p-2.5 text-left font-medium border-r whitespace-nowrap">Assigned To</th>
-                  <th className="p-2.5 text-left font-medium border-r whitespace-nowrap">Assigned Admin</th>
-                  <th className="p-2.5 text-left font-medium border-r whitespace-nowrap">Expected Value</th>
-                  <th className="p-2.5 text-left font-medium border-r whitespace-nowrap">Audit Types</th>
-                  <th className="p-2.5 text-left font-medium border-r whitespace-nowrap">Next Follow Up</th>
-                  <th className="p-2.5 text-left font-medium border-r whitespace-nowrap">Created At</th>
-                  <th className="p-2.5 text-left font-medium whitespace-nowrap">Notes</th>
+                  {selectedExportColumns.map((column) => (
+                    <th
+                      key={column.key}
+                      className="whitespace-nowrap border-r p-2.5 text-left font-medium last:border-r-0"
+                    >
+                      {column.label}
+                    </th>
+                  ))}
                 </tr>
               </thead>
               <tbody className="divide-y">
-                {filtered.map((row, idx) => (
+                {exportFiltered.map((row, idx) => (
                   <tr key={row._id ?? idx} className="hover:bg-muted/30">
-                    <td className="p-2 border-r whitespace-nowrap font-mono">{row.enquiry_number ?? "—"}</td>
-                    <td className="p-2 border-r whitespace-nowrap font-medium">{row.name ?? "—"}</td>
-                    <td className="p-2 border-r whitespace-nowrap">{row.city ?? "—"}</td>
-                    <td className="p-2 border-r max-w-xs truncate">{row.address ?? "—"}</td>
-                    <td className="p-2 border-r whitespace-nowrap">{row.enquiry_status ?? "—"}</td>
-                    <td className="p-2 border-r whitespace-nowrap">
-                      {row.assigned_to && typeof row.assigned_to === "object"
-                        ? row.assigned_to.name ?? row.assigned_to.email ?? "—"
-                        : row.assigned_to ?? "—"}
-                    </td>
-                    <td className="p-2 border-r whitespace-nowrap">
-                      {row.assigned_admin_to && typeof row.assigned_admin_to === "object"
-                        ? row.assigned_admin_to.name ?? row.assigned_admin_to.email ?? "—"
-                        : row.assigned_admin_to ?? "—"}
-                    </td>
-                    <td className="p-2 border-r whitespace-nowrap">{row.expected_value != null ? `$${row.expected_value}` : "—"}</td>
-                    <td className="p-2 border-r max-w-xs truncate">{row.requested_audit_types?.join(", ") || "—"}</td>
-                    <td className="p-2 border-r whitespace-nowrap">
-                      {row.next_followup_date
-                        ? new Date(row.next_followup_date).toLocaleDateString()
-                        : "—"}
-                    </td>
-                    <td className="p-2 border-r whitespace-nowrap">
-                      {row.created_at
-                        ? new Date(row.created_at).toLocaleDateString()
-                        : "—"}
-                    </td>
-                    <td className="p-2 max-w-xs truncate">{row.notes ?? "—"}</td>
+                    {selectedExportColumns.map((column) => (
+                      <td
+                        key={column.key}
+                        className="max-w-xs truncate whitespace-nowrap border-r p-2 last:border-r-0"
+                      >
+                        {enquiryExportCellValue(row, column.key)}
+                      </td>
+                    ))}
                   </tr>
                 ))}
-                {filtered.length === 0 && (
+                {exportFiltered.length === 0 && (
                   <tr>
-                    <td colSpan={12} className="p-8 text-center text-muted-foreground">
+                    <td
+                      colSpan={Math.max(selectedExportColumns.length, 1)}
+                      className="p-8 text-center text-muted-foreground"
+                    >
                       No data to preview
                     </td>
                   </tr>
@@ -864,13 +740,115 @@ export default function EnquiriesPage() {
             </table>
           </div>
 
-          <DialogFooter className="flex sm:justify-between items-center gap-2 border-t pt-4">
+          <DialogFooter className="shrink-0 flex flex-col gap-2 border-t pt-4 sm:flex-row sm:items-center sm:justify-between">
             <Button variant="outline" onClick={() => setPreviewOpen(false)}>
-              Close Preview
+              Close preview
             </Button>
-            <Button onClick={handleExportExcel} disabled={filtered.length === 0} className="gap-2">
-              <Download className="h-4 w-4" />
-              Download Excel (.xlsx)
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              <Button
+                onClick={() => handleExportExcel(exportFiltered)}
+                disabled={exportFiltered.length === 0 || selectedExportColumns.length === 0}
+                className="gap-2"
+                variant="outline"
+              >
+                <Download className="h-4 w-4" />
+                Excel (.xlsx)
+              </Button>
+              <Button
+                onClick={() => void handleExportPdf("portrait", exportFiltered)}
+                disabled={
+                  exportFiltered.length === 0 ||
+                  selectedExportColumns.length === 0 ||
+                  pdfGenerating != null
+                }
+                className="gap-2"
+                variant="outline"
+              >
+                {pdfGenerating === "portrait" ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <FileText className="h-4 w-4" />
+                )}
+                PDF portrait
+              </Button>
+              <Button
+                onClick={() => void handleExportPdf("landscape", exportFiltered)}
+                disabled={
+                  exportFiltered.length === 0 ||
+                  selectedExportColumns.length === 0 ||
+                  pdfGenerating != null
+                }
+                className="gap-2"
+              >
+                {pdfGenerating === "landscape" ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <FileText className="h-4 w-4" />
+                )}
+                PDF landscape
+              </Button>
+            </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={exportFiltersOpen} onOpenChange={setExportFiltersOpen}>
+        <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>Export filters</DialogTitle>
+          </DialogHeader>
+          <EnquiryListFilterPanel
+            filters={exportFilters}
+            onChange={setExportFilters}
+            assignableAuditors={assignableAuditors}
+            assignableManagers={assignableManagers}
+            assignableAdmins={assignableAdmins}
+            showSearch
+            showPipeline
+          />
+          <DialogFooter>
+            <Button type="button" onClick={() => setExportFiltersOpen(false)}>
+              Done
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={exportColumnsOpen} onOpenChange={setExportColumnsOpen}>
+        <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Select export columns</DialogTitle>
+          </DialogHeader>
+          <div className="mb-3 flex flex-wrap justify-end gap-2">
+            <Button type="button" variant="ghost" size="sm" onClick={selectAllExportColumns}>
+              Select all
+            </Button>
+            <Button type="button" variant="ghost" size="sm" onClick={resetExportColumns}>
+              Reset
+            </Button>
+          </div>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            {ENQUIRY_EXPORT_COLUMNS.map((column) => {
+              const checked = exportColumnKeys.includes(column.key);
+              return (
+                <label
+                  key={column.key}
+                  className="flex cursor-pointer items-center gap-2 rounded-md border border-border/60 bg-background px-2.5 py-2 text-sm"
+                >
+                  <Checkbox
+                    checked={checked}
+                    onCheckedChange={(value) =>
+                      toggleExportColumn(column.key, value === true)
+                    }
+                  />
+                  <span className="truncate">{column.label}</span>
+                </label>
+              );
+            })}
+          </div>
+          <DialogFooter>
+            <Button type="button" onClick={() => setExportColumnsOpen(false)}>
+              Done
             </Button>
           </DialogFooter>
         </DialogContent>

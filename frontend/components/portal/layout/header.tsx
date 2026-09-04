@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { User, ChevronDown, Menu, Clock, PanelLeft } from "lucide-react";
+import { User, ChevronDown, Menu, Clock, PanelLeft, Building2 } from "lucide-react";
 import { Button } from "@/components/portal/ui/button";
 import {
   DropdownMenu,
@@ -131,6 +131,10 @@ export function Header({
       const slug = user.role === "super_admin" ? "super-admin" : (user.role || "");
       router.push(`/${slug}/profile/${user._id}`);
     }
+  };
+
+  const handleCompany = () => {
+    router.push("/super-admin/company");
   };
 
   const handleSignOut = async () => {
@@ -380,6 +384,12 @@ export function Header({
               <User className="mr-2 h-4 w-4" />
               Profile
             </DropdownMenuItem>
+            {user?.role === "super_admin" && (
+              <DropdownMenuItem onClick={handleCompany}>
+                <Building2 className="mr-2 h-4 w-4" />
+                Company
+              </DropdownMenuItem>
+            )}
             <DropdownMenuSeparator />
             <DropdownMenuItem
               onClick={handleSignOut}

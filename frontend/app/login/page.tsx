@@ -8,6 +8,8 @@ import { useAppDispatch } from "@/store/hooks";
 import { setCredentials } from "@/store/slices/authSlice";
 import { toastHandler } from "@/components/portal/lib/toast";
 import { ThemeToggle } from "@/components/portal/shared/components/theme-toggle";
+import { useCompanyBranding } from "@/components/portal/shared/components/company-branding-provider";
+import { DEFAULT_COMPANY_LOGO } from "@/components/portal/lib/companyBranding";
 import { Input } from "@/components/portal/ui/input";
 import { Label } from "@/components/portal/ui/label";
 import { Button } from "@/components/portal/ui/button";
@@ -15,6 +17,7 @@ import { Button } from "@/components/portal/ui/button";
 export default function LoginPage() {
   const router = useRouter();
   const dispatch = useAppDispatch();
+  const { displayName, logoSrc } = useCompanyBranding();
 
   const [login, { isLoading }] = useLoginMutation();
 
@@ -52,7 +55,17 @@ export default function LoginPage() {
 
       <div className="w-full max-w-md">
         <div className="mb-8 text-center">
-          <h1 className="text-3xl font-bold">Shakti Powers</h1>
+          <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center overflow-hidden rounded-xl border border-border bg-card">
+            <img
+              src={logoSrc}
+              alt={displayName}
+              className="h-full w-full object-contain p-1"
+              onError={(event) => {
+                event.currentTarget.src = DEFAULT_COMPANY_LOGO;
+              }}
+            />
+          </div>
+          <h1 className="text-3xl font-bold">{displayName}</h1>
           <p className="mt-2 text-muted-foreground">Sign in to continue</p>
         </div>
 

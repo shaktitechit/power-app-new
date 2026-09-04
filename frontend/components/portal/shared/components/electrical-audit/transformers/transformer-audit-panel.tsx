@@ -20,7 +20,10 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/portal/ui/alert-dialog";
-import { cnHideUtilityAuditEdits } from "@/components/portal/lib/electrical-audit/utility-audit-edits-visibility";
+import {
+  cnHideUtilityAuditEdits,
+  isUtilityAuditRecordEditsLocked,
+} from "@/components/portal/lib/electrical-audit/utility-audit-edits-visibility";
 import {
   canViewDocuments,
   type UserPermission,
@@ -99,6 +102,11 @@ export function TransformerAuditPanel({
     [data],
   );
 
+  const recordEditsLocked = isUtilityAuditRecordEditsLocked(
+    auditStepLocked,
+    latestRecord?.is_completed,
+  );
+
   const [auditModalOpen, setAuditModalOpen] = useState(false);
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -156,6 +164,7 @@ export function TransformerAuditPanel({
 
   const handleSaveCaption = async () => {
     if (!latestRecord || previewDocIndex === null || !previewDoc) return;
+    if (recordEditsLocked) return;
 
     const existingDocuments = (latestRecord.documents ?? []).map((doc, i) =>
       i === previewDocIndex ? { ...doc, caption: editCaptionValue } : doc,
@@ -246,7 +255,10 @@ export function TransformerAuditPanel({
           canDelete={canDeleteRecords}
           canViewDocuments={canViewDocumentsFlag}
           saving={saving}
-          onEdit={() => setAuditModalOpen(true)}
+          onEdit={() => {
+            if (recordEditsLocked) return;
+            setAuditModalOpen(true);
+          }}
           onDelete={() => setDeleteDialogOpen(true)}
           onToggleCompleteness={() =>
             void handleToggleCompleteness(latestRecord)
@@ -437,7 +449,7 @@ export function TransformerAuditPanel({
                   className="h-[60vh] w-full rounded-md border"
                 />
               )}
-              {!auditStepLocked ? (
+              {!recordEditsLocked ? (
                 <div className="space-y-2">
                   <Label htmlFor="transformer-audit-doc-preview-caption">Caption</Label>
                   <div className="flex gap-2">

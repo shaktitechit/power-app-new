@@ -127,6 +127,26 @@ export const rolePolicies = {
     { resource: R.DASHBOARD, actions: [A.READ], scope: "all" },
     { resource: R.ANALYTICS, actions: [A.READ], scope: "all" },
     { resource: R.FILE, actions: [A.READ, A.DOWNLOAD, A.VIEW_DOCUMENT], scope: "all" },
+    {
+      resource: R.COMPANY,
+      actions: [A.CREATE, A.READ, A.UPDATE, A.DELETE],
+      scope: "all",
+    },
+    {
+      resource: R.QUOTATION,
+      actions: [A.CREATE, A.READ, A.UPDATE],
+      scope: "all",
+    },
+    {
+      resource: R.EXPRESSION_OF_INTEREST,
+      actions: [A.CREATE, A.READ, A.UPDATE],
+      scope: "all",
+    },
+    {
+      resource: R.TERMS_CONDITIONS,
+      actions: [A.CREATE, A.READ, A.UPDATE, A.DELETE],
+      scope: "all",
+    },
   ],
 
   manager: [
@@ -252,6 +272,18 @@ export const rolePolicies = {
     },
     { resource: R.DASHBOARD, actions: [A.READ], scope: "all" },
     { resource: R.ANALYTICS, actions: [A.READ], scope: "all" },
+    { resource: R.COMPANY, actions: [A.READ], scope: "all" },
+    {
+      resource: R.QUOTATION,
+      actions: [A.CREATE, A.READ, A.UPDATE],
+      scope: "all",
+    },
+    {
+      resource: R.EXPRESSION_OF_INTEREST,
+      actions: [A.CREATE, A.READ, A.UPDATE],
+      scope: "all",
+    },
+    { resource: R.TERMS_CONDITIONS, actions: [A.READ], scope: "all" },
   ],
 
   auditor: [
@@ -373,5 +405,16 @@ export const rolePolicies = {
     { resource: R.USER_PROFILE, actions: [A.READ, A.UPDATE], scope: "own" },
     { resource: R.USER_PERFORMANCE, actions: [A.READ], scope: "own" },
     { resource: R.DASHBOARD, actions: [A.READ], scope: "assigned" },
+    { resource: R.COMPANY, actions: [A.READ], scope: "all" },
+    {
+      resource: R.QUOTATION,
+      actions: [A.CREATE, A.READ, A.UPDATE],
+      scope: "all",
+    },
+    {
+      resource: R.EXPRESSION_OF_INTEREST,
+      actions: [A.CREATE, A.READ, A.UPDATE],
+      scope: "all",
+    },
   ],
 };

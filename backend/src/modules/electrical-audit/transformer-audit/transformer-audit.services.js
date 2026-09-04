@@ -532,7 +532,7 @@ export const uploadTransformerAuditRecordDocumentsService = async ({
   }
 
   assertAuditRecordMutable({
-    record: transformerAuditRecord,
+    record: auditRecord,
     user,
     body,
     operation: "upload",

@@ -4,6 +4,8 @@ import { Activity, Pencil } from "lucide-react";
 import { Button } from "@/components/portal/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/portal/ui/card";
 import type { Facility } from "@/store/slices/facilityApiSlice";
+import { facilityExpectedValue } from "@/components/portal/lib/facilityConstants";
+import { formatInr } from "@/components/portal/lib/quotationConstants";
 
 interface BudgetInformationTabProps {
   facility: Facility;
@@ -18,6 +20,8 @@ export function BudgetInformationTab({
   facilityAuditClosed,
   onEditBudget,
 }: BudgetInformationTabProps) {
+  const expectedValue = facilityExpectedValue(facility);
+
   return (
     <div className="space-y-4 sm:space-y-6">
       <Card className="border-border bg-card">
@@ -40,7 +44,14 @@ export function BudgetInformationTab({
           ) : null}
         </CardHeader>
 
-        <CardContent className="grid gap-4 p-4 pt-0 sm:grid-cols-2 sm:p-6 sm:pt-0 lg:grid-cols-4">
+        <CardContent className="grid gap-4 p-4 pt-0 sm:grid-cols-2 sm:p-6 sm:pt-0 lg:grid-cols-3 xl:grid-cols-5">
+          <div className="rounded-xl border border-border bg-muted/30 p-4">
+            <p className="text-xs text-muted-foreground">Expected Value</p>
+            <p className="mt-1 text-lg font-semibold text-foreground">
+              {expectedValue != null ? formatInr(expectedValue) : "—"}
+            </p>
+          </div>
+
           <div className="rounded-xl border border-border bg-muted/30 p-4">
             <p className="text-xs text-muted-foreground">No. of Persons</p>
             <p className="mt-1 text-lg font-semibold text-foreground">
