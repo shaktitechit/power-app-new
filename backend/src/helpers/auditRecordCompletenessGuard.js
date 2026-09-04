@@ -42,17 +42,26 @@ export function assertAuditRecordMutable({
   }
 
   const wantsUncomplete = parseRequestBoolean(body.is_completed) === false;
+  const wantsComplete = parseRequestBoolean(body.is_completed) === true;
   const onlyCompletenessChange = !hasNonCompletenessBodyChanges(body);
 
-  if (wantsUncomplete && onlyCompletenessChange) {
-    if (!canUncompleteAuditRecord(user?.role)) {
-      const error = new Error(
-        "Only admin, super admin, or manager can mark a completed record as pending",
-      );
-      error.statusCode = 403;
-      throw error;
+  if (onlyCompletenessChange) {
+    if (wantsComplete && record.is_completed) {
+      return;
     }
-    return;
+    if (wantsUncomplete && !record.is_completed) {
+      return;
+    }
+    if (wantsUncomplete) {
+      if (!canUncompleteAuditRecord(user?.role)) {
+        const error = new Error(
+          "Only admin, super admin, or manager can mark a completed record as pending",
+        );
+        error.statusCode = 403;
+        throw error;
+      }
+      return;
+    }
   }
 
   const error = new Error("Cannot modify a completed audit record");

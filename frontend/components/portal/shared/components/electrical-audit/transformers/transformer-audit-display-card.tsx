@@ -2,7 +2,7 @@
 
 import { Button } from "@/components/portal/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/portal/ui/card";
-import { cnHideUtilityAuditEdits, isUtilityAuditRecordEditsLocked } from "@/components/portal/lib/electrical-audit/utility-audit-edits-visibility";
+import { cnHideUtilityAuditEdits, isAuditRecordMarkedCompleted, isUtilityAuditRecordEditsLocked } from "@/components/portal/lib/electrical-audit/utility-audit-edits-visibility";
 import { AuditRecordCompletenessToggle } from "@/components/portal/shared/components/electrical-audit/utility-audit/audit-record-completeness-toggle";
 import type {
   TransformerAuditRecord,
@@ -76,8 +76,9 @@ export function TransformerAuditDisplayCard({
 }: Props) {
   const recordEditsLocked = isUtilityAuditRecordEditsLocked(
     auditStepLocked,
-    record.is_completed,
+    record,
   );
+  const isCompleted = isAuditRecordMarkedCompleted(record);
 
   return (
     <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-4">
@@ -88,7 +89,7 @@ export function TransformerAuditDisplayCard({
           </CardTitle>
           <div className="flex flex-wrap items-center gap-2">
             <AuditRecordCompletenessToggle
-              isCompleted={Boolean(record.is_completed)}
+              isCompleted={isCompleted}
               auditStepLocked={auditStepLocked}
               saving={togglingCompleteness || saving}
               onToggle={() => onToggleCompleteness?.()}

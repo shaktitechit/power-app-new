@@ -311,11 +311,12 @@ export function TransformerAuditRecordSection({
 
   const recordEditsLocked = isUtilityAuditRecordEditsLocked(
     auditStepLocked,
-    latestRecord?.is_completed,
+    latestRecord,
   );
 
   const [form, setForm] =
     useState<TransformerAuditFormState>(createEmptyForm());
+  const fieldsEditable = form.isEditing && !recordEditsLocked;
   const [excelImporting, setExcelImporting] = useState(false);
   const [fromDate, setFromDate] = useState<string>("");
   const [toDate, setToDate] = useState<string>("");
@@ -465,6 +466,11 @@ export function TransformerAuditRecordSection({
       return;
     }
 
+    if (recordEditsLocked) {
+      toast.error("Cannot modify a completed audit record");
+      return;
+    }
+
     setExcelImporting(true);
     try {
       const parsed = await parseTransformerAuditExcel(file);
@@ -474,7 +480,10 @@ export function TransformerAuditRecordSection({
       }
 
       setForm((prev) => {
-        const next: TransformerAuditFormState = { ...prev, isEditing: true };
+        const next: TransformerAuditFormState = {
+          ...prev,
+          isEditing: recordEditsLocked ? false : true,
+        };
         const mutable = next as unknown as Record<string, unknown>;
         for (const [k, v] of Object.entries(parsed)) {
           if (v === undefined) continue;
@@ -687,9 +696,10 @@ export function TransformerAuditRecordSection({
             ) : null}
             {!form.isEditing ? (
               <Button
-                onClick={() =>
-                  setForm((prev) => ({ ...prev, isEditing: true }))
-                }
+                onClick={() => {
+                  if (recordEditsLocked) return;
+                  setForm((prev) => ({ ...prev, isEditing: true }));
+                }}
                 size="sm"
               >
                 <Pencil className="mr-2 h-4 w-4" />
@@ -772,8 +782,8 @@ export function TransformerAuditRecordSection({
                   onChange={(e) =>
                     updateForm("average_load_kVA", e.target.value)
                   }
-                  disabled={!form.isEditing}
-                  className={getInputClass(!form.isEditing)}
+                  disabled={!fieldsEditable}
+                  className={getInputClass(!fieldsEditable)}
                 />
               </div>
 
@@ -793,8 +803,8 @@ export function TransformerAuditRecordSection({
                   type="number"
                   value={form.max_load_kVA}
                   onChange={(e) => updateForm("max_load_kVA", e.target.value)}
-                  disabled={!form.isEditing}
-                  className={getInputClass(!form.isEditing)}
+                  disabled={!fieldsEditable}
+                  className={getInputClass(!fieldsEditable)}
                 />
               </div>
 
@@ -816,8 +826,8 @@ export function TransformerAuditRecordSection({
                   onChange={(e) =>
                     updateForm("operating_hours_per_year", e.target.value)
                   }
-                  disabled={!form.isEditing}
-                  className={getInputClass(!form.isEditing)}
+                  disabled={!fieldsEditable}
+                  className={getInputClass(!fieldsEditable)}
                 />
               </div>
 
@@ -829,8 +839,8 @@ export function TransformerAuditRecordSection({
                   onChange={(e) =>
                     updateForm("annual_energy_supplied_kWh", e.target.value)
                   }
-                  disabled={!form.isEditing}
-                  className={getInputClass(!form.isEditing)}
+                  disabled={!fieldsEditable}
+                  className={getInputClass(!fieldsEditable)}
                 />
               </div>
 
@@ -855,8 +865,8 @@ export function TransformerAuditRecordSection({
                   onChange={(e) =>
                     updateForm("per_unit_cost_rs", e.target.value)
                   }
-                  disabled={!form.isEditing}
-                  className={getInputClass(!form.isEditing)}
+                  disabled={!fieldsEditable}
+                  className={getInputClass(!fieldsEditable)}
                 />
               </div>
 
@@ -876,8 +886,8 @@ export function TransformerAuditRecordSection({
                   type="date"
                   value={form.audit_date}
                   onChange={(e) => updateForm("audit_date", e.target.value)}
-                  disabled={!form.isEditing}
-                  className={getInputClass(!form.isEditing)}
+                  disabled={!fieldsEditable}
+                  className={getInputClass(!fieldsEditable)}
                 />
               </div>
             </div>
@@ -897,8 +907,8 @@ export function TransformerAuditRecordSection({
                   onChange={(e) =>
                     updateForm("power_factor_LT", e.target.value)
                   }
-                  disabled={!form.isEditing}
-                  className={getInputClass(!form.isEditing)}
+                  disabled={!fieldsEditable}
+                  className={getInputClass(!fieldsEditable)}
                 />
               </div>
 
@@ -911,8 +921,8 @@ export function TransformerAuditRecordSection({
                   onChange={(e) =>
                     updateForm("harmonics_THD_percent", e.target.value)
                   }
-                  disabled={!form.isEditing}
-                  className={getInputClass(!form.isEditing)}
+                  disabled={!fieldsEditable}
+                  className={getInputClass(!fieldsEditable)}
                 />
               </div>
             </div>
@@ -932,8 +942,8 @@ export function TransformerAuditRecordSection({
                   onChange={(e) =>
                     updateForm("neutral_earth_resistance_ohms", e.target.value)
                   }
-                  disabled={!form.isEditing}
-                  className={getInputClass(!form.isEditing)}
+                  disabled={!fieldsEditable}
+                  className={getInputClass(!fieldsEditable)}
                 />
               </div>
 
@@ -946,8 +956,8 @@ export function TransformerAuditRecordSection({
                   onChange={(e) =>
                     updateForm("body_to_earth_resistance_ohms", e.target.value)
                   }
-                  disabled={!form.isEditing}
-                  className={getInputClass(!form.isEditing)}
+                  disabled={!fieldsEditable}
+                  className={getInputClass(!fieldsEditable)}
                 />
               </div>
             </div>
@@ -965,7 +975,7 @@ export function TransformerAuditRecordSection({
                   onChange={(e) =>
                     updateForm("silica_gel_cobalt_type", e.target.value)
                   }
-                  disabled={!form.isEditing}
+                  disabled={!fieldsEditable}
                   className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                 >
                   <option value="">Select condition</option>
@@ -982,7 +992,7 @@ export function TransformerAuditRecordSection({
                   onChange={(e) =>
                     updateForm("silica_gel_non_cobalt_type", e.target.value)
                   }
-                  disabled={!form.isEditing}
+                  disabled={!fieldsEditable}
                   className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                 >
                   <option value="">Select condition</option>
@@ -997,7 +1007,7 @@ export function TransformerAuditRecordSection({
                 <select
                   value={form.oil_level}
                   onChange={(e) => updateForm("oil_level", e.target.value)}
-                  disabled={!form.isEditing}
+                  disabled={!fieldsEditable}
                   className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                 >
                   <option value="">Select oil level</option>
@@ -1022,8 +1032,8 @@ export function TransformerAuditRecordSection({
                   onChange={(e) =>
                     updateForm("line_voltage_Vr", e.target.value)
                   }
-                  disabled={!form.isEditing}
-                  className={getInputClass(!form.isEditing)}
+                  disabled={!fieldsEditable}
+                  className={getInputClass(!fieldsEditable)}
                 />
               </div>
 
@@ -1035,8 +1045,8 @@ export function TransformerAuditRecordSection({
                   onChange={(e) =>
                     updateForm("line_voltage_Vy", e.target.value)
                   }
-                  disabled={!form.isEditing}
-                  className={getInputClass(!form.isEditing)}
+                  disabled={!fieldsEditable}
+                  className={getInputClass(!fieldsEditable)}
                 />
               </div>
 
@@ -1048,8 +1058,8 @@ export function TransformerAuditRecordSection({
                   onChange={(e) =>
                     updateForm("line_voltage_Vb", e.target.value)
                   }
-                  disabled={!form.isEditing}
-                  className={getInputClass(!form.isEditing)}
+                  disabled={!fieldsEditable}
+                  className={getInputClass(!fieldsEditable)}
                 />
               </div>
 
@@ -1061,8 +1071,8 @@ export function TransformerAuditRecordSection({
                   onChange={(e) =>
                     updateForm("phase_voltage_Vr_n", e.target.value)
                   }
-                  disabled={!form.isEditing}
-                  className={getInputClass(!form.isEditing)}
+                  disabled={!fieldsEditable}
+                  className={getInputClass(!fieldsEditable)}
                 />
               </div>
 
@@ -1074,8 +1084,8 @@ export function TransformerAuditRecordSection({
                   onChange={(e) =>
                     updateForm("phase_voltage_Vy_n", e.target.value)
                   }
-                  disabled={!form.isEditing}
-                  className={getInputClass(!form.isEditing)}
+                  disabled={!fieldsEditable}
+                  className={getInputClass(!fieldsEditable)}
                 />
               </div>
 
@@ -1087,8 +1097,8 @@ export function TransformerAuditRecordSection({
                   onChange={(e) =>
                     updateForm("phase_voltage_Vb_n", e.target.value)
                   }
-                  disabled={!form.isEditing}
-                  className={getInputClass(!form.isEditing)}
+                  disabled={!fieldsEditable}
+                  className={getInputClass(!fieldsEditable)}
                 />
               </div>
             </div>
@@ -1107,8 +1117,8 @@ export function TransformerAuditRecordSection({
                   onChange={(e) =>
                     updateForm("line_current_Ir", e.target.value)
                   }
-                  disabled={!form.isEditing}
-                  className={getInputClass(!form.isEditing)}
+                  disabled={!fieldsEditable}
+                  className={getInputClass(!fieldsEditable)}
                 />
               </div>
 
@@ -1120,8 +1130,8 @@ export function TransformerAuditRecordSection({
                   onChange={(e) =>
                     updateForm("line_current_Iy", e.target.value)
                   }
-                  disabled={!form.isEditing}
-                  className={getInputClass(!form.isEditing)}
+                  disabled={!fieldsEditable}
+                  className={getInputClass(!fieldsEditable)}
                 />
               </div>
 
@@ -1133,8 +1143,8 @@ export function TransformerAuditRecordSection({
                   onChange={(e) =>
                     updateForm("line_current_Ib", e.target.value)
                   }
-                  disabled={!form.isEditing}
-                  className={getInputClass(!form.isEditing)}
+                  disabled={!fieldsEditable}
+                  className={getInputClass(!fieldsEditable)}
                 />
               </div>
             </div>
@@ -1154,7 +1164,7 @@ export function TransformerAuditRecordSection({
                   multiple
                   accept=".pdf,image/*"
                   onChange={(e) => handleDocumentsChange(e.target.files)}
-                  disabled={!form.isEditing}
+                  disabled={!fieldsEditable}
                 />
                 <Upload className="h-4 w-4 text-muted-foreground" />
               </div>
@@ -1221,7 +1231,7 @@ export function TransformerAuditRecordSection({
                         </span>
                       </div>
 
-                      {form.isEditing && (
+                      {fieldsEditable && (
                         <Button
                           type="button"
                           variant="outline"

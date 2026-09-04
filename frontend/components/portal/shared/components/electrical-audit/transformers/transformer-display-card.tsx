@@ -37,6 +37,7 @@ function DisplayField({
 type Props = {
   transformer: Transformer;
   hasAudit: boolean;
+  entityEditsLocked?: boolean;
   facilityId: string;
   utilityAccountId: string;
   auditStepLocked?: boolean;
@@ -61,6 +62,7 @@ type Props = {
 export function TransformerDisplayCard({
   transformer,
   hasAudit,
+  entityEditsLocked = false,
   facilityId,
   utilityAccountId,
   auditStepLocked = false,
@@ -101,13 +103,13 @@ export function TransformerDisplayCard({
                       : "bg-amber-100 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400"
                   }`}
                 >
-                  {hasAudit ? "Audit completed" : "Audit pending"}
+                  {hasAudit ? "Audit saved" : "Audit pending"}
                 </span>
               </div>
             </div>
             <div
               className={cnHideUtilityAuditEdits(
-                auditStepLocked,
+                entityEditsLocked,
                 "flex min-w-0 flex-wrap items-center justify-end gap-2",
               )}
             >
@@ -144,7 +146,7 @@ export function TransformerDisplayCard({
             <CardTitle className="truncate text-base font-semibold">
               Documents
             </CardTitle>
-            {!auditStepLocked ? (
+            {!entityEditsLocked ? (
               <Button
                 type="button"
                 variant="outline"
@@ -171,7 +173,7 @@ export function TransformerDisplayCard({
                 documents={transformer.documents ?? []}
                 onPreview={(doc, docIdx) => onPreviewDocument(doc, transformer._id, docIdx)}
                 onDelete={
-                  !auditStepLocked && onDeleteDocument
+                  !entityEditsLocked && onDeleteDocument
                     ? (doc, docIdx) => onDeleteDocument(doc, transformer._id, docIdx)
                     : undefined
                 }

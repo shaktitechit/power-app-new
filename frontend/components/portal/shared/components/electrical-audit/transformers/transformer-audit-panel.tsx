@@ -104,10 +104,11 @@ export function TransformerAuditPanel({
 
   const recordEditsLocked = isUtilityAuditRecordEditsLocked(
     auditStepLocked,
-    latestRecord?.is_completed,
+    latestRecord,
   );
 
   const [auditModalOpen, setAuditModalOpen] = useState(false);
+  const [initialEditing, setInitialEditing] = useState(true);
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [uploadFiles, setUploadFiles] = useState<PendingUploadFile[]>([]);
@@ -124,15 +125,35 @@ export function TransformerAuditPanel({
     setPreviewDoc(null);
     setPreviewDocIndex(null);
     setEditCaptionValue("");
+    setInitialEditing(true);
   }, [transformerId]);
 
+  useEffect(() => {
+    if (recordEditsLocked && auditModalOpen) {
+      setAuditModalOpen(false);
+    }
+  }, [recordEditsLocked, auditModalOpen]);
+
+  const openCreateAuditModal = () => {
+    if (auditStepLocked) return;
+    setInitialEditing(true);
+    setAuditModalOpen(true);
+  };
+
+  const openEditAuditModal = () => {
+    if (recordEditsLocked) return;
+    setInitialEditing(true);
+    setAuditModalOpen(true);
+  };
+
   const handleOpenUploadModal = () => {
+    if (recordEditsLocked) return;
     setUploadFiles([]);
     setUploadModalOpen(true);
   };
 
   const handleUploadDocs = async () => {
-    if (!latestRecord?._id || uploadFiles.length === 0) return;
+    if (!latestRecord?._id || uploadFiles.length === 0 || recordEditsLocked) return;
     try {
       await toastHandler({
         action: () =>
@@ -189,7 +210,7 @@ export function TransformerAuditPanel({
   };
 
   const handleConfirmDelete = async () => {
-    if (!latestRecord?._id || !canDeleteRecords) return;
+    if (!latestRecord?._id || !canDeleteRecords || recordEditsLocked) return;
     try {
       await toastHandler({
         action: () => deleteTransformerAuditRecord(latestRecord._id).unwrap(),
@@ -212,8 +233,15 @@ export function TransformerAuditPanel({
     close: closeDeleteDocument,
   } = useAuditDocumentDelete({
     getDocuments: (recordId) => latestRecord?.documents,
-    persist: (recordId, remaining) =>
-      updateTransformerAuditRecord({ id: recordId, existing_documents: remaining }).unwrap(),
+    persist: (recordId, remaining) => {
+      if (recordEditsLocked) {
+        return Promise.reject(new Error("Cannot modify a completed audit record"));
+      }
+      return updateTransformerAuditRecord({
+        id: recordId,
+        existing_documents: remaining,
+      }).unwrap();
+    },
   });
 
   return (
@@ -241,7 +269,7 @@ export function TransformerAuditPanel({
               auditStepLocked,
               "mt-4 bg-warning text-warning-foreground hover:bg-warning/90",
             )}
-            onClick={() => setAuditModalOpen(true)}
+            onClick={openCreateAuditModal}
             disabled={auditStepLocked}
           >
             Audit this transformer
@@ -255,11 +283,11 @@ export function TransformerAuditPanel({
           canDelete={canDeleteRecords}
           canViewDocuments={canViewDocumentsFlag}
           saving={saving}
-          onEdit={() => {
+          onEdit={openEditAuditModal}
+          onDelete={() => {
             if (recordEditsLocked) return;
-            setAuditModalOpen(true);
+            setDeleteDialogOpen(true);
           }}
-          onDelete={() => setDeleteDialogOpen(true)}
           onToggleCompleteness={() =>
             void handleToggleCompleteness(latestRecord)
           }
@@ -279,7 +307,7 @@ export function TransformerAuditPanel({
         utilityAccountId={utilityAccountId}
         transformerId={transformerId}
         auditStepLocked={auditStepLocked}
-        initialEditing
+        initialEditing={initialEditing && !recordEditsLocked}
       />
 
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>

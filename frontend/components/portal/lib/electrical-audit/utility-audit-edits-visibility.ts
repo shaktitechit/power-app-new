@@ -2,15 +2,30 @@ import { type ClassValue } from "clsx";
 import { cn } from "@/components/portal/lib/utils";
 
 type AuditCompletenessRecord = {
-  is_completed?: boolean;
+  is_completed?: boolean | string | null;
 };
+
+/** Normalize API/multipart values for audit record completion. */
+export function isAuditRecordMarkedCompleted(
+  record?: AuditCompletenessRecord | null,
+): boolean {
+  const value = record?.is_completed;
+  if (value === true || value === 1 || value === "1" || value === "true") {
+    return true;
+  }
+  return false;
+}
 
 /** Block edit/delete/upload on a single audit record when globally locked or completed. */
 export function isUtilityAuditRecordEditsLocked(
   auditStepLocked?: boolean,
-  recordCompleted?: boolean,
+  recordCompleted?: boolean | AuditCompletenessRecord | null,
 ): boolean {
-  return Boolean(auditStepLocked || recordCompleted);
+  const completed =
+    typeof recordCompleted === "boolean" || recordCompleted === undefined
+      ? Boolean(recordCompleted)
+      : isAuditRecordMarkedCompleted(recordCompleted);
+  return Boolean(auditStepLocked || completed);
 }
 
 /** Block sheet-level add/import when every record in the sheet is completed. */
@@ -20,7 +35,7 @@ export function isUtilityAuditSheetEditsLocked(
 ): boolean {
   if (auditStepLocked) return true;
   if (!records?.length) return false;
-  return records.every((record) => record.is_completed === true);
+  return records.every((record) => isAuditRecordMarkedCompleted(record));
 }
 
 /**

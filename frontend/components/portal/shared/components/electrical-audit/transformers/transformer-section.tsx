@@ -28,7 +28,7 @@ import {
   type UserPermission,
   canDeleteAuditRecords,
 } from "@/components/portal/lib/authRoles";
-import { cnHideUtilityAuditEdits } from "@/components/portal/lib/electrical-audit/utility-audit-edits-visibility";
+import { cnHideUtilityAuditEdits, isUtilityAuditRecordEditsLocked } from "@/components/portal/lib/electrical-audit/utility-audit-edits-visibility";
 import { UTILITY_AUDIT_STEP_IDS } from "@/components/portal/lib/electrical-audit/utility-audit-steps";
 import { toastHandler } from "@/components/portal/lib/toast";
 import { AuditDocumentDeleteDialog } from "@/components/portal/shared/components/electrical-audit/utility-audit/audit-document-delete-dialog";
@@ -51,7 +51,9 @@ import { TransformerFormModal } from "./transformer-form-modal";
 import {
   buildTransformerPayload,
   createEmptyForm,
+  getTransformerAuditRecordForEntity,
   transformerHasAudit,
+  transformerAuditIsCompleted,
   transformerToForm,
   getTransformerTabLabel,
   sortTransformersStable,
@@ -126,7 +128,7 @@ export function TransformerSection({
       sortedTransformers.map((t, index) => ({
         id: t._id,
         label: getTransformerTabLabel(t, index),
-        completed: transformerHasAudit(t._id, transformerAuditRecords),
+        completed: transformerAuditIsCompleted(t._id, transformerAuditRecords),
       })),
     [sortedTransformers, transformerAuditRecords],
   );
@@ -134,6 +136,19 @@ export function TransformerSection({
   const activeTransformer = useMemo(
     () => sortedTransformers.find((t) => t._id === activeTabId) ?? null,
     [sortedTransformers, activeTabId],
+  );
+
+  const activeAuditRecord = useMemo(() => {
+    if (!activeTransformer) return null;
+    return getTransformerAuditRecordForEntity(
+      activeTransformer._id,
+      transformerAuditRecords,
+    );
+  }, [activeTransformer, transformerAuditRecords]);
+
+  const activeEntityEditsLocked = isUtilityAuditRecordEditsLocked(
+    auditStepLocked,
+    activeAuditRecord,
   );
 
   const activeHasAudit = useMemo(() => {
@@ -367,6 +382,7 @@ export function TransformerSection({
               key={activeTransformer._id}
               transformer={activeTransformer}
               hasAudit={activeHasAudit}
+              entityEditsLocked={activeEntityEditsLocked}
               facilityId={facilityId}
               utilityAccountId={utilityAccountId}
               auditStepLocked={auditStepLocked}
