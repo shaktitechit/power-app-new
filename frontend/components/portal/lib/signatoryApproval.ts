@@ -53,11 +53,21 @@ export function pdfLockMessage(doc?: SignatoryApprovalDoc | null): string {
   return SIGNATORY_PDF_LOCKED_MESSAGE;
 }
 
-export function signatoryUserId(doc?: SignatoryApprovalDoc | null): string | undefined {
-  const value = doc?.signatory?.userId;
+export function currentAuthUserId(
+  user?: { _id?: string; userId?: string } | null,
+): string | undefined {
+  const id = user?._id || user?.userId;
+  return id ? String(id) : undefined;
+}
+
+function refId(value?: string | { _id?: string } | null): string | undefined {
   if (!value) return undefined;
   if (typeof value === "string") return value;
-  return value._id;
+  return value._id ? String(value._id) : undefined;
+}
+
+export function signatoryUserId(doc?: SignatoryApprovalDoc | null): string | undefined {
+  return refId(doc?.signatory?.userId);
 }
 
 export function signatoryDisplayNameFromDoc(doc?: SignatoryApprovalDoc | null): string {
@@ -99,14 +109,13 @@ export function isAssignedSignatory(
   doc?: SignatoryApprovalDoc | null,
   userId?: string | null,
 ): boolean {
-  return Boolean(userId) && signatoryUserId(doc) === userId;
+  const assigned = signatoryUserId(doc);
+  const current = userId ? String(userId) : "";
+  return Boolean(assigned && current && assigned === current);
 }
 
 export function createdByUserId(doc?: SignatoryApprovalDoc | null): string | undefined {
-  const value = doc?.createdBy;
-  if (!value) return undefined;
-  if (typeof value === "string") return value;
-  return value._id;
+  return refId(doc?.createdBy);
 }
 
 export function isCreatorOrAssignedSignatory(

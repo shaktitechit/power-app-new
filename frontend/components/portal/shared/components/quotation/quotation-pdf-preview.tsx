@@ -19,6 +19,7 @@ import {
   quotationPdfFilename,
 } from "@/components/portal/lib/quotationPdf";
 import {
+  currentAuthUserId,
   pdfLockMessage,
   canViewPdf,
 } from "@/components/portal/lib/signatoryApproval";
@@ -32,7 +33,7 @@ function triggerPdfDownload(url: string, filename: string) {
 }
 
 function useQuotationPdf(quotation: Quotation) {
-  const userId = useAppSelector((state) => state.auth.user?._id);
+  const userId = currentAuthUserId(useAppSelector((state) => state.auth.user));
   const canView = canViewPdf(quotation, userId);
   const lockMessage = pdfLockMessage(quotation);
   const { displayName, logoSrc, primaryColor } = useCompanyBranding();

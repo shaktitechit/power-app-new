@@ -15,6 +15,7 @@ import {
 } from "@/components/portal/ui/alert-dialog";
 import {
   canApproveAsSignatory,
+  currentAuthUserId,
   isSignatoryApproved,
   signatoryDisplayNameFromDoc,
   type SignatoryApprovalDoc,
@@ -38,7 +39,7 @@ export function SignatoryApproveButton({
   size?: "sm" | "default";
 }) {
   const [confirmOpen, setConfirmOpen] = useState(false);
-  const userId = useAppSelector((state) => state.auth.user?._id);
+  const userId = currentAuthUserId(useAppSelector((state) => state.auth.user));
   if (isSignatoryApproved(doc) || !canApproveAsSignatory(doc, userId)) return null;
 
   const handleApprove = async () => {

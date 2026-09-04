@@ -16,6 +16,7 @@ import { useGetDefaultCompanyQuery } from "@/store/slices/companyApiSlice";
 import type { ExpressionOfInterest } from "@/store/slices/eoiApiSlice";
 import { buildEoiPdfBlob, eoiPdfFilename } from "@/components/portal/lib/eoiPdf";
 import {
+  currentAuthUserId,
   pdfLockMessage,
   canViewPdf,
 } from "@/components/portal/lib/signatoryApproval";
@@ -29,7 +30,7 @@ function triggerPdfDownload(url: string, filename: string) {
 }
 
 function useEoiPdf(eoi: ExpressionOfInterest) {
-  const userId = useAppSelector((state) => state.auth.user?._id);
+  const userId = currentAuthUserId(useAppSelector((state) => state.auth.user));
   const canView = canViewPdf(eoi, userId);
   const lockMessage = pdfLockMessage(eoi);
   const { displayName, logoSrc, primaryColor } = useCompanyBranding();

@@ -52,6 +52,8 @@ import {
   CANCELLED_PDF_LOCKED_MESSAGE,
   SIGNATORY_APPROVAL_LOCKED_MESSAGE,
   SIGNATORY_EDIT_LOCKED_MESSAGE,
+  canApproveAsSignatory,
+  currentAuthUserId,
   isCancelledDocument,
   isSignatoryApproved,
   isSignatoryApprovalPending,
@@ -223,13 +225,15 @@ export default function EoiDetailsPage() {
               Edit
             </Button>
           ) : null}
-          <SignatoryApproveButton
-            doc={eoi}
-            documentLabel="EOI"
-            refLabel={eoi.eoiRef}
-            isLoading={approving}
-            onApprove={() => approveEoiSignatory({ id: eoi._id }).unwrap()}
-          />
+          {canApproveAsSignatory(eoi, currentAuthUserId(user)) ? (
+            <SignatoryApproveButton
+              doc={eoi}
+              documentLabel="EOI"
+              refLabel={eoi.eoiRef}
+              isLoading={approving}
+              onApprove={() => approveEoiSignatory({ id: eoi._id }).unwrap()}
+            />
+          ) : null}
           {canSendEoiEmail(eoi.status) && isSignatoryApproved(eoi) ? (
             <EoiSendEmailButton
               eoi={eoi}
