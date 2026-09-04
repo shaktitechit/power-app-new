@@ -148,6 +148,24 @@ const expressionOfInterestSchema = new Schema(
       },
     },
 
+    signatoryApproval: {
+      status: {
+        type: String,
+        enum: ["PENDING", "APPROVED"],
+        default: "PENDING",
+        index: true,
+      },
+      approvedAt: {
+        type: Date,
+        default: null,
+      },
+      approvedBy: {
+        type: Schema.Types.ObjectId,
+        ref: "User",
+        default: null,
+      },
+    },
+
     status: {
       type: String,
       enum: [

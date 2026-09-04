@@ -36,6 +36,10 @@ import {
 import { buildEoiPdfBlob, eoiPdfFilename } from "@/components/portal/lib/eoiPdf";
 import { toastHandler } from "@/components/portal/lib/toast";
 import { toast } from "sonner";
+import {
+  SIGNATORY_APPROVAL_LOCKED_MESSAGE,
+  isSignatoryApproved,
+} from "@/components/portal/lib/signatoryApproval";
 
 function defaultSubject(eoi: ExpressionOfInterest) {
   return `Expression of Interest ${eoi.eoiRef}${eoi.subject ? ` — ${eoi.subject}` : ""}`;
@@ -87,7 +91,6 @@ export function EoiSendEmailPanel({
   const { data: companyRes } = useGetDefaultCompanyQuery();
   const currentUser = useAppSelector((state) => state.auth.user);
   const { data: sendersRes } = useGetGraphMailSendersQuery(undefined, { skip: !open });
-  const tenantSenders = sendersRes?.data ?? [];
   const [sendEoiEmail, { isLoading: sending }] = useSendEoiEmailMutation();
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
@@ -164,6 +167,10 @@ export function EoiSendEmailPanel({
   ]);
 
   const handleSend = async () => {
+    if (!isSignatoryApproved(eoi)) {
+      toast.error(SIGNATORY_APPROVAL_LOCKED_MESSAGE);
+      return;
+    }
     if (!from.trim()) {
       toast.error("Enter a from email");
       return;
@@ -211,18 +218,10 @@ export function EoiSendEmailPanel({
             <Input
               id="eoi-email-from"
               type="email"
-              list="eoi-email-from-options"
               value={from}
-              onChange={(event) => setFrom(event.target.value)}
-              placeholder="Any mailbox in your Microsoft tenant"
+              readOnly
+              className="bg-muted/50"
             />
-            <datalist id="eoi-email-from-options">
-              {tenantSenders.map((sender) => (
-                <option key={sender.email} value={sender.email}>
-                  {sender.name}
-                </option>
-              ))}
-            </datalist>
           </div>
           <div className="space-y-2">
             <Label htmlFor="eoi-email-to">To</Label>
@@ -230,8 +229,8 @@ export function EoiSendEmailPanel({
               id="eoi-email-to"
               type="email"
               value={to}
-              onChange={(event) => setTo(event.target.value)}
-              placeholder="recipient@example.com"
+              readOnly
+              className="bg-muted/50"
             />
           </div>
           <div className="space-y-2">
@@ -307,6 +306,7 @@ export function EoiSendEmailButton({
   const [confirmOpen, setConfirmOpen] = useState(false);
   const isResend = mode === "resend";
   const needsConfirm = eoi.status === "ACCEPTED";
+  if (!isSignatoryApproved(eoi)) return null;
 
   const openComposer = () => setOpen(true);
 

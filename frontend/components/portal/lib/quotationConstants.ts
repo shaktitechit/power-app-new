@@ -67,8 +67,14 @@ export function canSendQuotationEmail(status: QuotationStatus) {
   return status === "DRAFT" || status === "SENT" || status === "ACCEPTED";
 }
 
-export function canEditQuotation(status: QuotationStatus) {
-  return status !== "ACCEPTED" && status !== "REJECTED" && status !== "CANCELLED";
+export function canEditQuotation(
+  status: QuotationStatus,
+  doc?: Pick<Quotation, "signatoryApproval"> | null,
+) {
+  if (status === "ACCEPTED" || status === "REJECTED" || status === "CANCELLED") {
+    return false;
+  }
+  return String(doc?.signatoryApproval?.status || "").toUpperCase() !== "APPROVED";
 }
 
 /** Audit type a quotation line item quotes, or `null` for anything else. */

@@ -9,6 +9,13 @@ const ROLE_DESIGNATION: Record<string, string> = {
   manager: "Manager",
 };
 
+export const SIGNATORY_ROLES = ["super_admin", "admin", "manager"] as const;
+
+export function isEligibleSignatoryRole(role?: string | null): boolean {
+  if (!role || role === "auditor") return false;
+  return (SIGNATORY_ROLES as readonly string[]).includes(role);
+}
+
 export const DEFAULT_SIGNATORY_DESIGNATION = "Authorized Signatory";
 
 export const ELECTRONIC_SIGNATORY_LABEL = "Electronically generated — no signature required";

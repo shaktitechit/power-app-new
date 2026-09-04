@@ -11,6 +11,7 @@ import {
   Users,
   Activity,
   Receipt,
+  Mail,
 } from "lucide-react";
 import type { NavItem } from "../layout/nav-types";
 
@@ -19,6 +20,7 @@ export const navItems: NavItem[] = [
   { title: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { title: "Facilities", href: "/facilities", icon: Building2 },
   { title: "Enquiries", href: "/enquiries", icon: MessageSquare },
+  { title: "EOI", href: "/eois", icon: Mail },
   { title: "Quotations", href: "/quotations", icon: Receipt },
   {
     title: "Pending approval",

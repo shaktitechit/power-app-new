@@ -9,6 +9,8 @@ import EnquiryFollowUps from "@/components/portal/shared/enquiries/follow-ups";
 import EnquiryDetails from "@/components/portal/shared/enquiries/[enquiryId]";
 import Quotations from "@/components/portal/shared/quotations";
 import QuotationDetails from "@/components/portal/shared/quotations/[quotationId]";
+import Eois from "@/components/portal/shared/eois";
+import EoiDetails from "@/components/portal/shared/eois/[eoiId]";
 import TermsConditions from "@/components/portal/shared/terms-conditions";
 import TermsConditionsDetails from "@/components/portal/shared/terms-conditions/[termsConditionsId]";
 import Facilities from "@/components/portal/shared/facilities";
@@ -40,6 +42,11 @@ export function render(segments: string[]) {
   if (segments[0] === "quotations") {
     if (segments.length === 1) return <Quotations />;
     if (segments.length === 2) return <QuotationDetails />;
+  }
+
+  if (segments[0] === "eois") {
+    if (segments.length === 1) return <Eois />;
+    if (segments.length === 2) return <EoiDetails />;
   }
 
   if (segments[0] === "terms-conditions") {

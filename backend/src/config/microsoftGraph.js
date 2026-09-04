@@ -36,6 +36,10 @@ export const MICROSOFT_GRAPH_MAILBOX =
   trimEnv(process.env.GRAPH_MAILBOX) ||
   trimEnv(process.env.MICROSOFT_GRAPH_SENDER_EMAIL);
 
+/** Explicit sender used for system/auto emails (create/approve notices). */
+export const MICROSOFT_GRAPH_SENDER_EMAIL =
+  trimEnv(process.env.MICROSOFT_GRAPH_SENDER_EMAIL) || MICROSOFT_GRAPH_MAILBOX;
+
 export const MICROSOFT_GRAPH_SCOPE =
   trimEnv(process.env.MICROSOFT_GRAPH_SCOPE) ||
   "https://graph.microsoft.com/.default";

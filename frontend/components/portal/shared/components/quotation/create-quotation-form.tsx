@@ -60,6 +60,7 @@ import {
   ELECTRONIC_SIGNATORY_LABEL,
   isDefaultSignatoryDesignation,
   isElectronicSignatory,
+  isEligibleSignatoryRole,
   signatoryDesignationForRole,
 } from "@/components/portal/lib/signatoryDesignation";
 import { cn } from "@/components/portal/lib/utils";
@@ -158,7 +159,11 @@ export function CreateQuotationForm({
   const { data: signatoriesRes } = useGetQuotationSignatoriesQuery(undefined, { skip: !open });
   const { data: termsRes } = useGetTermsConditionsQuery(undefined, { skip: !open });
   const enquiries = enquiriesRes?.data ?? [];
-  const signatories = signatoriesRes?.data ?? [];
+  const signatories = useMemo(
+    () =>
+      (signatoriesRes?.data ?? []).filter((user) => isEligibleSignatoryRole(user.role)),
+    [signatoriesRes?.data],
+  );
   const termsSets = termsRes?.data ?? [];
   const [createQuotation, { isLoading: creating }] = useCreateQuotationMutation();
   const [updateQuotation, { isLoading: updating }] = useUpdateQuotationMutation();
@@ -247,8 +252,7 @@ export function CreateQuotationForm({
     }
     setEnquiryId(presetEnquiryId || NONE);
     const selfIsSignatory = Boolean(
-      currentUser?._id &&
-        ["super_admin", "admin", "manager"].includes(currentUser.role),
+      currentUser?._id && isEligibleSignatoryRole(currentUser.role),
     );
     setSignatoryId(selfIsSignatory ? currentUser?._id ?? NONE : NONE);
     setSignatoryDesignation(

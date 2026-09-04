@@ -13,6 +13,7 @@ import {
   sendEoiEmail,
   deleteEoi,
   getEoiSignatories,
+  approveEoiSignatory,
 } from "./expression-of-interest.controllers.js";
 import { uploadEmailAttachment } from "../../middlewares/uploadMiddleware.js";
 
@@ -42,6 +43,13 @@ router.put(
   protect,
   authorize(RESOURCES.EXPRESSION_OF_INTEREST, ACTIONS.UPDATE),
   acceptEoi,
+);
+
+router.put(
+  "/:id/signatory-approval",
+  protect,
+  authorize(RESOURCES.EXPRESSION_OF_INTEREST, ACTIONS.UPDATE),
+  approveEoiSignatory,
 );
 
 router.post(

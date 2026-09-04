@@ -127,6 +127,11 @@ export interface Quotation {
   termsAndConditions?: QuotationTerm[];
   bankDetails: QuotationBankDetails;
   signatory: QuotationSignatory;
+  signatoryApproval?: {
+    status?: "PENDING" | "APPROVED" | string;
+    approvedAt?: string | null;
+    approvedBy?: string | QuotationUserRef | null;
+  } | null;
   orderAcceptance?: QuotationOrderAcceptance;
   status: QuotationStatus;
   salesOrderId?: string | null;
@@ -374,6 +379,18 @@ export const quotationApiSlice = apiSlice.injectEndpoints({
         quotationMutationTags(quotationId(result?.data?.enquiryId), id),
     }),
 
+    approveQuotationSignatory: builder.mutation<
+      QuotationMutationResponse,
+      { id: string }
+    >({
+      query: ({ id }) => ({
+        url: `/v1/quotations/${id}/signatory-approval`,
+        method: "PUT",
+      }),
+      invalidatesTags: (result, _error, { id }) =>
+        quotationMutationTags(quotationId(result?.data?.enquiryId), id),
+    }),
+
     sendQuotationEmail: builder.mutation<
       QuotationMutationResponse,
       SendQuotationEmailRequest
@@ -415,6 +432,7 @@ export const {
   useUpdateQuotationMutation,
   useUpdateQuotationStatusMutation,
   useAcceptQuotationMutation,
+  useApproveQuotationSignatoryMutation,
   useSendQuotationEmailMutation,
   useDeleteQuotationMutation,
 } = quotationApiSlice;

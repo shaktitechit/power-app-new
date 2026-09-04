@@ -119,7 +119,7 @@ export function EoiListActions({
         onClick={(event) => event.stopPropagation()}
       >
         <EoiPdfListActions eoi={eoi} />
-        {canAct && onEdit && canEditEoi(eoi.status) ? (
+        {canAct && onEdit && canEditEoi(eoi.status, eoi) ? (
           <Button variant="outline" size="sm" className="h-8" onClick={onEdit}>
             <Pencil className="mr-1 h-3.5 w-3.5" />
             Edit

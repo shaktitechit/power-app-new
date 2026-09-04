@@ -40,6 +40,10 @@ import {
 import { formatDisplayDate } from "@/components/portal/lib/quotationConstants";
 import { toastHandler } from "@/components/portal/lib/toast";
 import { toast } from "sonner";
+import {
+  SIGNATORY_APPROVAL_LOCKED_MESSAGE,
+  isSignatoryApproved,
+} from "@/components/portal/lib/signatoryApproval";
 
 function defaultSubject(quotation: Quotation) {
   return `Quotation ${quotation.quotationRef}${quotation.subject ? ` — ${quotation.subject}` : ""}`;
@@ -90,7 +94,6 @@ export function QuotationSendEmailPanel({
   const { data: companyRes } = useGetDefaultCompanyQuery();
   const currentUser = useAppSelector((state) => state.auth.user);
   const { data: sendersRes } = useGetGraphMailSendersQuery(undefined, { skip: !open });
-  const tenantSenders = sendersRes?.data ?? [];
   const [sendQuotationEmail, { isLoading: sending }] = useSendQuotationEmailMutation();
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
@@ -167,6 +170,10 @@ export function QuotationSendEmailPanel({
   ]);
 
   const handleSend = async () => {
+    if (!isSignatoryApproved(quotation)) {
+      toast.error(SIGNATORY_APPROVAL_LOCKED_MESSAGE);
+      return;
+    }
     if (!from.trim()) {
       toast.error("Enter a from email");
       return;
@@ -214,21 +221,10 @@ export function QuotationSendEmailPanel({
             <Input
               id="quotation-email-from"
               type="email"
-              list="quotation-email-from-options"
               value={from}
-              onChange={(event) => setFrom(event.target.value)}
-              placeholder="Any mailbox in your Microsoft tenant"
+              readOnly
+              className="bg-muted/50"
             />
-            <datalist id="quotation-email-from-options">
-              {tenantSenders.map((sender) => (
-                <option key={sender.email} value={sender.email}>
-                  {sender.name}
-                </option>
-              ))}
-            </datalist>
-            <p className="text-xs text-muted-foreground">
-              Send as any mailbox in the tenant. The Azure app needs Mail.Send application permission for those mailboxes.
-            </p>
           </div>
           <div className="space-y-2">
             <Label htmlFor="quotation-email-to">To</Label>
@@ -236,8 +232,8 @@ export function QuotationSendEmailPanel({
               id="quotation-email-to"
               type="email"
               value={to}
-              onChange={(event) => setTo(event.target.value)}
-              placeholder="customer@example.com"
+              readOnly
+              className="bg-muted/50"
             />
           </div>
           <div className="space-y-2">
@@ -313,6 +309,7 @@ export function QuotationSendEmailButton({
   const [confirmOpen, setConfirmOpen] = useState(false);
   const isResend = mode === "resend";
   const needsConfirm = quotation.status === "ACCEPTED";
+  if (!isSignatoryApproved(quotation)) return null;
 
   const openComposer = () => setOpen(true);
 

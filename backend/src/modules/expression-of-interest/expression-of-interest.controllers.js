@@ -9,6 +9,7 @@ import {
   sendEoiEmailService,
   deleteEoiService,
   getEoiSignatoriesService,
+  approveEoiSignatoryService,
 } from "./expression-of-interest.services.js";
 
 // POST /api/v1/expression-of-interest
@@ -17,6 +18,7 @@ export const createEoi = asyncHandler(async (req, res) => {
     const data = await createEoiService({
       user: req.user,
       body: req.body,
+      io: req.app.get("io"),
     });
     return res.status(201).json({
       success: true,
@@ -94,6 +96,20 @@ export const acceptEoi = asyncHandler(async (req, res) => {
   return res.status(200).json({
     success: true,
     message: "Expression of interest accepted successfully",
+    data,
+  });
+});
+
+// PUT /api/v1/expression-of-interest/:id/signatory-approval
+export const approveEoiSignatory = asyncHandler(async (req, res) => {
+  const data = await approveEoiSignatoryService({
+    user: req.user,
+    eoiId: req.params.id,
+    io: req.app.get("io"),
+  });
+  return res.status(200).json({
+    success: true,
+    message: "Expression of interest approved by signatory",
     data,
   });
 });

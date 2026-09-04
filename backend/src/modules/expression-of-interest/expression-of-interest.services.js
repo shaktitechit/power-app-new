@@ -3,7 +3,6 @@ import { modelsRegistry } from "../../data/modelRegistry.js";
 import { createRecentActivity } from "../../helpers/createRecentActivity.js";
 import { buildActivityMessage } from "../../helpers/buildActivityMessage.js";
 import {
-  applyEnquiryVisibilityFilter,
   resolveAccessibleEnquiry,
   savePipelineAdvance,
 } from "../enquiry/enquiry.services.js";
@@ -16,6 +15,23 @@ import {
   buildBrandedEmailHtml,
   fileToGraphAttachment,
 } from "../message/emailTemplate.js";
+import {
+  applyPendingSignatoryApproval,
+  approvedSignatoryApproval,
+  applyCreatorOrSignatoryListFilter,
+  assertCurrentUserIsSignatory,
+  assertSignatoryApproved,
+  assertSignatoryContentEditable,
+  bodyResetsSignatoryApproval,
+  hasNonStatusUpdates,
+  isCreatorOrAssignedSignatory,
+  isSignatoryApproved,
+  pendingSignatoryApproval,
+} from "../../helpers/signatoryApproval.js";
+import {
+  notifyCreatorOnApproval,
+  notifySignatoryOnCreate,
+} from "../../helpers/signatoryLifecycleNotify.js";
 
 const { ExpressionOfInterest, Company, Enquiry, User } = modelsRegistry;
 
@@ -60,7 +76,20 @@ const EOI_POPULATE = [
   { path: "createdBy", select: "name email role phone" },
   { path: "updatedBy", select: "name email role" },
   { path: "signatory.userId", select: "name email role phone" },
+  { path: "signatoryApproval.approvedBy", select: "name email role" },
   { path: "enquiryId", select: "name city enquiry_number enquiry_status requested_audit_types client_representative" },
+];
+
+const EOI_CONTENT_KEYS = [
+  "company",
+  "recipient",
+  "signatory",
+  "subject",
+  "body",
+  "salutation",
+  "complimentaryClose",
+  "eoiDate",
+  "quotationId",
 ];
 
 function throwError(message, statusCode = 400) {
@@ -209,15 +238,15 @@ async function resolveSignatory(actingUser, company, override = {}) {
   if (requestedId) {
     const found = await User.findById(requestedId).select("name email role status phone");
     if (!found) throwError("Signatory user not found", 404);
-    if (!SIGNATORY_ROLES.includes(found.role)) {
-      throwError("Signatory must be an admin, super admin, or manager");
+    if (found.role === "auditor" || !SIGNATORY_ROLES.includes(found.role)) {
+      throwError("Signatory must be an admin, super admin, or manager. Auditors cannot be assigned.");
     }
     if (found.status && found.status !== "active") {
       throwError("Signatory user is not active");
     }
     signatoryUser = found;
-  } else if (!SIGNATORY_ROLES.includes(String(actingUser?.role || ""))) {
-    throwError("Select a signatory (admin, super admin, or manager)");
+  } else if (actingUser?.role === "auditor" || !SIGNATORY_ROLES.includes(String(actingUser?.role || ""))) {
+    throwError("Select a signatory (admin, super admin, or manager). Auditors cannot be assigned.");
   }
 
   return snapshotSignatory(signatoryUser, company, {
@@ -230,7 +259,7 @@ async function resolveSignatory(actingUser, company, override = {}) {
 
 export async function getEoiSignatoriesService() {
   return User.find({
-    role: { $in: SIGNATORY_ROLES },
+    role: { $in: SIGNATORY_ROLES, $ne: "auditor" },
     status: { $ne: "inactive" },
   })
     .select("name email role phone")
@@ -308,27 +337,8 @@ async function logEoiActivity({ user, action, eoi, extraMessage }) {
 async function assertEoiAccess(user, eoi) {
   if (!eoi) throwError("Expression of interest not found", 404);
   if (user?.role === "super_admin") return eoi;
-
-  if (eoi.createdBy && String(eoi.createdBy) === String(user._id)) {
-    return eoi;
-  }
-
-  const enquiryId = eoi.enquiryId;
-  if (!enquiryId) {
-    throwError("Expression of interest not found", 404);
-  }
-
-  const enquiry = await resolveAccessibleEnquiry(user, enquiryId);
-  if (!enquiry) throwError("Expression of interest not found", 404);
-  return eoi;
-}
-
-async function accessibleEnquiryIds(user) {
-  if (user?.role === "super_admin") return null;
-
-  const query = {};
-  applyEnquiryVisibilityFilter(query, user);
-  return Enquiry.find(query).distinct("_id");
+  if (isCreatorOrAssignedSignatory(eoi, user)) return eoi;
+  throwError("Expression of interest not found", 404);
 }
 
 function enquiryRefId(value) {
@@ -354,7 +364,7 @@ async function markLinkedEnquiryEoiSent(eoi, status = "SENT") {
   await advanceEnquiryIfEoiSent(enquiry, status);
 }
 
-export async function createEoiService({ user, body = {} }) {
+export async function createEoiService({ user, body = {}, io }) {
   const enquiryId = body.enquiryId || body.leadId || null;
   let enquiry = null;
 
@@ -391,6 +401,7 @@ export async function createEoiService({ user, body = {} }) {
     recipient,
     enquiryId: enquiry?._id || null,
     signatory,
+    signatoryApproval: pendingSignatoryApproval(),
     status,
     quotationId: toObjectId(body.quotationId),
     pdfUrl: String(body.pdfUrl || "").trim(),
@@ -413,6 +424,7 @@ export async function createEoiService({ user, body = {} }) {
 
   await advanceEnquiryIfEoiSent(enquiry, status);
   await logEoiActivity({ user, action: "created", eoi });
+  await notifySignatoryOnCreate({ io, actor: user, doc: eoi, kind: "eoi" });
   return populateEoi(eoi);
 }
 
@@ -423,12 +435,9 @@ export async function getEoisService({ user, query = {} }) {
     const enquiry = await resolveAccessibleEnquiry(user, query.enquiryId || query.leadId);
     if (!enquiry) throwError("Enquiry not found", 404);
     filter.enquiryId = enquiry._id;
-  } else {
-    const ids = await accessibleEnquiryIds(user);
-    if (ids) {
-      filter.$or = [{ enquiryId: { $in: ids } }, { createdBy: user._id }];
-    }
   }
+
+  applyCreatorOrSignatoryListFilter(filter, user);
 
   if (query.status) {
     filter.status = parseStatus(query.status);
@@ -477,6 +486,10 @@ export async function updateEoiService({ user, eoiId, body = {} }) {
     throwError(`${eoi.status} expressions of interest cannot be edited`);
   }
 
+  if (hasNonStatusUpdates(body)) {
+    assertSignatoryContentEditable(eoi);
+  }
+
   if (body.company) {
     eoi.company = snapshotCompany(null, {
       ...eoi.company.toObject?.() || eoi.company,
@@ -521,12 +534,19 @@ export async function updateEoiService({ user, eoiId, body = {} }) {
   if (body.quotationId !== undefined) eoi.quotationId = toObjectId(body.quotationId);
   if (body.eoiDate !== undefined) eoi.eoiDate = parseDate(body.eoiDate, "eoiDate");
 
+  if (bodyResetsSignatoryApproval(body, EOI_CONTENT_KEYS)) {
+    applyPendingSignatoryApproval(eoi);
+  }
+
   if (body.status !== undefined) {
     const nextStatus = parseStatus(body.status);
     if (nextStatus !== eoi.status) {
       const allowed = STATUS_TRANSITIONS[eoi.status] || [];
       if (!allowed.includes(nextStatus)) {
         throwError(`Cannot change status from ${eoi.status} to ${nextStatus}`);
+      }
+      if (nextStatus === "SENT") {
+        assertSignatoryApproved(eoi, "mark this EOI as sent");
       }
       eoi.status = nextStatus;
     }
@@ -558,6 +578,10 @@ export async function updateEoiStatusService({ user, eoiId, body = {} }) {
   const allowed = STATUS_TRANSITIONS[eoi.status] || [];
   if (!allowed.includes(nextStatus)) {
     throwError(`Cannot change status from ${eoi.status} to ${nextStatus}`);
+  }
+
+  if (nextStatus === "SENT") {
+    assertSignatoryApproved(eoi, "mark this EOI as sent");
   }
 
   const previousStatus = eoi.status;
@@ -608,6 +632,7 @@ export async function sendEoiEmailService({ user, eoiId, body = {}, file }) {
 
   const eoi = await ExpressionOfInterest.findById(id);
   await assertEoiAccess(user, eoi);
+  assertSignatoryApproved(eoi, "email this EOI");
 
   const canMarkSent = (STATUS_TRANSITIONS[eoi.status] || []).includes("SENT");
   const canResend = eoi.status === "SENT" || eoi.status === "ACCEPTED";
@@ -679,6 +704,34 @@ export async function sendEoiEmailService({ user, eoiId, body = {}, file }) {
     eoi,
     extraMessage: `${user?.name || "User"} resent expression of interest "${eoi.eoiRef}" to ${toEmails.join(", ")}`,
   });
+  return populateEoi(eoi);
+}
+
+export async function approveEoiSignatoryService({ user, eoiId, io }) {
+  const id = toObjectId(eoiId);
+  if (!id) throwError("Invalid expression of interest id");
+
+  const eoi = await ExpressionOfInterest.findById(id);
+  await assertEoiAccess(user, eoi);
+  assertCurrentUserIsSignatory(user, eoi);
+
+  if (isSignatoryApproved(eoi)) {
+    return populateEoi(eoi);
+  }
+
+  eoi.signatoryApproval = approvedSignatoryApproval(user);
+  eoi.updatedBy = user?._id || eoi.updatedBy;
+  await eoi.save();
+
+  await logEoiActivity({
+    user,
+    action: "updated",
+    eoi,
+    extraMessage: `${user?.name || "User"} approved expression of interest "${eoi.eoiRef}" as signatory`,
+  });
+
+  await notifyCreatorOnApproval({ io, actor: user, doc: eoi, kind: "eoi" });
+
   return populateEoi(eoi);
 }
 

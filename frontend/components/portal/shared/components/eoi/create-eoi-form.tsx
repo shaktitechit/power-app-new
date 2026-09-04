@@ -30,7 +30,7 @@ import {
 } from "@/components/portal/ui/command";
 import { Check, ChevronsUpDown } from "lucide-react";
 import { toast } from "sonner";
-import { useGetEnquiryByIdQuery } from "@/store/slices/enquiryApiSlice";
+import { useGetEnquiriesQuery } from "@/store/slices/enquiryApiSlice";
 import {
   useCreateEoiMutation,
   useGetEoiSignatoriesQuery,
@@ -46,13 +46,21 @@ import {
   defaultEoiSubject,
   eoiBodyForEditor,
   eoiEnquiryId,
+  eoiEnquiryLabel,
 } from "@/components/portal/lib/eoiConstants";
+import {
+  TERMINAL_ENQUIRY_STATUSES,
+  enquiryStatusLabel,
+  pipelineStatusValue,
+} from "@/components/portal/lib/enquiryConstants";
+import { enquirySearchHaystack } from "@/components/portal/lib/enquirySearchHaystack";
 import { formatRoleLabel } from "@/components/portal/lib/authRoles";
 import {
   DEFAULT_SIGNATORY_DESIGNATION,
   ELECTRONIC_SIGNATORY_LABEL,
   isDefaultSignatoryDesignation,
   isElectronicSignatory,
+  isEligibleSignatoryRole,
   signatoryDesignationForRole,
 } from "@/components/portal/lib/signatoryDesignation";
 import { cn } from "@/components/portal/lib/utils";
@@ -67,7 +75,6 @@ interface CreateEoiFormProps {
 }
 
 const NONE = "";
-const SIGNATORY_ROLES = ["super_admin", "admin", "manager"];
 
 function toDateInputValue(value?: string | null) {
   if (!value) return "";
@@ -93,6 +100,16 @@ function joinParts(...parts: Array<string | undefined | null>) {
   return parts.map((part) => String(part || "").trim()).filter(Boolean).join(", ");
 }
 
+function enquiryOptionLabel(enquiry: {
+  enquiry_number?: string;
+  name: string;
+  city?: string;
+}) {
+  const number = enquiry.enquiry_number ? `${enquiry.enquiry_number} — ` : "";
+  const city = enquiry.city ? ` (${enquiry.city})` : "";
+  return `${number}${enquiry.name}${city}`;
+}
+
 export function CreateEoiForm({
   open,
   onOpenChange,
@@ -100,6 +117,8 @@ export function CreateEoiForm({
   enquiryId: presetEnquiryId,
   eoi,
 }: CreateEoiFormProps) {
+  const [enquiryId, setEnquiryId] = useState(presetEnquiryId || NONE);
+  const [enquiryOpen, setEnquiryOpen] = useState(false);
   const [signatoryId, setSignatoryId] = useState(NONE);
   const [signatoryDesignation, setSignatoryDesignation] = useState("");
   const [electronicSignOff, setElectronicSignOff] = useState(true);
@@ -116,42 +135,63 @@ export function CreateEoiForm({
   const [complimentaryClose, setComplimentaryClose] = useState(DEFAULT_EOI_CLOSE);
   const [editorKey, setEditorKey] = useState(0);
 
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const [popoverWidth, setPopoverWidth] = useState<number | undefined>();
   const signatoryTriggerRef = useRef<HTMLButtonElement>(null);
   const [signatoryPopoverWidth, setSignatoryPopoverWidth] = useState<number | undefined>();
 
   const currentUser = useAppSelector((state) => state.auth.user);
-  const { data: enquiryRes } = useGetEnquiryByIdQuery(presetEnquiryId || "", {
-    skip: !open || !presetEnquiryId,
-  });
+  const { data: enquiriesRes } = useGetEnquiriesQuery(undefined, { skip: !open });
   const { data: signatoriesRes } = useGetEoiSignatoriesQuery(undefined, { skip: !open });
-  const enquiry = enquiryRes?.data;
-  const signatories = signatoriesRes?.data ?? [];
+  const enquiries = enquiriesRes?.data ?? [];
+  const signatories = useMemo(
+    () =>
+      (signatoriesRes?.data ?? []).filter((user) => isEligibleSignatoryRole(user.role)),
+    [signatoriesRes?.data],
+  );
   const [createEoi, { isLoading: creating }] = useCreateEoiMutation();
   const [updateEoi, { isLoading: updating }] = useUpdateEoiMutation();
   const isEdit = Boolean(eoi);
   const isLoading = creating || updating;
   const prefillKeyRef = useRef("");
 
+  const activeEnquiries = useMemo(
+    () =>
+      enquiries.filter(
+        (enquiry) =>
+          !TERMINAL_ENQUIRY_STATUSES.has(pipelineStatusValue(enquiry.enquiry_status)),
+      ),
+    [enquiries],
+  );
+
+  const selectedEnquiry = useMemo(
+    () =>
+      enquiries.find((enquiry) => enquiry._id === enquiryId) ||
+      activeEnquiries.find((enquiry) => enquiry._id === enquiryId),
+    [enquiries, activeEnquiries, enquiryId],
+  );
+
   const selectedSignatory = useMemo(
     () => signatories.find((user) => user._id === signatoryId),
     [signatories, signatoryId],
   );
+
+  const presetBlocked =
+    Boolean(presetEnquiryId) &&
+    enquiries.length > 0 &&
+    !activeEnquiries.some((enquiry) => enquiry._id === presetEnquiryId);
+
+  const isStandalone = !enquiryId && !presetBlocked;
 
   useEffect(() => {
     if (!open) {
       prefillKeyRef.current = "";
       return;
     }
-    if (!eoi && presetEnquiryId && !enquiry) return;
-
-    const prefillKey = eoi?._id
-      ? `edit:${eoi._id}`
-      : `create:${presetEnquiryId || ""}:${enquiry?._id || ""}`;
-    if (prefillKeyRef.current === prefillKey) return;
-    prefillKeyRef.current = prefillKey;
-
+    setEnquiryOpen(false);
     setSignatoryOpen(false);
     if (eoi) {
+      setEnquiryId(eoiEnquiryId(eoi) || NONE);
       setSignatoryId(signatoryIdFromEoi(eoi));
       setSignatoryDesignation(eoi.signatory?.designation || "");
       setElectronicSignOff(isElectronicSignatory(eoi.signatory));
@@ -169,10 +209,9 @@ export function CreateEoiForm({
       return;
     }
 
-    const reps = getEnquiryClientRepresentatives(enquiry);
-    const primary = reps[0];
+    setEnquiryId(presetEnquiryId || NONE);
     const selfIsSignatory = Boolean(
-      currentUser?._id && SIGNATORY_ROLES.includes(currentUser.role),
+      currentUser?._id && isEligibleSignatoryRole(currentUser.role),
     );
     setSignatoryId(selfIsSignatory ? currentUser?._id ?? NONE : NONE);
     setSignatoryDesignation(
@@ -180,17 +219,39 @@ export function CreateEoiForm({
     );
     setElectronicSignOff(true);
     setEoiDate(todayInputValue());
+    setSalutation(DEFAULT_EOI_SALUTATION);
+    setComplimentaryClose(DEFAULT_EOI_CLOSE);
+  }, [open, eoi, presetEnquiryId, currentUser?._id, currentUser?.role]);
+
+  useEffect(() => {
+    if (!open || eoi) return;
+    if (enquiryId && !selectedEnquiry) return;
+    const enquiry = selectedEnquiry;
+    const prefillKey = `create:${enquiryId || ""}:${enquiry?._id || ""}`;
+    if (prefillKeyRef.current === prefillKey) return;
+    prefillKeyRef.current = prefillKey;
+
+    const reps = getEnquiryClientRepresentatives(enquiry);
+    const primary = reps[0];
     setDesignation(enquiry?.client_representative || primary?.name || "The Chief Executive Officer");
     setOrganization(enquiry?.name || "");
     setAddress(joinParts(enquiry?.address, enquiry?.city));
     setEmail(enquiry?.client_email || primary?.email || "");
     setPhone(enquiry?.client_contact_number || primary?.contact_number || "");
     setSubject(defaultEoiSubject(enquiry));
-    setSalutation(DEFAULT_EOI_SALUTATION);
     setBody(defaultEoiBody(enquiry));
-    setComplimentaryClose(DEFAULT_EOI_CLOSE);
     setEditorKey((key) => key + 1);
-  }, [open, eoi, enquiry, presetEnquiryId, currentUser?._id, currentUser?.role]);
+  }, [open, eoi, enquiryId, selectedEnquiry]);
+
+  useEffect(() => {
+    if (!enquiryOpen) return;
+    const el = triggerRef.current;
+    if (!el) return;
+    const observer = new ResizeObserver(() => setPopoverWidth(el.offsetWidth));
+    observer.observe(el);
+    setPopoverWidth(el.offsetWidth);
+    return () => observer.disconnect();
+  }, [enquiryOpen]);
 
   useEffect(() => {
     if (!signatoryOpen) return;
@@ -221,7 +282,7 @@ export function CreateEoiForm({
     }
 
     const payload = {
-      ...(presetEnquiryId && !isEdit ? { enquiryId: presetEnquiryId } : {}),
+      ...(enquiryId && !isEdit ? { enquiryId } : {}),
       eoiDate: eoiDate || undefined,
       subject: subject.trim(),
       salutation: salutation.trim() || DEFAULT_EOI_SALUTATION,
@@ -267,7 +328,8 @@ export function CreateEoiForm({
     Boolean(organization.trim()) &&
     Boolean(subject.trim()) &&
     !isEmptyRichHtml(body) &&
-    Boolean(signatoryId);
+    Boolean(signatoryId) &&
+    (isEdit || !presetBlocked);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -277,21 +339,90 @@ export function CreateEoiForm({
         </DialogHeader>
 
         <div className="grid gap-4 py-2 sm:grid-cols-2">
-          {presetEnquiryId || eoi ? (
-            <div className="space-y-1.5 sm:col-span-2">
-              <Label>Enquiry</Label>
-              <Input
-                value={
-                  enquiry
-                    ? `${enquiry.enquiry_number ? `${enquiry.enquiry_number} — ` : ""}${enquiry.name}`
-                    : eoi
-                      ? eoiEnquiryId(eoi) || "Linked enquiry"
-                      : ""
-                }
-                disabled
-              />
-            </div>
-          ) : null}
+          <div className="space-y-1.5 sm:col-span-2">
+            <Label>Enquiry</Label>
+            <Popover open={enquiryOpen} onOpenChange={setEnquiryOpen} modal>
+              <PopoverTrigger asChild>
+                <button
+                  ref={triggerRef}
+                  type="button"
+                  role="combobox"
+                  aria-expanded={enquiryOpen}
+                  disabled={Boolean(presetEnquiryId) || isEdit}
+                  className={cn(
+                    "flex h-9 w-full min-w-0 items-center justify-between rounded-md border border-input bg-background px-3 py-1.5 text-sm shadow-xs",
+                    "transition-colors hover:bg-accent/50 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2",
+                    Boolean(presetEnquiryId) || isEdit ? "cursor-not-allowed opacity-70" : "",
+                  )}
+                >
+                  <span className={cn("truncate text-left", !selectedEnquiry && !eoi?.enquiryId && "text-muted-foreground")}>
+                    {selectedEnquiry
+                      ? enquiryOptionLabel(selectedEnquiry)
+                      : eoi?.enquiryId
+                        ? eoiEnquiryLabel(eoi)
+                        : "Create directly — no enquiry"}
+                  </span>
+                  <ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50" />
+                </button>
+              </PopoverTrigger>
+              <PopoverContent
+                align="start"
+                className="p-0"
+                style={{ width: popoverWidth ? `${popoverWidth}px` : undefined }}
+                onOpenAutoFocus={(event) => event.preventDefault()}
+              >
+                <Command>
+                  <CommandInput placeholder="Search enquiry number, name, city…" />
+                  <CommandList>
+                    <CommandEmpty>No active enquiries found.</CommandEmpty>
+                    <CommandGroup>
+                      <CommandItem
+                        value="create directly no enquiry standalone"
+                        onSelect={() => {
+                          setEnquiryId(NONE);
+                          setEnquiryOpen(false);
+                        }}
+                      >
+                        <Check className={cn("h-4 w-4", isStandalone ? "opacity-100" : "opacity-0")} />
+                        <span className="font-medium">Create directly — no enquiry</span>
+                      </CommandItem>
+                      {activeEnquiries.map((enquiry) => (
+                        <CommandItem
+                          key={enquiry._id}
+                          value={enquirySearchHaystack(enquiry)}
+                          onSelect={() => {
+                            setEnquiryId(enquiry._id);
+                            setEnquiryOpen(false);
+                          }}
+                        >
+                          <Check
+                            className={cn(
+                              "h-4 w-4",
+                              enquiryId === enquiry._id ? "opacity-100" : "opacity-0",
+                            )}
+                          />
+                          <span className="min-w-0 flex-1 truncate">
+                            {enquiryOptionLabel(enquiry)}
+                          </span>
+                          <span className="shrink-0 text-xs text-muted-foreground">
+                            {enquiryStatusLabel(enquiry.enquiry_status)}
+                          </span>
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                  </CommandList>
+                </Command>
+              </PopoverContent>
+            </Popover>
+            <p className="text-xs text-muted-foreground">
+              Optional. Only enquiries still in the pipeline can be linked — won, lost, and dropped leads are hidden.
+            </p>
+            {presetBlocked && (
+              <p className="text-xs text-destructive">
+                This enquiry is won, lost, or dropped, so an EOI cannot be created for it.
+              </p>
+            )}
+          </div>
 
           <div className="space-y-1.5">
             <Label>Date</Label>

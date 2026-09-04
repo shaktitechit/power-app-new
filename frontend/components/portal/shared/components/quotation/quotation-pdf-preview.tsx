@@ -18,6 +18,11 @@ import {
   buildQuotationPdfBlob,
   quotationPdfFilename,
 } from "@/components/portal/lib/quotationPdf";
+import {
+  pdfLockMessage,
+  canViewPdf,
+} from "@/components/portal/lib/signatoryApproval";
+import { useAppSelector } from "@/store/hooks";
 
 function triggerPdfDownload(url: string, filename: string) {
   const link = document.createElement("a");
@@ -27,6 +32,9 @@ function triggerPdfDownload(url: string, filename: string) {
 }
 
 function useQuotationPdf(quotation: Quotation) {
+  const userId = useAppSelector((state) => state.auth.user?._id);
+  const canView = canViewPdf(quotation, userId);
+  const lockMessage = pdfLockMessage(quotation);
   const { displayName, logoSrc, primaryColor } = useCompanyBranding();
   const { data: companyRes } = useGetDefaultCompanyQuery();
   const [open, setOpen] = useState(false);
@@ -39,7 +47,20 @@ function useQuotationPdf(quotation: Quotation) {
     };
   }, [pdfUrl]);
 
+  useEffect(() => {
+    if (canView) return;
+    setOpen(false);
+    setPdfUrl((current) => {
+      if (current) URL.revokeObjectURL(current);
+      return null;
+    });
+  }, [canView]);
+
   const generateUrl = async () => {
+    if (!canView) {
+      toast.error(lockMessage);
+      return null;
+    }
     setGenerating(true);
     try {
       const blob = await buildQuotationPdfBlob({
@@ -74,7 +95,7 @@ function useQuotationPdf(quotation: Quotation) {
     if (url) triggerPdfDownload(url, quotationPdfFilename(quotation));
   };
 
-  return { generating, open, setOpen, pdfUrl, preview, download };
+  return { generating, open, setOpen, pdfUrl, preview, download, canView, lockMessage };
 }
 
 function QuotationPdfDialog({
@@ -133,10 +154,17 @@ function QuotationPdfDialog({
 
 export function QuotationPdfPreviewButton({ quotation }: { quotation: Quotation }) {
   const pdf = useQuotationPdf(quotation);
+  const locked = !pdf.canView;
 
   return (
     <>
-      <Button variant="outline" size="sm" onClick={pdf.preview} disabled={pdf.generating}>
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={pdf.preview}
+        disabled={pdf.generating || locked}
+        title={locked ? pdf.lockMessage : undefined}
+      >
         {pdf.generating ? (
           <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
         ) : (
@@ -157,6 +185,7 @@ export function QuotationPdfPreviewButton({ quotation }: { quotation: Quotation 
 
 export function QuotationPdfListActions({ quotation }: { quotation: Quotation }) {
   const pdf = useQuotationPdf(quotation);
+  const locked = !pdf.canView;
 
   return (
     <>
@@ -166,7 +195,8 @@ export function QuotationPdfListActions({ quotation }: { quotation: Quotation })
           size="sm"
           className="h-8"
           onClick={pdf.preview}
-          disabled={pdf.generating}
+          disabled={pdf.generating || locked}
+          title={locked ? pdf.lockMessage : undefined}
         >
           {pdf.generating ? (
             <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
@@ -180,7 +210,8 @@ export function QuotationPdfListActions({ quotation }: { quotation: Quotation })
           size="sm"
           className="h-8"
           onClick={pdf.download}
-          disabled={pdf.generating}
+          disabled={pdf.generating || locked}
+          title={locked ? pdf.lockMessage : undefined}
         >
           <Download className="mr-1 h-3.5 w-3.5" />
           Download PDF

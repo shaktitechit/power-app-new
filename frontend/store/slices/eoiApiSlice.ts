@@ -66,6 +66,11 @@ export interface ExpressionOfInterest {
   recipient: EoiRecipient;
   enquiryId?: string | EoiEnquiryRef | null;
   signatory: EoiSignatory;
+  signatoryApproval?: {
+    status?: "PENDING" | "APPROVED" | string;
+    approvedAt?: string | null;
+    approvedBy?: string | EoiUserRef | null;
+  } | null;
   status: EoiStatus;
   quotationId?: string | null;
   pdfUrl?: string;
@@ -277,6 +282,15 @@ export const eoiApiSlice = apiSlice.injectEndpoints({
         eoiMutationTags(eoiEnquiryId(result?.data?.enquiryId), id),
     }),
 
+    approveEoiSignatory: builder.mutation<EoiMutationResponse, { id: string }>({
+      query: ({ id }) => ({
+        url: `/v1/expression-of-interest/${id}/signatory-approval`,
+        method: "PUT",
+      }),
+      invalidatesTags: (result, _error, { id }) =>
+        eoiMutationTags(eoiEnquiryId(result?.data?.enquiryId), id),
+    }),
+
     sendEoiEmail: builder.mutation<EoiMutationResponse, SendEoiEmailRequest>({
       query: ({ id, from, to, cc, subject, body, attachment }) => {
         const formData = new FormData();
@@ -314,6 +328,7 @@ export const {
   useUpdateEoiMutation,
   useUpdateEoiStatusMutation,
   useAcceptEoiMutation,
+  useApproveEoiSignatoryMutation,
   useSendEoiEmailMutation,
   useDeleteEoiMutation,
 } = eoiApiSlice;

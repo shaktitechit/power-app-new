@@ -36,6 +36,8 @@ export function useParams() {
     parsed.enquiryId = pathSegments[1];
   } else if (pathSegments[0] === "quotations" && pathSegments.length >= 2) {
     parsed.quotationId = pathSegments[1];
+  } else if (pathSegments[0] === "eois" && pathSegments.length >= 2) {
+    parsed.eoiId = pathSegments[1];
   } else if (pathSegments[0] === "terms-conditions" && pathSegments.length >= 2) {
     parsed.termsConditionsId = pathSegments[1];
   }

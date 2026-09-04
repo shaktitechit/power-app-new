@@ -9,6 +9,7 @@ import {
   sendQuotationEmailService,
   deleteQuotationService,
   getQuotationSignatoriesService,
+  approveQuotationSignatoryService,
 } from "./quotation.services.js";
 
 // POST /api/v1/quotations
@@ -17,6 +18,7 @@ export const createQuotation = asyncHandler(async (req, res) => {
     const data = await createQuotationService({
       user: req.user,
       body: req.body,
+      io: req.app.get("io"),
     });
     return res.status(201).json({
       success: true,
@@ -94,6 +96,20 @@ export const acceptQuotation = asyncHandler(async (req, res) => {
   return res.status(200).json({
     success: true,
     message: "Quotation accepted successfully",
+    data,
+  });
+});
+
+// PUT /api/v1/quotations/:id/signatory-approval
+export const approveQuotationSignatory = asyncHandler(async (req, res) => {
+  const data = await approveQuotationSignatoryService({
+    user: req.user,
+    quotationId: req.params.id,
+    io: req.app.get("io"),
+  });
+  return res.status(200).json({
+    success: true,
+    message: "Quotation approved by signatory",
     data,
   });
 });

@@ -72,7 +72,9 @@ export function middleware(req: NextRequest) {
       return NextResponse.redirect(new URL(`/${portalRole}/dashboard`, req.url));
     }
     if (
-      (subPath.startsWith("quotations") || subPath.startsWith("terms-conditions")) &&
+      (subPath.startsWith("quotations") ||
+        subPath.startsWith("eois") ||
+        subPath.startsWith("terms-conditions")) &&
       role !== "super_admin" &&
       role !== "admin" &&
       role !== "manager"
@@ -86,6 +88,7 @@ export function middleware(req: NextRequest) {
       "facilities",
       "facility",
       "enquiries",
+      "eois",
       "quotations",
       "terms-conditions",
       "submited-enquiries",

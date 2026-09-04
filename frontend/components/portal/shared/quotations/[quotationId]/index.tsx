@@ -34,6 +34,7 @@ import {
   useUpdateQuotationMutation,
   useUpdateQuotationStatusMutation,
   useDeleteQuotationMutation,
+  useApproveQuotationSignatoryMutation,
 } from "@/store/slices/quotationApiSlice";
 import {
   type Enquiry,
@@ -69,6 +70,18 @@ import {
   isElectronicSignatory,
   signatoryPhone,
 } from "@/components/portal/lib/signatoryDesignation";
+import { SignatoryApprovalPill } from "@/components/portal/shared/components/signatory-approval-pill";
+import { SignatoryApproveButton } from "@/components/portal/shared/components/signatory-approve-button";
+import {
+  CANCELLED_PDF_LOCKED_MESSAGE,
+  SIGNATORY_APPROVAL_LOCKED_MESSAGE,
+  SIGNATORY_EDIT_LOCKED_MESSAGE,
+  isCancelledDocument,
+  isSignatoryApproved,
+  isSignatoryApprovalPending,
+  isSignatoryContentLocked,
+  signatoryDisplayNameFromDoc,
+} from "@/components/portal/lib/signatoryApproval";
 
 const STATUS_CONFIRM: Partial<
   Record<
@@ -139,6 +152,8 @@ export default function QuotationDetailsPage() {
   const [updateQuotation, { isLoading: updatingTerms }] = useUpdateQuotationMutation();
   const [updateStatus, { isLoading: updatingStatus }] = useUpdateQuotationStatusMutation();
   const [deleteQuotation, { isLoading: deleting }] = useDeleteQuotationMutation();
+  const [approveQuotationSignatory, { isLoading: approving }] =
+    useApproveQuotationSignatoryMutation();
 
   const quotation = data?.data;
   const enquiryId = quotation ? quotationEnquiryId(quotation) : undefined;
@@ -202,7 +217,7 @@ export default function QuotationDetailsPage() {
   const terms = quotation?.termsAndConditions ?? [];
   const termGroups = groupQuotationTerms(terms);
   const termsLibrary = termsLibraryRes?.data ?? [];
-  const canEditTerms = quotation ? canEditQuotation(quotation.status) : false;
+  const canEditTerms = quotation ? canEditQuotation(quotation.status, quotation) : false;
 
   useEffect(() => {
     if (!termsEditorOpen) return;
@@ -301,18 +316,40 @@ export default function QuotationDetailsPage() {
           <div className="flex flex-wrap items-center gap-2">
             <h2 className="text-lg font-semibold text-foreground">{quotation.quotationRef}</h2>
             <QuotationStatusPill status={quotation.status} />
+            <SignatoryApprovalPill doc={quotation} />
           </div>
           <p className="mt-1 text-sm text-muted-foreground">{quotation.subject}</p>
+          {isCancelledDocument(quotation) ? (
+            <p className="mt-2 max-w-xl text-sm text-muted-foreground">
+              {CANCELLED_PDF_LOCKED_MESSAGE}
+            </p>
+          ) : isSignatoryApprovalPending(quotation) ? (
+            <p className="mt-2 max-w-xl text-sm text-amber-800 dark:text-amber-200">
+              {SIGNATORY_APPROVAL_LOCKED_MESSAGE} The assigned signatory (
+              {signatoryDisplayNameFromDoc(quotation)}) can preview the PDF before approving.
+            </p>
+          ) : isSignatoryContentLocked(quotation) ? (
+            <p className="mt-2 max-w-xl text-sm text-muted-foreground">
+              {SIGNATORY_EDIT_LOCKED_MESSAGE}
+            </p>
+          ) : null}
         </div>
         <div className="flex flex-wrap gap-2">
           <QuotationPdfPreviewButton quotation={quotation} />
-          {canEditQuotation(quotation.status) ? (
+          {canEditQuotation(quotation.status, quotation) ? (
             <Button variant="outline" size="sm" onClick={() => setEditOpen(true)}>
               <Pencil className="mr-1.5 h-3.5 w-3.5" />
               Edit
             </Button>
           ) : null}
-          {canSendQuotationEmail(quotation.status) ? (
+          <SignatoryApproveButton
+            doc={quotation}
+            documentLabel="quotation"
+            refLabel={quotation.quotationRef}
+            isLoading={approving}
+            onApprove={() => approveQuotationSignatory({ id: quotation._id }).unwrap()}
+          />
+          {canSendQuotationEmail(quotation.status) && isSignatoryApproved(quotation) ? (
             <QuotationSendEmailButton
               quotation={quotation}
               mode={quotation.status === "DRAFT" ? "send" : "resend"}
@@ -547,6 +584,14 @@ export default function QuotationDetailsPage() {
             {isElectronicSignatory(quotation.signatory) ? (
               <Row label="Signature" value={ELECTRONIC_SIGNATORY_LABEL} />
             ) : null}
+            <Row
+              label="Approval"
+              value={
+                isSignatoryApproved(quotation)
+                  ? `Approved${quotation.signatoryApproval?.approvedAt ? ` · ${formatDisplayDate(quotation.signatoryApproval.approvedAt)}` : ""}`
+                  : "Pending"
+              }
+            />
           </CardContent>
         </Card>
       </div>

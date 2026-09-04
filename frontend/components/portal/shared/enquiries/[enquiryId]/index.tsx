@@ -36,7 +36,8 @@ import { QuotationStatusPill } from "@/components/portal/shared/components/quota
 import { QuotationPdfListActions } from "@/components/portal/shared/components/quotation/quotation-pdf-preview";
 import { CreateEoiForm } from "@/components/portal/shared/components/eoi/create-eoi-form";
 import { EoiStatusPill } from "@/components/portal/shared/components/eoi/eoi-status-pill";
-import { EoiListActions } from "@/components/portal/shared/components/eoi/eoi-list-actions";
+import { EoiPdfListActions } from "@/components/portal/shared/components/eoi/eoi-pdf-preview";
+import { SignatoryApprovalPill } from "@/components/portal/shared/components/signatory-approval-pill";
 import { getEnquiryClientRepresentatives } from "@/components/portal/shared/components/enquiry/enquiry-client-representatives-fields";
 import {
   FollowUpModeBadge,
@@ -242,9 +243,6 @@ export default function EnquiryDetailPage() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [createQuotationOpen, setCreateQuotationOpen] = useState(false);
   const [createEoiOpen, setCreateEoiOpen] = useState(false);
-  const [editingEoi, setEditingEoi] = useState<ExpressionOfInterest | null>(
-    null,
-  );
   const [assignOpen, setAssignOpen] = useState(false);
   const [closeLeadOpen, setCloseLeadOpen] = useState(false);
   const [submitConfirmOpen, setSubmitConfirmOpen] = useState(false);
@@ -687,7 +685,12 @@ export default function EnquiryDetailPage() {
       {
         key: "status",
         header: "Status",
-        render: (row) => <QuotationStatusPill status={row.status} />,
+        render: (row) => (
+          <div className="flex flex-col items-start gap-1">
+            <QuotationStatusPill status={row.status} />
+            <SignatoryApprovalPill doc={row} />
+          </div>
+        ),
       },
       {
         key: "actions",
@@ -746,25 +749,20 @@ export default function EnquiryDetailPage() {
       {
         key: "status",
         header: "Status",
-        render: (row) => <EoiStatusPill status={row.status} />,
+        render: (row) => (
+          <div className="flex flex-col items-start gap-1">
+            <EoiStatusPill status={row.status} />
+            <SignatoryApprovalPill doc={row} />
+          </div>
+        ),
       },
       {
         key: "actions",
         header: "Actions",
-        className: "min-w-[22rem]",
-        render: (row) => (
-          <EoiListActions
-            eoi={row}
-            canAct={canManagePipelineArtifacts}
-            onEdit={() => {
-              setEditingEoi(row);
-              setCreateEoiOpen(true);
-            }}
-          />
-        ),
+        render: (row) => <EoiPdfListActions eoi={row} />,
       },
     ],
-    [canManagePipelineArtifacts],
+    [],
   );
 
   const loadingMain =
@@ -882,10 +880,7 @@ export default function EnquiryDetailPage() {
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => {
-                        setEditingEoi(null);
-                        setCreateEoiOpen(true);
-                      }}
+                      onClick={() => setCreateEoiOpen(true)}
                       className="h-9 gap-1.5 text-xs"
                     >
                       <Send className="h-3.5 w-3.5" />
@@ -1237,10 +1232,7 @@ export default function EnquiryDetailPage() {
                 <div className="flex justify-end">
                   <Button
                     size="sm"
-                    onClick={() => {
-                      setEditingEoi(null);
-                      setCreateEoiOpen(true);
-                    }}
+                    onClick={() => setCreateEoiOpen(true)}
                   >
                     <Plus className="mr-1 h-4 w-4" />
                     Create EOI
@@ -1252,6 +1244,11 @@ export default function EnquiryDetailPage() {
                 columns={eoiColumns}
                 data={eois}
                 loading={eoisLoading}
+                onRowClick={
+                  user?.role === "auditor"
+                    ? undefined
+                    : (row) => row && router.push(`/eois/${row._id}`)
+                }
                 emptyMessage="No EOIs yet"
               />
             </TabsContent>
@@ -1749,15 +1746,10 @@ export default function EnquiryDetailPage() {
 
       <CreateEoiForm
         open={createEoiOpen}
-        onOpenChange={(open) => {
-          setCreateEoiOpen(open);
-          if (!open) setEditingEoi(null);
-        }}
+        onOpenChange={setCreateEoiOpen}
         enquiryId={enquiryId}
-        eoi={editingEoi ?? undefined}
         onComplete={() => {
           setTab("eoi");
-          setEditingEoi(null);
         }}
       />
 

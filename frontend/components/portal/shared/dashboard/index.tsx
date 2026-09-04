@@ -19,6 +19,7 @@ import {
   LockKeyhole,
   MessageSquare,
   Receipt,
+  Mail,
 } from "lucide-react";
 import Link from "next/link";
 import { useAppSelector } from "@/store/hooks";
@@ -29,6 +30,7 @@ import {
 } from "@/store/slices/dashboardApiSlice";
 import { useGetEnquiriesQuery } from "@/store/slices/enquiryApiSlice";
 import { useGetQuotationsQuery } from "@/store/slices/quotationApiSlice";
+import { useGetEoisQuery } from "@/store/slices/eoiApiSlice";
 import { FacilityUtilityAuditProgress } from "@/components/portal/shared/facility/[auditType]/[facilityId]/_components/facility-utility-audit-progress";
 import { facilityPath } from "@/components/portal/lib/facilityRoutes";
 import { filterEnquiriesForUser } from "@/components/portal/lib/enquiryAccess";
@@ -37,8 +39,9 @@ import { countFollowUpQueues } from "@/components/portal/lib/enquiryFollowUps";
 import { DashboardEnquiryWidget } from "@/components/portal/shared/dashboard/dashboard-enquiry-widget";
 import { DashboardFollowUpsWidget } from "@/components/portal/shared/dashboard/dashboard-follow-ups-widget";
 import { DashboardQuotationWidget } from "@/components/portal/shared/dashboard/dashboard-quotation-widget";
+import { DashboardEoiWidget } from "@/components/portal/shared/dashboard/dashboard-eoi-widget";
 
-type DashboardTab = "facilities" | "enquiries" | "follow-ups" | "quotations";
+type DashboardTab = "facilities" | "enquiries" | "follow-ups" | "eois" | "quotations";
 
 function isFacilityAuditClosed(facility: {
   audit_closure?: { closed_at?: string };
@@ -68,6 +71,9 @@ export default function DashboardPage() {
   const { data: quotationsResponse } = useGetQuotationsQuery(undefined, {
     skip: user?.role === "auditor",
   });
+  const { data: eoisResponse } = useGetEoisQuery(undefined, {
+    skip: user?.role === "auditor",
+  });
 
   useEffect(() => {
     setMounted(true);
@@ -78,6 +84,7 @@ export default function DashboardPage() {
     .filter((item) => !isFacilityAuditClosed(item.facility))
     .slice(0, 6);
   const showQuotationWidget = user?.role !== "auditor";
+  const showEoiWidget = user?.role !== "auditor";
 
   const enquiries = useMemo(
     () => filterEnquiriesForUser(enquiriesResponse?.data ?? [], user),
@@ -92,6 +99,7 @@ export default function DashboardPage() {
     [pipelineEnquiries],
   );
   const quotationCount = quotationsResponse?.data?.length ?? 0;
+  const eoiCount = eoisResponse?.data?.length ?? 0;
 
   if (!mounted) return null;
 
@@ -136,6 +144,18 @@ export default function DashboardPage() {
               {followUpCounts.today + followUpCounts.overdue}
             </span>
           </TabsTrigger>
+          {showEoiWidget ? (
+            <TabsTrigger
+              value="eois"
+              className="gap-1.5 px-3 py-2 text-xs sm:text-sm"
+            >
+              <Mail className="h-3.5 w-3.5" />
+              EOI
+              <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-semibold tabular-nums">
+                {eoiCount}
+              </span>
+            </TabsTrigger>
+          ) : null}
           {showQuotationWidget ? (
             <TabsTrigger
               value="quotations"
@@ -332,6 +352,12 @@ export default function DashboardPage() {
         <TabsContent value="follow-ups" className="mt-0">
           <DashboardFollowUpsWidget />
         </TabsContent>
+
+        {showEoiWidget ? (
+          <TabsContent value="eois" className="mt-0">
+            <DashboardEoiWidget />
+          </TabsContent>
+        ) : null}
 
         {showQuotationWidget ? (
           <TabsContent value="quotations" className="mt-0">

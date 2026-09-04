@@ -15,6 +15,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/portal/ui/select";
+import { Tabs, TabsList, TabsTrigger } from "@/components/portal/ui/tabs";
 import {
   Plus,
   Search,
@@ -29,6 +30,7 @@ import {
 import {
   type Quotation,
   useGetQuotationsQuery,
+  useApproveQuotationSignatoryMutation,
 } from "@/store/slices/quotationApiSlice";
 import {
   type Enquiry,
@@ -43,6 +45,8 @@ import { CreateFacilityForm } from "@/components/portal/shared/components/facili
 import { EditFacilityForm } from "@/components/portal/shared/components/facility/edit-facility-form";
 import { QuotationStatusPill } from "@/components/portal/shared/components/quotation/quotation-status-pill";
 import { QuotationPdfListActions } from "@/components/portal/shared/components/quotation/quotation-pdf-preview";
+import { SignatoryApprovalPill } from "@/components/portal/shared/components/signatory-approval-pill";
+import { SignatoryApproveButton } from "@/components/portal/shared/components/signatory-approve-button";
 import { facilityExpectedValue } from "@/components/portal/lib/facilityConstants";
 import {
   buildFacilitiesByEnquiryNumber,
@@ -56,8 +60,10 @@ import {
   quotationEnquiryId,
   quotationEnquiryLabel,
 } from "@/components/portal/lib/quotationConstants";
+import { canListSignatoryDocument, isSignatoryApprovalPending } from "@/components/portal/lib/signatoryApproval";
 
 const PAGE_SIZE = 10;
+type QuotationsTab = "all" | "awaiting-signatory";
 
 export default function QuotationsPage() {
   const router = useRouter();
@@ -66,6 +72,7 @@ export default function QuotationsPage() {
 
   const [searchQuery, setSearchQuery] = useState("");
   const [filterStatus, setFilterStatus] = useState("all");
+  const [listTab, setListTab] = useState<QuotationsTab>("all");
   const [page, setPage] = useState(1);
   const [createOpen, setCreateOpen] = useState(false);
   const [createFacilityOpen, setCreateFacilityOpen] = useState(false);
@@ -75,6 +82,8 @@ export default function QuotationsPage() {
   const [editFacilityId, setEditFacilityId] = useState<string | null>(null);
 
   const { data, isLoading, refetch } = useGetQuotationsQuery();
+  const [approveQuotationSignatory, { isLoading: approving }] =
+    useApproveQuotationSignatoryMutation();
   const { data: facilitiesData, refetch: refetchFacilities } = useGetFacilitiesQuery(
     undefined,
     { skip: !isSuperAdmin },
@@ -97,7 +106,10 @@ export default function QuotationsPage() {
     };
   }, [enquiryDetailRes?.data, facilitySourceQuotation]);
 
-  const quotations = data?.data ?? [];
+  const quotations = useMemo(
+    () => (data?.data ?? []).filter((row) => canListSignatoryDocument(row, user)),
+    [data?.data, user],
+  );
   const facilities = facilitiesData?.data ?? [];
 
   const facilitiesByEnquiryNumber = useMemo(
@@ -109,8 +121,16 @@ export default function QuotationsPage() {
     await Promise.all([refetch(), ...(isSuperAdmin ? [refetchFacilities()] : [])]);
   };
 
+  const awaitingCount = useMemo(
+    () => quotations.filter((row) => isSignatoryApprovalPending(row)).length,
+    [quotations],
+  );
+
   const filtered = useMemo(() => {
     let list = quotations;
+    if (listTab === "awaiting-signatory") {
+      list = list.filter((row) => isSignatoryApprovalPending(row));
+    }
     if (filterStatus !== "all") {
       list = list.filter((row) => row.status === filterStatus);
     }
@@ -134,7 +154,7 @@ export default function QuotationsPage() {
       });
     }
     return list;
-  }, [quotations, filterStatus, searchQuery]);
+  }, [quotations, filterStatus, searchQuery, listTab]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const currentPage = Math.min(page, totalPages);
@@ -201,7 +221,12 @@ export default function QuotationsPage() {
       {
         key: "status",
         header: "Status",
-        render: (row) => <QuotationStatusPill status={row.status} />,
+        render: (row) => (
+          <div className="flex flex-col items-start gap-1">
+            <QuotationStatusPill status={row.status} />
+            <SignatoryApprovalPill doc={row} />
+          </div>
+        ),
       },
     ];
 
@@ -309,11 +334,22 @@ export default function QuotationsPage() {
     base.push({
       key: "actions",
       header: "Actions",
-      render: (row) => <QuotationPdfListActions quotation={row} />,
+      render: (row) => (
+        <div className="flex flex-wrap items-center gap-2" onClick={(event) => event.stopPropagation()}>
+          <QuotationPdfListActions quotation={row} />
+          <SignatoryApproveButton
+            doc={row}
+            documentLabel="quotation"
+            refLabel={row.quotationRef}
+            isLoading={approving}
+            onApprove={() => approveQuotationSignatory({ id: row._id }).unwrap()}
+          />
+        </div>
+      ),
     });
 
     return base;
-  }, [facilities, facilitiesByEnquiryNumber, isSuperAdmin]);
+  }, [approveQuotationSignatory, approving, facilities, facilitiesByEnquiryNumber, isSuperAdmin]);
 
   const QuotationsTable = DataTable as any;
 
@@ -378,12 +414,43 @@ export default function QuotationsPage() {
         </div>
       </div>
 
+      <Tabs
+        value={listTab}
+        onValueChange={(value) => {
+          setListTab(value as QuotationsTab);
+          setPage(1);
+        }}
+        className="mb-4"
+      >
+        <TabsList className="flex h-auto w-full flex-wrap justify-start gap-1 p-1">
+          <TabsTrigger value="all" className="gap-1.5 px-3 py-2 text-xs sm:text-sm">
+            All
+            <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-semibold tabular-nums">
+              {quotations.length}
+            </span>
+          </TabsTrigger>
+          <TabsTrigger
+            value="awaiting-signatory"
+            className="gap-1.5 px-3 py-2 text-xs sm:text-sm"
+          >
+            Awaiting signatory
+            <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-semibold tabular-nums">
+              {awaitingCount}
+            </span>
+          </TabsTrigger>
+        </TabsList>
+      </Tabs>
+
       <QuotationsTable
         columns={columns}
         data={paginated}
         loading={isLoading}
         onRowClick={(row?: Quotation) => row && router.push(`/quotations/${row._id}`)}
-        emptyMessage="No quotations yet"
+        emptyMessage={
+          listTab === "awaiting-signatory"
+            ? "No quotations awaiting signatory approval"
+            : "No quotations yet"
+        }
       />
 
       <div className="mt-4 flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -391,7 +458,9 @@ export default function QuotationsPage() {
           {filtered.length === 0
             ? quotations.length === 0
               ? "No quotations yet."
-              : "No quotations match your search or filters."
+              : listTab === "awaiting-signatory"
+                ? "No quotations awaiting signatory approval."
+                : "No quotations match your search or filters."
             : `Showing ${(currentPage - 1) * PAGE_SIZE + 1}–${Math.min(currentPage * PAGE_SIZE, filtered.length)} of ${filtered.length} quotations`}
         </p>
         {totalPages > 1 && (

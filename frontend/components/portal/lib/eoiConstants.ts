@@ -27,6 +27,14 @@ export function eoiEnquiryId(eoi: ExpressionOfInterest): string | undefined {
   return enquiry._id;
 }
 
+export function eoiEnquiryLabel(eoi: ExpressionOfInterest): string {
+  const enquiry = eoi.enquiryId;
+  if (enquiry && typeof enquiry === "object") {
+    return enquiry.enquiry_number || enquiry.name || "—";
+  }
+  return "—";
+}
+
 export function eoiRecipientLabel(eoi: ExpressionOfInterest): string {
   return eoi.recipient?.organization?.trim() || "—";
 }
@@ -103,8 +111,14 @@ export const EOI_STATUS_TRANSITIONS: Record<EoiStatus, EoiStatus[]> = {
   CANCELLED: ["DRAFT"],
 };
 
-export function canEditEoi(status: EoiStatus) {
-  return status !== "ACCEPTED" && status !== "REJECTED" && status !== "CANCELLED";
+export function canEditEoi(
+  status: EoiStatus,
+  doc?: Pick<ExpressionOfInterest, "signatoryApproval"> | null,
+) {
+  if (status === "ACCEPTED" || status === "REJECTED" || status === "CANCELLED") {
+    return false;
+  }
+  return String(doc?.signatoryApproval?.status || "").toUpperCase() !== "APPROVED";
 }
 
 export function canSendEoiEmail(status: EoiStatus) {

@@ -3,7 +3,6 @@ import { modelsRegistry } from "../../data/modelRegistry.js";
 import { createRecentActivity } from "../../helpers/createRecentActivity.js";
 import { buildActivityMessage } from "../../helpers/buildActivityMessage.js";
 import {
-  applyEnquiryVisibilityFilter,
   AUDIT_TYPES,
   resolveAccessibleEnquiry,
   savePipelineAdvance,
@@ -21,6 +20,23 @@ import {
   buildBrandedEmailHtml,
   fileToGraphAttachment,
 } from "../message/emailTemplate.js";
+import {
+  applyPendingSignatoryApproval,
+  approvedSignatoryApproval,
+  applyCreatorOrSignatoryListFilter,
+  assertCurrentUserIsSignatory,
+  assertSignatoryApproved,
+  assertSignatoryContentEditable,
+  bodyResetsSignatoryApproval,
+  hasNonStatusUpdates,
+  isCreatorOrAssignedSignatory,
+  isSignatoryApproved,
+  pendingSignatoryApproval,
+} from "../../helpers/signatoryApproval.js";
+import {
+  notifyCreatorOnApproval,
+  notifySignatoryOnCreate,
+} from "../../helpers/signatoryLifecycleNotify.js";
 
 const { Quotation, Company, Enquiry, User } = modelsRegistry;
 
@@ -60,7 +76,24 @@ const QUOTATION_POPULATE = [
   { path: "createdBy", select: "name email role" },
   { path: "updatedBy", select: "name email role" },
   { path: "signatory.userId", select: "name email role phone" },
+  { path: "signatoryApproval.approvedBy", select: "name email role" },
   { path: "enquiryId", select: "name city enquiry_number enquiry_status client_representative" },
+];
+
+const QUOTATION_CONTENT_KEYS = [
+  "items",
+  "financials",
+  "company",
+  "customer",
+  "bankDetails",
+  "signatory",
+  "termsAndConditions",
+  "termsConditionsIds",
+  "orderAcceptance",
+  "subject",
+  "reference",
+  "quotationDate",
+  "validUntil",
 ];
 
 const ONES = [
@@ -369,15 +402,15 @@ async function resolveSignatory(actingUser, company, override = {}) {
   if (requestedId) {
     const found = await User.findById(requestedId).select("name email role status phone");
     if (!found) throwError("Signatory user not found", 404);
-    if (!SIGNATORY_ROLES.includes(found.role)) {
-      throwError("Signatory must be an admin, super admin, or manager");
+    if (found.role === "auditor" || !SIGNATORY_ROLES.includes(found.role)) {
+      throwError("Signatory must be an admin, super admin, or manager. Auditors cannot be assigned.");
     }
     if (found.status && found.status !== "active") {
       throwError("Signatory user is not active");
     }
     signatoryUser = found;
-  } else if (!SIGNATORY_ROLES.includes(String(actingUser?.role || ""))) {
-    throwError("Select a signatory (admin, super admin, or manager)");
+  } else if (actingUser?.role === "auditor" || !SIGNATORY_ROLES.includes(String(actingUser?.role || ""))) {
+    throwError("Select a signatory (admin, super admin, or manager). Auditors cannot be assigned.");
   }
 
   return snapshotSignatory(signatoryUser, company, {
@@ -390,7 +423,7 @@ async function resolveSignatory(actingUser, company, override = {}) {
 
 export async function getQuotationSignatoriesService() {
   return User.find({
-    role: { $in: SIGNATORY_ROLES },
+    role: { $in: SIGNATORY_ROLES, $ne: "auditor" },
     status: { $ne: "inactive" },
   })
     .select("name email role phone")
@@ -496,27 +529,8 @@ async function logQuotationActivity({ user, action, quotation, extraMessage }) {
 async function assertQuotationAccess(user, quotation) {
   if (!quotation) throwError("Quotation not found", 404);
   if (user?.role === "super_admin") return quotation;
-
-  if (quotation.createdBy && String(quotation.createdBy) === String(user._id)) {
-    return quotation;
-  }
-
-  const enquiryId = quotation.enquiryId || quotation.leadId;
-  if (!enquiryId) {
-    throwError("Quotation not found", 404);
-  }
-
-  const enquiry = await resolveAccessibleEnquiry(user, enquiryId);
-  if (!enquiry) throwError("Quotation not found", 404);
-  return quotation;
-}
-
-async function accessibleEnquiryIds(user) {
-  if (user?.role === "super_admin") return null;
-
-  const query = {};
-  applyEnquiryVisibilityFilter(query, user);
-  return Enquiry.find(query).distinct("_id");
+  if (isCreatorOrAssignedSignatory(quotation, user)) return quotation;
+  throwError("Quotation not found", 404);
 }
 
 function enquiryRefId(value) {
@@ -589,7 +603,7 @@ async function syncEnquiryValuesFromQuotation(quotation, enquiryDoc = null) {
   await enquiry.save();
 }
 
-export async function createQuotationService({ user, body = {} }) {
+export async function createQuotationService({ user, body = {}, io }) {
   const enquiryId = body.enquiryId || body.leadId || null;
   let enquiry = null;
 
@@ -642,6 +656,7 @@ export async function createQuotationService({ user, body = {} }) {
     termsAndConditions,
     bankDetails,
     signatory,
+    signatoryApproval: pendingSignatoryApproval(),
     orderAcceptance,
     status,
     pdfUrl: String(body.pdfUrl || "").trim(),
@@ -665,6 +680,7 @@ export async function createQuotationService({ user, body = {} }) {
   await advanceEnquiryIfQuoted(enquiry, status);
   await syncEnquiryValuesFromQuotation(quotation, enquiry);
   await logQuotationActivity({ user, action: "created", quotation });
+  await notifySignatoryOnCreate({ io, actor: user, doc: quotation, kind: "quotation" });
   return populateQuotation(quotation);
 }
 
@@ -675,12 +691,9 @@ export async function getQuotationsService({ user, query = {} }) {
     const enquiry = await resolveAccessibleEnquiry(user, query.enquiryId || query.leadId);
     if (!enquiry) throwError("Enquiry not found", 404);
     filter.enquiryId = enquiry._id;
-  } else {
-    const ids = await accessibleEnquiryIds(user);
-    if (ids) {
-      filter.$or = [{ enquiryId: { $in: ids } }, { createdBy: user._id }];
-    }
   }
+
+  applyCreatorOrSignatoryListFilter(filter, user);
 
   if (query.status) {
     filter.status = parseStatus(query.status);
@@ -726,6 +739,10 @@ export async function updateQuotationService({ user, quotationId, body = {} }) {
 
   if (LOCKED_STATUSES.has(quotation.status)) {
     throwError(`${quotation.status} quotations cannot be edited`);
+  }
+
+  if (hasNonStatusUpdates(body)) {
+    assertSignatoryContentEditable(quotation);
   }
 
   if (body.items) {
@@ -791,12 +808,19 @@ export async function updateQuotationService({ user, quotationId, body = {} }) {
   if (body.quotationDate !== undefined) quotation.quotationDate = parseDate(body.quotationDate, "quotationDate");
   if (body.validUntil !== undefined) quotation.validUntil = parseDate(body.validUntil, "validUntil");
 
+  if (bodyResetsSignatoryApproval(body, QUOTATION_CONTENT_KEYS)) {
+    applyPendingSignatoryApproval(quotation);
+  }
+
   if (body.status !== undefined) {
     const nextStatus = parseStatus(body.status);
     if (nextStatus !== quotation.status) {
       const allowed = STATUS_TRANSITIONS[quotation.status] || [];
       if (!allowed.includes(nextStatus)) {
         throwError(`Cannot change status from ${quotation.status} to ${nextStatus}`);
+      }
+      if (nextStatus === "SENT") {
+        assertSignatoryApproved(quotation, "mark this quotation as sent");
       }
       quotation.status = nextStatus;
     }
@@ -832,6 +856,10 @@ export async function updateQuotationStatusService({ user, quotationId, body = {
   const allowed = STATUS_TRANSITIONS[quotation.status] || [];
   if (!allowed.includes(nextStatus)) {
     throwError(`Cannot change status from ${quotation.status} to ${nextStatus}`);
+  }
+
+  if (nextStatus === "SENT") {
+    assertSignatoryApproved(quotation, "mark this quotation as sent");
   }
 
   const previousStatus = quotation.status;
@@ -898,6 +926,7 @@ export async function sendQuotationEmailService({ user, quotationId, body = {}, 
 
   const quotation = await Quotation.findById(id);
   await assertQuotationAccess(user, quotation);
+  assertSignatoryApproved(quotation, "email this quotation");
 
   const canMarkSent = (STATUS_TRANSITIONS[quotation.status] || []).includes("SENT");
   const canResend = quotation.status === "SENT" || quotation.status === "ACCEPTED";
@@ -968,6 +997,34 @@ export async function sendQuotationEmailService({ user, quotationId, body = {}, 
     quotation,
     extraMessage: `${user?.name || "User"} resent quotation "${quotation.quotationRef}" to ${toEmails.join(", ")}`,
   });
+  return populateQuotation(quotation);
+}
+
+export async function approveQuotationSignatoryService({ user, quotationId, io }) {
+  const id = toObjectId(quotationId);
+  if (!id) throwError("Invalid quotation id");
+
+  const quotation = await Quotation.findById(id);
+  await assertQuotationAccess(user, quotation);
+  assertCurrentUserIsSignatory(user, quotation);
+
+  if (isSignatoryApproved(quotation)) {
+    return populateQuotation(quotation);
+  }
+
+  quotation.signatoryApproval = approvedSignatoryApproval(user);
+  quotation.updatedBy = user?._id || quotation.updatedBy;
+  await quotation.save();
+
+  await logQuotationActivity({
+    user,
+    action: "updated",
+    quotation,
+    extraMessage: `${user?.name || "User"} approved quotation "${quotation.quotationRef}" as signatory`,
+  });
+
+  await notifyCreatorOnApproval({ io, actor: user, doc: quotation, kind: "quotation" });
+
   return populateQuotation(quotation);
 }
 

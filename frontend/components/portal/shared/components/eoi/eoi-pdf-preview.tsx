@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Download, Eye, Loader2 } from "lucide-react";
+import { Download, Eye, FileText, Loader2 } from "lucide-react";
 import { Button } from "@/components/portal/ui/button";
 import {
   Dialog,
@@ -15,6 +15,11 @@ import { useCompanyBranding } from "@/components/portal/shared/components/compan
 import { useGetDefaultCompanyQuery } from "@/store/slices/companyApiSlice";
 import type { ExpressionOfInterest } from "@/store/slices/eoiApiSlice";
 import { buildEoiPdfBlob, eoiPdfFilename } from "@/components/portal/lib/eoiPdf";
+import {
+  pdfLockMessage,
+  canViewPdf,
+} from "@/components/portal/lib/signatoryApproval";
+import { useAppSelector } from "@/store/hooks";
 
 function triggerPdfDownload(url: string, filename: string) {
   const link = document.createElement("a");
@@ -24,6 +29,9 @@ function triggerPdfDownload(url: string, filename: string) {
 }
 
 function useEoiPdf(eoi: ExpressionOfInterest) {
+  const userId = useAppSelector((state) => state.auth.user?._id);
+  const canView = canViewPdf(eoi, userId);
+  const lockMessage = pdfLockMessage(eoi);
   const { displayName, logoSrc, primaryColor } = useCompanyBranding();
   const { data: companyRes } = useGetDefaultCompanyQuery();
   const [open, setOpen] = useState(false);
@@ -43,7 +51,20 @@ function useEoiPdf(eoi: ExpressionOfInterest) {
     });
   }, [eoi._id, eoi.updated_at, eoi.body, eoi.subject]);
 
+  useEffect(() => {
+    if (canView) return;
+    setOpen(false);
+    setPdfUrl((current) => {
+      if (current) URL.revokeObjectURL(current);
+      return null;
+    });
+  }, [canView]);
+
   const generateUrl = async () => {
+    if (!canView) {
+      toast.error(lockMessage);
+      return null;
+    }
     setGenerating(true);
     try {
       const blob = await buildEoiPdfBlob({
@@ -78,7 +99,7 @@ function useEoiPdf(eoi: ExpressionOfInterest) {
     if (url) triggerPdfDownload(url, eoiPdfFilename(eoi));
   };
 
-  return { generating, open, setOpen, pdfUrl, preview, download };
+  return { generating, open, setOpen, pdfUrl, preview, download, canView, lockMessage };
 }
 
 function EoiPdfDialog({
@@ -135,8 +156,40 @@ function EoiPdfDialog({
   );
 }
 
+export function EoiPdfPreviewButton({ eoi }: { eoi: ExpressionOfInterest }) {
+  const pdf = useEoiPdf(eoi);
+  const locked = !pdf.canView;
+
+  return (
+    <>
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={pdf.preview}
+        disabled={pdf.generating || locked}
+        title={locked ? pdf.lockMessage : undefined}
+      >
+        {pdf.generating ? (
+          <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+        ) : (
+          <FileText className="mr-1.5 h-3.5 w-3.5" />
+        )}
+        Preview PDF
+      </Button>
+      <EoiPdfDialog
+        eoi={eoi}
+        open={pdf.open}
+        onOpenChange={pdf.setOpen}
+        pdfUrl={pdf.pdfUrl}
+        onDownload={pdf.download}
+      />
+    </>
+  );
+}
+
 export function EoiPdfListActions({ eoi }: { eoi: ExpressionOfInterest }) {
   const pdf = useEoiPdf(eoi);
+  const locked = !pdf.canView;
 
   return (
     <>
@@ -146,7 +199,8 @@ export function EoiPdfListActions({ eoi }: { eoi: ExpressionOfInterest }) {
           size="sm"
           className="h-8"
           onClick={pdf.preview}
-          disabled={pdf.generating}
+          disabled={pdf.generating || locked}
+          title={locked ? pdf.lockMessage : undefined}
         >
           {pdf.generating ? (
             <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
@@ -160,7 +214,8 @@ export function EoiPdfListActions({ eoi }: { eoi: ExpressionOfInterest }) {
           size="sm"
           className="h-8"
           onClick={pdf.download}
-          disabled={pdf.generating}
+          disabled={pdf.generating || locked}
+          title={locked ? pdf.lockMessage : undefined}
         >
           <Download className="mr-1 h-3.5 w-3.5" />
           Download PDF

@@ -13,6 +13,7 @@ import {
   sendQuotationEmail,
   deleteQuotation,
   getQuotationSignatories,
+  approveQuotationSignatory,
 } from "./quotation.controllers.js";
 import { uploadEmailAttachment } from "../../middlewares/uploadMiddleware.js";
 
@@ -42,6 +43,13 @@ router.put(
   protect,
   authorize(RESOURCES.QUOTATION, ACTIONS.UPDATE),
   acceptQuotation,
+);
+
+router.put(
+  "/:id/signatory-approval",
+  protect,
+  authorize(RESOURCES.QUOTATION, ACTIONS.UPDATE),
+  approveQuotationSignatory,
 );
 
 router.post(
