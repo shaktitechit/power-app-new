@@ -11,6 +11,47 @@ const ROLE_DESIGNATION: Record<string, string> = {
 
 export const DEFAULT_SIGNATORY_DESIGNATION = "Authorized Signatory";
 
+export const ELECTRONIC_SIGNATORY_LABEL = "Electronically generated — no signature required";
+export const ELECTRONIC_QUOTATION_NOTE =
+  "This is an electronically generated quotation and does not require a signature.";
+export const ELECTRONIC_EOI_NOTE =
+  "This is an electronically generated expression of interest and does not require a signature.";
+
+export function isElectronicSignatory(signatory?: { electronic?: boolean } | null) {
+  return Boolean(signatory?.electronic);
+}
+
+export function signatoryDisplayName(
+  signatory?: {
+    name?: string;
+    userId?: string | { name?: string } | null;
+  } | null,
+) {
+  const stored = String(signatory?.name || "").trim();
+  const userId = signatory?.userId;
+  const populated =
+    userId && typeof userId === "object" ? String(userId.name || "").trim() : "";
+  if (stored && stored.toLowerCase() !== "electronically generated") return stored;
+  return populated || stored || "Authorized Signatory";
+}
+
+export function signatoryPhone(
+  signatory?: {
+    phone?: string;
+    userId?: string | { phone?: string } | null;
+  } | null,
+  fallback = "",
+) {
+  const stored = String(signatory?.phone || "").trim();
+  if (stored) return stored;
+  const userId = signatory?.userId;
+  if (userId && typeof userId === "object") {
+    const fromUser = String(userId.phone || "").trim();
+    if (fromUser) return fromUser;
+  }
+  return String(fallback || "").trim();
+}
+
 export function signatoryDesignationForRole(role?: string | null) {
   if (!role) return "";
   return ROLE_DESIGNATION[role] || "";

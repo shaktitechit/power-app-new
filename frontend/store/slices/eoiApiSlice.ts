@@ -34,6 +34,7 @@ export interface EoiRecipient {
 }
 
 export interface EoiSignatory {
+  electronic?: boolean;
   userId?: string | EoiUserRef | null;
   label?: string;
   name: string;

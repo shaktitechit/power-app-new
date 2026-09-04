@@ -46,6 +46,10 @@ const LOCKED_STATUSES = new Set(["ACCEPTED", "REJECTED", "CANCELLED"]);
 
 const SIGNATORY_ROLES = ["super_admin", "admin", "manager"];
 
+function isElectronicSignatory(source = {}) {
+  return source.electronic === true || source.electronic === "true";
+}
+
 const SIGNATORY_DESIGNATION = {
   super_admin: "Director",
   admin: "Admin",
@@ -55,7 +59,7 @@ const SIGNATORY_DESIGNATION = {
 const QUOTATION_POPULATE = [
   { path: "createdBy", select: "name email role" },
   { path: "updatedBy", select: "name email role" },
-  { path: "signatory.userId", select: "name email role" },
+  { path: "signatory.userId", select: "name email role phone" },
   { path: "enquiryId", select: "name city enquiry_number enquiry_status client_representative" },
 ];
 
@@ -342,6 +346,7 @@ function snapshotSignatory(user, company, override = {}) {
 
   const role = String(user?.role || "").trim();
   return {
+    electronic: isElectronicSignatory(source),
     userId: source.userId || user?._id || null,
     name,
     designation:
@@ -349,6 +354,7 @@ function snapshotSignatory(user, company, override = {}) {
       "Authorized Signatory",
     companyName:
       String(source.companyName || company?.legal_name || company?.trade_name || "Shakti Power Solutions Pvt. Ltd.").trim(),
+    phone: String(source.phone || user?.phone || company?.phone || "").trim(),
     signature: String(source.signature || "").trim(),
     signatureDate: source.signatureDate ? new Date(source.signatureDate) : undefined,
     seal: String(source.seal || "").trim(),
@@ -361,7 +367,7 @@ async function resolveSignatory(actingUser, company, override = {}) {
   let signatoryUser = actingUser;
 
   if (requestedId) {
-    const found = await User.findById(requestedId).select("name email role status");
+    const found = await User.findById(requestedId).select("name email role status phone");
     if (!found) throwError("Signatory user not found", 404);
     if (!SIGNATORY_ROLES.includes(found.role)) {
       throwError("Signatory must be an admin, super admin, or manager");
@@ -378,6 +384,7 @@ async function resolveSignatory(actingUser, company, override = {}) {
     ...source,
     userId: signatoryUser?._id,
     name: source.name || signatoryUser?.name,
+    phone: source.phone || signatoryUser?.phone,
   });
 }
 
@@ -386,7 +393,7 @@ export async function getQuotationSignatoriesService() {
     role: { $in: SIGNATORY_ROLES },
     status: { $ne: "inactive" },
   })
-    .select("name email role")
+    .select("name email role phone")
     .sort({ name: 1 })
     .lean();
 }

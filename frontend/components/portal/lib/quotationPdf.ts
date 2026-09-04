@@ -25,6 +25,13 @@ import {
   type Rgb,
 } from "@/components/portal/lib/letterheadPdf";
 
+import {
+  ELECTRONIC_QUOTATION_NOTE,
+  isElectronicSignatory,
+  signatoryDisplayName,
+  signatoryPhone,
+} from "@/components/portal/lib/signatoryDesignation";
+
 export { LETTERHEAD_TAGLINE };
 
 export type QuotationPdfInput = {
@@ -767,6 +774,7 @@ export async function buildQuotationPdfBlob(input: QuotationPdfInput): Promise<B
   const leftCol = MARGIN_X;
   const rightCol = MARGIN_X + colW + colGap;
   const signatory = quotation.signatory;
+  const electronic = isElectronicSignatory(signatory);
   const acceptName = withMsPrefix(
     quotation.orderAcceptance?.companyName ||
       quotation.orderAcceptance?.customerName ||
@@ -786,13 +794,34 @@ export async function buildQuotationPdfBlob(input: QuotationPdfInput): Promise<B
   );
   doc.setFont("helvetica", "normal");
   doc.setFontSize(8);
+  const signName = signatoryDisplayName(signatory);
+  const signNameLines = doc.splitTextToSize(signName, colW - 4);
   const signDesignationLines = doc.splitTextToSize(
     signatory?.designation || "Authorized Signatory",
     colW - 4,
   );
+  const phone = signatoryPhone(signatory, letterhead.phone);
+  const signPhoneLines = phone ? doc.splitTextToSize(`Tel. ${phone}`, colW - 4) : [];
+  const electronicNoteLines = electronic
+    ? doc.splitTextToSize(ELECTRONIC_QUOTATION_NOTE, colW - 4)
+    : [];
   const acceptH = acceptEnabled ? 18 + acceptNameLines.length * 4 : 0;
-  const signH =
-    6 + signCompanyLines.length * 4.2 + 22 + (signDesignationLines.length - 1) * 3.6;
+  const signH = electronic
+    ? 6 +
+      signCompanyLines.length * 4.2 +
+      6 +
+      electronicNoteLines.length * 3.8 +
+      4 +
+      signNameLines.length * 4.2 +
+      signDesignationLines.length * 3.6 +
+      signPhoneLines.length * 3.6 +
+      4.6
+    : 6 +
+      signCompanyLines.length * 4.2 +
+      22 +
+      (signNameLines.length - 1) * 4.2 +
+      (signDesignationLines.length - 1) * 3.6 +
+      signPhoneLines.length * 3.6;
   const blockH = Math.max(40, acceptH, signH);
 
   y += 6;
@@ -825,19 +854,36 @@ export async function buildQuotationPdfBlob(input: QuotationPdfInput): Promise<B
   signY += 5;
   doc.setFontSize(9.5);
   doc.text(signCompanyLines, signX, signY);
-  signY += signCompanyLines.length * 4.2 + 12;
-  doc.setDrawColor(...RULE);
-  doc.line(signX, signY, signX + colW - 4, signY);
-  signY += 5;
+  signY += signCompanyLines.length * 4.2;
+
+  if (electronic) {
+    signY += 4;
+    doc.setFont("helvetica", "italic");
+    doc.setFontSize(7.5);
+    doc.setTextColor(...MUTED);
+    doc.text(electronicNoteLines, signX, signY);
+    signY += electronicNoteLines.length * 3.8 + 3;
+  } else {
+    signY += 12;
+    doc.setDrawColor(...RULE);
+    doc.line(signX, signY, signX + colW - 4, signY);
+    signY += 5;
+  }
   doc.setFont("helvetica", "bold");
   doc.setFontSize(9);
-  doc.text(signatory?.name || "Authorized Signatory", signX, signY);
-  signY += 4.2;
+  doc.setTextColor(...NAVY);
+  doc.text(signNameLines, signX, signY);
+  signY += signNameLines.length * 4.2;
   doc.setFont("helvetica", "normal");
   doc.setFontSize(8);
   doc.setTextColor(...MUTED);
   doc.text(signDesignationLines, signX, signY);
-  signY += signDesignationLines.length * 3.6 + 0.6;
+  signY += signDesignationLines.length * 3.6;
+  if (signPhoneLines.length) {
+    doc.text(signPhoneLines, signX, signY);
+    signY += signPhoneLines.length * 3.6;
+  }
+  signY += 0.6;
   doc.text(signatory?.companyName || letterhead.brandName, signX, signY);
 
   y = blockTop + blockH + 4;

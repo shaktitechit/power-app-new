@@ -46,6 +46,10 @@ const LOCKED_STATUSES = new Set(["ACCEPTED", "REJECTED", "CANCELLED"]);
 
 const SIGNATORY_ROLES = ["super_admin", "admin", "manager"];
 
+function isElectronicSignatory(source = {}) {
+  return source.electronic === true || source.electronic === "true";
+}
+
 const SIGNATORY_DESIGNATION = {
   super_admin: "Director",
   admin: "Admin",
@@ -185,6 +189,7 @@ function snapshotSignatory(user, company, override = {}) {
     String(source.companyName || company?.legal_name || company?.trade_name || DEFAULT_COMPANY_NAME).trim();
 
   return {
+    electronic: isElectronicSignatory(source),
     userId: source.userId || user?._id || null,
     label: String(source.label || DEFAULT_SIGNATORY_LABEL).trim() || DEFAULT_SIGNATORY_LABEL,
     name,

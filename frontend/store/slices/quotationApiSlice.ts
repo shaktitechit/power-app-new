@@ -5,6 +5,7 @@ export interface QuotationUserRef {
   name?: string;
   email?: string;
   role?: string;
+  phone?: string;
 }
 
 export type QuotationStatus =
@@ -78,10 +79,12 @@ export interface QuotationBankDetails {
 }
 
 export interface QuotationSignatory {
+  electronic?: boolean;
   userId?: string | QuotationUserRef | null;
   name: string;
   designation?: string;
   companyName?: string;
+  phone?: string;
   signature?: string;
   signatureDate?: string;
   seal?: string;
@@ -212,6 +215,7 @@ export interface QuotationSignatoryUser {
   _id: string;
   name: string;
   email?: string;
+  phone?: string;
   role: "super_admin" | "admin" | "manager";
 }
 

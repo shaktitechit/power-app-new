@@ -11,6 +11,7 @@ import {
 import { Input } from "@/components/portal/ui/input";
 import { Label } from "@/components/portal/ui/label";
 import { Button } from "@/components/portal/ui/button";
+import { Checkbox } from "@/components/portal/ui/checkbox";
 import { Textarea } from "@/components/portal/ui/textarea";
 import {
   Select,
@@ -41,7 +42,6 @@ import {
   useUpdateQuotationMutation,
   type Quotation,
   type QuotationItemInput,
-  type QuotationStatus,
   type QuotationTaxType,
 } from "@/store/slices/quotationApiSlice";
 import { useGetTermsConditionsQuery } from "@/store/slices/termsConditionsApiSlice";
@@ -56,7 +56,10 @@ import { enquirySearchHaystack } from "@/components/portal/lib/enquirySearchHays
 import { hydrateEnquiryRequestedAudits } from "@/components/portal/shared/components/enquiry/enquiry-requested-audits-fields";
 import { formatRoleLabel } from "@/components/portal/lib/authRoles";
 import {
+  DEFAULT_SIGNATORY_DESIGNATION,
+  ELECTRONIC_SIGNATORY_LABEL,
   isDefaultSignatoryDesignation,
+  isElectronicSignatory,
   signatoryDesignationForRole,
 } from "@/components/portal/lib/signatoryDesignation";
 import { cn } from "@/components/portal/lib/utils";
@@ -127,6 +130,7 @@ export function CreateQuotationForm({
   const [enquiryOpen, setEnquiryOpen] = useState(false);
   const [signatoryId, setSignatoryId] = useState(NONE);
   const [signatoryDesignation, setSignatoryDesignation] = useState("");
+  const [electronicSignOff, setElectronicSignOff] = useState(true);
   const [signatoryOpen, setSignatoryOpen] = useState(false);
   const [selectedTermIds, setSelectedTermIds] = useState<string[]>([]);
   const [termsOpen, setTermsOpen] = useState(false);
@@ -134,7 +138,6 @@ export function CreateQuotationForm({
   const [validUntil, setValidUntil] = useState("");
   const [gstRate, setGstRate] = useState("18");
   const [taxType, setTaxType] = useState<QuotationTaxType>("intra");
-  const [status, setStatus] = useState<QuotationStatus>("DRAFT");
   const [items, setItems] = useState<LineItemDraft[]>([emptyItem()]);
   const [customerName, setCustomerName] = useState("");
   const [customerAddress, setCustomerAddress] = useState("");
@@ -218,11 +221,11 @@ export function CreateQuotationForm({
       setEnquiryId(quotationEnquiryId(quotation) || NONE);
       setSignatoryId(signatoryIdFromQuotation(quotation));
       setSignatoryDesignation(quotation.signatory?.designation || "");
+      setElectronicSignOff(isElectronicSignatory(quotation.signatory));
       setSubject(quotation.subject || "");
       setValidUntil(toDateInputValue(quotation.validUntil));
       setGstRate(String(quotation.financials?.gstRate ?? 18));
       setTaxType(quotation.financials?.taxType || "intra");
-      setStatus(quotation.status === "DRAFT" ? "DRAFT" : quotation.status);
       setItems(
         quotation.items?.length
           ? quotation.items.map((item) => ({
@@ -249,13 +252,13 @@ export function CreateQuotationForm({
     );
     setSignatoryId(selfIsSignatory ? currentUser?._id ?? NONE : NONE);
     setSignatoryDesignation(
-      selfIsSignatory ? signatoryDesignationForRole(currentUser?.role) : "",
+      selfIsSignatory ? signatoryDesignationForRole(currentUser?.role) : DEFAULT_SIGNATORY_DESIGNATION,
     );
+    setElectronicSignOff(true);
     setSubject("");
     setValidUntil("");
     setGstRate("18");
     setTaxType("intra");
-    setStatus("DRAFT");
     setItems([emptyItem()]);
     setCustomerName("");
     setCustomerAddress("");
@@ -385,19 +388,20 @@ export function CreateQuotationForm({
       ...(enquiryId && !isEdit ? { enquiryId } : {}),
       subject: subject.trim() || undefined,
       validUntil: validUntil || undefined,
-      ...(!isEdit || quotation?.status === "DRAFT" ? { status } : {}),
       financials: {
         gstRate: Number(gstRate) || 18,
         taxType,
       },
       items: payloadItems,
       signatory: {
+        electronic: electronicSignOff,
         userId: signatoryId,
         name: selectedSignatory?.name,
         designation:
           signatoryDesignation.trim() ||
           signatoryDesignationForRole(selectedSignatory?.role) ||
           undefined,
+        phone: selectedSignatory?.phone,
       },
       termsConditionsIds: selectedTermIds,
       ...(showCustomerFields
@@ -662,9 +666,23 @@ export function CreateQuotationForm({
               placeholder="Director"
             />
             <p className="text-xs text-muted-foreground">
-              Printed under the signature on the quotation PDF.
+              Printed under the signatory name on the quotation PDF.
             </p>
           </div>
+
+          <label className="flex items-start gap-2 sm:col-span-2">
+            <Checkbox
+              checked={electronicSignOff}
+              onCheckedChange={(checked) => setElectronicSignOff(checked === true)}
+              className="mt-0.5"
+            />
+            <span>
+              <span className="text-sm font-medium">{ELECTRONIC_SIGNATORY_LABEL}</span>
+              <span className="mt-0.5 block text-xs text-muted-foreground">
+                Prints a note that the quotation does not require a signature. The signatory name, designation, and phone still appear.
+              </span>
+            </span>
+          </label>
 
           <div className="space-y-1.5 sm:col-span-2">
             <Label>Terms & conditions</Label>
@@ -773,21 +791,6 @@ export function CreateQuotationForm({
               onChange={(event) => setValidUntil(event.target.value)}
             />
           </div>
-
-          {!isEdit || quotation?.status === "DRAFT" ? (
-          <div className="space-y-1.5">
-            <Label>Status</Label>
-            <Select value={status} onValueChange={(value) => setStatus(value as QuotationStatus)}>
-              <SelectTrigger className="bg-background">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="DRAFT">{isEdit ? "Keep as draft" : "Save as draft"}</SelectItem>
-                <SelectItem value="SENT">{isEdit ? "Mark as sent" : "Create and mark sent"}</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          ) : null}
 
           <div className="space-y-1.5">
             <Label>GST rate (%)</Label>

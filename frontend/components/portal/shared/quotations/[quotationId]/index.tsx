@@ -64,6 +64,11 @@ import {
 import { toastHandler } from "@/components/portal/lib/toast";
 import { RichText } from "@/components/portal/ui/rich-text";
 import { useAppSelector } from "@/store/hooks";
+import {
+  ELECTRONIC_SIGNATORY_LABEL,
+  isElectronicSignatory,
+  signatoryPhone,
+} from "@/components/portal/lib/signatoryDesignation";
 
 const STATUS_CONFIRM: Partial<
   Record<
@@ -537,7 +542,11 @@ export default function QuotationDetailsPage() {
           <CardContent className="grid gap-2 px-4 text-sm">
             <Row label="Name" value={quotation.signatory?.name || "—"} />
             <Row label="Designation" value={quotation.signatory?.designation || "—"} />
+            <Row label="Phone" value={signatoryPhone(quotation.signatory) || "—"} />
             <Row label="Company" value={quotation.signatory?.companyName || "—"} />
+            {isElectronicSignatory(quotation.signatory) ? (
+              <Row label="Signature" value={ELECTRONIC_SIGNATORY_LABEL} />
+            ) : null}
           </CardContent>
         </Card>
       </div>

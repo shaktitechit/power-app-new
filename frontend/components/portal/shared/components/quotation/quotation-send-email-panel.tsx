@@ -48,8 +48,7 @@ function defaultSubject(quotation: Quotation) {
 function defaultBody(quotation: Quotation, senderName?: string, resend = false) {
   const name = quotation.customer?.kindAttn || quotation.customer?.name || "Sir / Madam";
   const validUntil = quotation.validUntil ? formatDisplayDate(quotation.validUntil) : "";
-  const signatoryName =
-    String(senderName || quotation.signatory?.name || "").trim();
+  const signatoryName = String(senderName || quotation.signatory?.name || "").trim();
   const signatoryDesignation = String(quotation.signatory?.designation || "").trim();
   const lines = [
     `Dear ${name},`,

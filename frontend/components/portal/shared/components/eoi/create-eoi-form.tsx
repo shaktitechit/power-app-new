@@ -11,6 +11,7 @@ import {
 import { Input } from "@/components/portal/ui/input";
 import { Label } from "@/components/portal/ui/label";
 import { Button } from "@/components/portal/ui/button";
+import { Checkbox } from "@/components/portal/ui/checkbox";
 import { Textarea } from "@/components/portal/ui/textarea";
 import { RichTextEditor } from "@/components/portal/ui/rich-text-editor";
 import { isEmptyRichHtml, sanitizeRichHtml } from "@/components/portal/lib/richText";
@@ -48,7 +49,10 @@ import {
 } from "@/components/portal/lib/eoiConstants";
 import { formatRoleLabel } from "@/components/portal/lib/authRoles";
 import {
+  DEFAULT_SIGNATORY_DESIGNATION,
+  ELECTRONIC_SIGNATORY_LABEL,
   isDefaultSignatoryDesignation,
+  isElectronicSignatory,
   signatoryDesignationForRole,
 } from "@/components/portal/lib/signatoryDesignation";
 import { cn } from "@/components/portal/lib/utils";
@@ -98,6 +102,7 @@ export function CreateEoiForm({
 }: CreateEoiFormProps) {
   const [signatoryId, setSignatoryId] = useState(NONE);
   const [signatoryDesignation, setSignatoryDesignation] = useState("");
+  const [electronicSignOff, setElectronicSignOff] = useState(true);
   const [signatoryOpen, setSignatoryOpen] = useState(false);
   const [eoiDate, setEoiDate] = useState("");
   const [designation, setDesignation] = useState("");
@@ -149,6 +154,7 @@ export function CreateEoiForm({
     if (eoi) {
       setSignatoryId(signatoryIdFromEoi(eoi));
       setSignatoryDesignation(eoi.signatory?.designation || "");
+      setElectronicSignOff(isElectronicSignatory(eoi.signatory));
       setEoiDate(toDateInputValue(eoi.eoiDate) || todayInputValue());
       setDesignation(eoi.recipient?.designation || "");
       setOrganization(eoi.recipient?.organization || "");
@@ -170,8 +176,9 @@ export function CreateEoiForm({
     );
     setSignatoryId(selfIsSignatory ? currentUser?._id ?? NONE : NONE);
     setSignatoryDesignation(
-      selfIsSignatory ? signatoryDesignationForRole(currentUser?.role) : "",
+      selfIsSignatory ? signatoryDesignationForRole(currentUser?.role) : DEFAULT_SIGNATORY_DESIGNATION,
     );
+    setElectronicSignOff(true);
     setEoiDate(todayInputValue());
     setDesignation(enquiry?.client_representative || primary?.name || "The Chief Executive Officer");
     setOrganization(enquiry?.name || "");
@@ -228,6 +235,7 @@ export function CreateEoiForm({
         phone: phone.trim(),
       },
       signatory: {
+        electronic: electronicSignOff,
         userId: signatoryId,
         name: selectedSignatory?.name,
         designation:
@@ -369,7 +377,7 @@ export function CreateEoiForm({
               rows={2}
             />
           </div>
-          <div className="space-y-1.5">
+          <div className="space-y-1.5 sm:col-span-2">
             <Label>Signatory</Label>
             <Popover open={signatoryOpen} onOpenChange={setSignatoryOpen} modal>
               <PopoverTrigger asChild>
@@ -433,8 +441,11 @@ export function CreateEoiForm({
                 </Command>
               </PopoverContent>
             </Popover>
+            <p className="text-xs text-muted-foreground">
+              Authorized signatory must be an admin, super admin, or manager.
+            </p>
           </div>
-          <div className="space-y-1.5">
+          <div className="space-y-1.5 sm:col-span-2">
             <Label>Signatory designation</Label>
             <Input
               value={signatoryDesignation}
@@ -442,9 +453,22 @@ export function CreateEoiForm({
               placeholder="Director"
             />
             <p className="text-xs text-muted-foreground">
-              Printed under the signature on the EOI letter.
+              Printed under the signatory name on the EOI letter.
             </p>
           </div>
+          <label className="flex items-start gap-2 sm:col-span-2">
+            <Checkbox
+              checked={electronicSignOff}
+              onCheckedChange={(checked) => setElectronicSignOff(checked === true)}
+              className="mt-0.5"
+            />
+            <span>
+              <span className="text-sm font-medium">{ELECTRONIC_SIGNATORY_LABEL}</span>
+              <span className="mt-0.5 block text-xs text-muted-foreground">
+                Prints a note that the letter does not require a signature. The signatory name, designation, and phone still appear.
+              </span>
+            </span>
+          </label>
         </div>
 
         <DialogFooter>

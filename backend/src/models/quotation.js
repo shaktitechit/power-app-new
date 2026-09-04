@@ -387,6 +387,11 @@ const quotationSchema = new Schema(
     ===================================================== */
 
     signatory: {
+      electronic: {
+        type: Boolean,
+        default: false,
+      },
+
       userId: {
         type: Schema.Types.ObjectId,
         ref: "User",
@@ -408,6 +413,12 @@ const quotationSchema = new Schema(
       companyName: {
         type: String,
         default: "Shakti Power Solutions Pvt. Ltd.",
+        trim: true,
+      },
+
+      phone: {
+        type: String,
+        default: "",
         trim: true,
       },
 

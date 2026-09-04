@@ -2,6 +2,12 @@ import type { Company } from "@/store/slices/companyApiSlice";
 import type { ExpressionOfInterest } from "@/store/slices/eoiApiSlice";
 import { DEFAULT_PRIMARY_COLOR } from "@/components/portal/lib/companyBranding";
 import { eoiBodyForEditor } from "@/components/portal/lib/eoiConstants";
+import {
+  ELECTRONIC_EOI_NOTE,
+  isElectronicSignatory,
+  signatoryDisplayName,
+  signatoryPhone,
+} from "@/components/portal/lib/signatoryDesignation";
 import { drawRichHtml } from "@/components/portal/lib/quotationPdf";
 import {
   COMPACT_HEADER_H,
@@ -193,6 +199,7 @@ export async function buildEoiPdfBlob(input: EoiPdfInput): Promise<Blob> {
   }
 
   const signatory = eoi.signatory;
+  const electronic = isElectronicSignatory(signatory);
   const companyName = signatory?.companyName || letterhead.brandName;
   const companyLines = wrapLines(doc, companyName, 92);
   const designation = String(signatory?.designation || "").trim();
@@ -205,10 +212,24 @@ export async function buildEoiPdfBlob(input: EoiPdfInput): Promise<Blob> {
     );
   doc.setFont("helvetica", "normal");
   doc.setFontSize(8.5);
+  const nameLines = wrapLines(doc, signatoryDisplayName(signatory), 92);
   const designationLines = signatoryLines.flatMap((line) =>
     wrapLines(doc, line, 92),
   );
-  const signH = 24 + companyLines.length * 4.2 + designationLines.length * 4;
+  const phone = signatoryPhone(signatory, letterhead.phone);
+  const phoneLines = phone ? wrapLines(doc, `Tel. ${phone}`, 92) : [];
+  doc.setFont("helvetica", "italic");
+  doc.setFontSize(8);
+  const electronicNoteLines = electronic
+    ? wrapLines(doc, ELECTRONIC_EOI_NOTE, 92)
+    : [];
+  const signH =
+    24 +
+    companyLines.length * 4.2 +
+    nameLines.length * 4.4 +
+    designationLines.length * 4 +
+    phoneLines.length * 4 +
+    (electronic ? electronicNoteLines.length * 4 + 8 : 0);
   ensureSpace(signH + 8);
   y += 6;
 
@@ -219,22 +240,40 @@ export async function buildEoiPdfBlob(input: EoiPdfInput): Promise<Blob> {
   y += 5;
   doc.setFontSize(10);
   doc.text(companyLines, MARGIN_X, y);
-  y += companyLines.length * 4.2 + 14;
+  y += companyLines.length * 4.2 + (electronic ? 6 : 14);
 
-  doc.setDrawColor(...RULE);
-  doc.setLineWidth(0.3);
-  doc.line(MARGIN_X, y, MARGIN_X + 62, y);
-  y += 5.2;
+  if (electronic) {
+    y += 2;
+    doc.setFont("helvetica", "italic");
+    doc.setFontSize(8);
+    doc.setTextColor(...MUTED);
+    for (const line of electronicNoteLines) {
+      doc.text(line, MARGIN_X, y);
+      y += 4;
+    }
+    y += 3;
+  } else {
+    doc.setDrawColor(...RULE);
+    doc.setLineWidth(0.3);
+    doc.line(MARGIN_X, y, MARGIN_X + 62, y);
+    y += 5.2;
+  }
 
   doc.setFont("helvetica", "bold");
   doc.setFontSize(10);
   doc.setTextColor(...NAVY);
-  doc.text(signatory?.name || "Authorized Signatory", MARGIN_X, y);
-  y += 4.4;
+  for (const line of nameLines) {
+    doc.text(line, MARGIN_X, y);
+    y += 4.4;
+  }
   doc.setFont("helvetica", "normal");
   doc.setFontSize(8.5);
   doc.setTextColor(...MUTED);
   for (const line of designationLines) {
+    doc.text(line, MARGIN_X, y);
+    y += 4;
+  }
+  for (const line of phoneLines) {
     doc.text(line, MARGIN_X, y);
     y += 4;
   }
