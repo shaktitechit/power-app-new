@@ -1,3 +1,4 @@
+import { isAuditRecordCompleted } from "@/components/portal/lib/electrical-audit/utility-audit-edits-visibility";
 import { UTILITY_AUDIT_STEP_IDS } from "@/components/portal/lib/electrical-audit/utility-audit-steps";
 import { filterSolarRecordsForPlant } from "@/components/portal/shared/components/electrical-audit/solar-plants/solar-generation-record-utils";
 
@@ -30,7 +31,10 @@ export type EnergyAuditRecordCompletionContext = {
 
 const allRecordsCompleted = (records: CompletenessRecord[] | undefined) => {
   const list = records ?? [];
-  return list.length > 0 && list.every((record) => record.is_completed === true);
+  return (
+    list.length > 0 &&
+    list.every((record) => isAuditRecordCompleted(record.is_completed))
+  );
 };
 
 const resolveEntityId = (value: unknown) => {
@@ -58,7 +62,7 @@ const entityAuditsAllCompleted = (
 
     return (
       matching.length > 0 &&
-      matching.every((record) => record.is_completed === true)
+      matching.every((record) => isAuditRecordCompleted(record.is_completed))
     );
   });
 };
@@ -82,7 +86,9 @@ const isSolarStepCompleted = (ctx: EnergyAuditRecordCompletionContext) => {
       return false;
     }
 
-    return plantRecords.every((record) => record.is_completed === true);
+    return plantRecords.every((record) =>
+      isAuditRecordCompleted(record.is_completed),
+    );
   });
 };
 

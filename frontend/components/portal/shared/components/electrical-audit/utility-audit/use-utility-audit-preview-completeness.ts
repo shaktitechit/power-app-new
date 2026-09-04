@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useState } from "react";
+import { isAuditRecordCompleted } from "@/components/portal/lib/electrical-audit/utility-audit-edits-visibility";
 import { toastHandler } from "@/components/portal/lib/toast";
 import { useUpdateACAuditRecordMutation } from "@/store/slices/electrical-audit/acAuditRecordApiSlice";
 import { useUpdateDGAuditRecordMutation } from "@/store/slices/electrical-audit/dgAuditRecordApiSlice";
@@ -67,16 +68,19 @@ export function useUtilityAuditPreviewCompleteness() {
       if (!updateRecord) return false;
 
       const savingId = `${sectionId}:${recordId}`;
+      const currentlyCompleted = isAuditRecordCompleted(isCompleted);
       try {
         setSavingKey(savingId);
         await toastHandler({
           action: () =>
             updateRecord({
               id: recordId,
-              is_completed: !isCompleted,
+              is_completed: !currentlyCompleted,
             }).unwrap(),
           loading: "Updating status…",
-          success: isCompleted ? "Marked as pending" : "Marked as completed",
+          success: currentlyCompleted
+            ? "Marked as pending"
+            : "Marked as completed",
         });
         return true;
       } catch {

@@ -10,12 +10,13 @@ import {
   exportPreviewTabToCsv,
 } from "@/components/portal/lib/electrical-audit/utility-audit-preview-sheet";
 import { GoogleSheetGrid } from "@/components/portal/shared/components/google-sheet-grid";
-
+import { canUncompleteUtilityAuditStep } from "@/components/portal/lib/authRoles";
 import { useUtilityAuditPreviewCompleteness } from "@/components/portal/shared/components/electrical-audit/utility-audit/use-utility-audit-preview-completeness";
 import type { UtilityAuditPreviewSheetSection } from "@/components/portal/lib/electrical-audit/utility-audit-preview-sheet";
 import { CheckCircle2, Download, FileSpreadsheet, X } from "lucide-react";
 import type { ElectricalEnergyUtilityAccountWorkspaceModel } from "./use-electrical-energy-utility-account-workspace";
 import type { UtilityAccount } from "@/store/slices/electrical-audit/utilityApiSlice";
+import { useAppSelector } from "@/store/hooks";
 import { cn } from "@/components/portal/lib/utils";
 
 interface ElectricalEnergyPreviewModalProps {
@@ -55,6 +56,9 @@ export function ElectricalEnergyPreviewModal({
 
   const { toggleRecordCompleteness, bulkUpdateRecordCompleteness, isSavingRecord } =
     useUtilityAuditPreviewCompleteness();
+
+  const user = useAppSelector((state) => state.auth.user);
+  const canMarkPending = canUncompleteUtilityAuditStep(user?.role);
 
   const auditor = utilityAccount.auditor_id as any;
   const auditorName = typeof auditor === "object" && auditor ? auditor.name : undefined;
@@ -153,6 +157,8 @@ export function ElectricalEnergyPreviewModal({
     section: UtilityAuditPreviewSheetSection,
     targetCompletedState: boolean,
   ) => {
+    if (targetCompletedState === false && !canMarkPending) return;
+
     const selectedIndices = selectedRowsBySection[section.id] ?? [];
     if (selectedIndices.length === 0) return;
 
@@ -170,6 +176,31 @@ export function ElectricalEnergyPreviewModal({
       section.id,
       recordsToUpdate,
       targetCompletedState,
+    );
+
+    if (success) {
+      setSelectedRowsBySection((prev) => ({
+        ...prev,
+        [section.id]: [],
+      }));
+    }
+  };
+
+  const handleToggleSelectedRow = async (
+    section: UtilityAuditPreviewSheetSection,
+  ) => {
+    const selectedIndices = selectedRowsBySection[section.id] ?? [];
+    if (selectedIndices.length !== 1) return;
+
+    const meta = section.recordMeta?.[selectedIndices[0]];
+    if (!meta) return;
+
+    if (meta.isCompleted && !canMarkPending) return;
+
+    const success = await toggleRecordCompleteness(
+      section.id,
+      meta.id,
+      meta.isCompleted,
     );
 
     if (success) {
@@ -268,6 +299,15 @@ export function ElectricalEnergyPreviewModal({
               activePreviewTab.sections.map((section) => {
                 const selectedIndices = selectedRowsBySection[section.id] ?? [];
                 const sectionIsEmpty = isEmptyPreviewSection(section);
+                const selectedRecords = selectedIndices
+                  .map((idx) => section.recordMeta?.[idx])
+                  .filter((meta): meta is NonNullable<typeof meta> => !!meta);
+                const canMarkSelectedCompleted = selectedRecords.some(
+                  (record) => !record.isCompleted,
+                );
+                const canMarkSelectedPending =
+                  canMarkPending &&
+                  selectedRecords.some((record) => record.isCompleted);
 
                 return (
                   <section
@@ -295,11 +335,33 @@ export function ElectricalEnergyPreviewModal({
                               <span className="text-xs font-medium text-muted-foreground mr-1">
                                 {selectedIndices.length} selected
                               </span>
+                              {selectedIndices.length === 1 ? (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-7 px-2"
+                                  disabled={
+                                    auditStepLocked ||
+                                    isSavingRecord(section.id, "") ||
+                                    (selectedRecords[0]?.isCompleted &&
+                                      !canMarkPending)
+                                  }
+                                  onClick={() =>
+                                    void handleToggleSelectedRow(section)
+                                  }
+                                >
+                                  Toggle status
+                                </Button>
+                              ) : null}
                               <Button
                                 size="sm"
                                 variant="outline"
                                 className="h-7 px-2 border-emerald-600/30 text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/20"
-                                disabled={auditStepLocked || isSavingRecord(section.id, "")}
+                                disabled={
+                                  auditStepLocked ||
+                                  isSavingRecord(section.id, "") ||
+                                  !canMarkSelectedCompleted
+                                }
                                 onClick={() => void handleBulkToggle(section, true)}
                               >
                                 Mark Completed
@@ -308,7 +370,11 @@ export function ElectricalEnergyPreviewModal({
                                 size="sm"
                                 variant="outline"
                                 className="h-7 px-2 border-amber-600/30 text-amber-700 hover:bg-amber-50 dark:hover:bg-amber-950/20"
-                                disabled={auditStepLocked || isSavingRecord(section.id, "")}
+                                disabled={
+                                  auditStepLocked ||
+                                  isSavingRecord(section.id, "") ||
+                                  !canMarkSelectedPending
+                                }
                                 onClick={() => void handleBulkToggle(section, false)}
                               >
                                 Mark Pending
@@ -316,7 +382,7 @@ export function ElectricalEnergyPreviewModal({
                             </>
                           ) : (
                             <span className="text-xs text-muted-foreground">
-                              Select rows to bulk update status
+                              Select rows to update status (one row for toggle)
                             </span>
                           )}
                         </div>

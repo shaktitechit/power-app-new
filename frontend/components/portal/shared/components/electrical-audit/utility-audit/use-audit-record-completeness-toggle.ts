@@ -1,12 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { isAuditRecordMarkedCompleted } from "@/components/portal/lib/electrical-audit/utility-audit-edits-visibility";
+import { isAuditRecordCompleted } from "@/components/portal/lib/electrical-audit/utility-audit-edits-visibility";
 import { toastHandler } from "@/components/portal/lib/toast";
 
 type CompletenessRecord = {
   _id: string;
-  is_completed?: boolean;
+  is_completed?: boolean | string | null;
 };
 
 type UpdateCompletenessArg = {
@@ -26,16 +26,14 @@ export function useAuditRecordCompletenessToggle(
   >(null);
 
   const handleToggleCompleteness = async (record: CompletenessRecord) => {
-    const currentlyCompleted = isAuditRecordMarkedCompleted(record);
-    const nextCompleted = !currentlyCompleted;
-
+    const currentlyCompleted = isAuditRecordCompleted(record.is_completed);
     try {
       setCompletenessTargetId(record._id);
       await toastHandler({
         action: () =>
           updateRecord({
             id: record._id,
-            is_completed: nextCompleted,
+            is_completed: !currentlyCompleted,
           }).unwrap(),
         loading: "Updating status…",
         success: currentlyCompleted

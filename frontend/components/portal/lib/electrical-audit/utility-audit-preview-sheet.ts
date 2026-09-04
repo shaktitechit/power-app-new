@@ -5,6 +5,7 @@ import {
 } from "@/components/portal/lib/electrical-audit/utility-audit-steps";
 import { getPreviewFieldLabel } from "@/components/portal/lib/electrical-audit/utility-audit-preview-field-labels";
 import type { EnergyAuditRecordCompletionContext } from "@/components/portal/lib/electrical-audit/utility-audit-section-completion";
+import { isAuditRecordCompleted } from "@/components/portal/lib/electrical-audit/utility-audit-edits-visibility";
 import {
   cellPreview,
   isIdLikeFieldKey,
@@ -236,7 +237,7 @@ function buildSheetFromRecords(
       } else {
         row[key] =
           key === "is_completed" || key.endsWith(".is_completed")
-            ? value === true
+            ? isAuditRecordCompleted(value as boolean | string | null)
               ? "Completed"
               : "Pending"
             : cellPreview(value);
@@ -248,7 +249,9 @@ function buildSheetFromRecords(
   const recordMeta = list
     .map((record) => ({
       id: String(record._id ?? ""),
-      isCompleted: record.is_completed === true,
+      isCompleted: isAuditRecordCompleted(
+        record.is_completed as boolean | string | null | undefined,
+      ),
     }))
     .filter((meta) => meta.id.length > 0);
 

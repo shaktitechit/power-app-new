@@ -2,14 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/portal/ui/button";
-import { Input } from "@/components/portal/ui/input";
-import { Label } from "@/components/portal/ui/label";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/portal/ui/dialog";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/portal/ui/card";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -21,20 +14,30 @@ import {
   AlertDialogTitle,
 } from "@/components/portal/ui/alert-dialog";
 import {
-  cnHideUtilityAuditEdits,
-  isUtilityAuditRecordEditsLocked,
-} from "@/components/portal/lib/electrical-audit/utility-audit-edits-visibility";
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/portal/ui/dialog";
+import { Label } from "@/components/portal/ui/label";
+import { Input } from "@/components/portal/ui/input";
+import { ClipboardList, ClipboardPlus, Upload, X, Save } from "lucide-react";
 import {
   canViewDocuments,
   type UserPermission,
   canDeleteAuditRecords,
 } from "@/components/portal/lib/authRoles";
+import {
+  cnHideUtilityAuditEdits,
+  isUtilityAuditRecordEditsLocked,
+} from "@/components/portal/lib/electrical-audit/utility-audit-edits-visibility";
 import { toastHandler } from "@/components/portal/lib/toast";
 import { useAuditRecordCompletenessToggle } from "@/components/portal/shared/components/electrical-audit/utility-audit/use-audit-record-completeness-toggle";
 import { AuditDocumentDeleteDialog } from "@/components/portal/shared/components/electrical-audit/utility-audit/audit-document-delete-dialog";
 import { useAuditDocumentDelete } from "@/components/portal/shared/components/electrical-audit/utility-audit/use-audit-document-delete";
-import { toSameOriginFileManagementUrl } from "@/components/portal/lib/fileManagementUrls";
 import { useAppSelector } from "@/store/hooks";
+import { toSameOriginFileManagementUrl } from "@/components/portal/lib/fileManagementUrls";
+import type { Transformer } from "@/store/slices/electrical-audit/transformerApiSlice";
 import {
   useDeleteTransformerAuditRecordMutation,
   useGetTransformerAuditRecordsQuery,
@@ -42,10 +45,16 @@ import {
   useUploadTransformerAuditRecordDocumentsMutation,
   type TransformerAuditDocument,
 } from "@/store/slices/electrical-audit/transformerAuditRecordApiSlice";
-import { ClipboardList, Save, Upload, X } from "lucide-react";
+import { getLatestTransformerAuditRecord } from "./transformer-audit-utils";
 import { TransformerAuditDisplayCard } from "./transformer-audit-display-card";
 import { TransformerAuditFormModal } from "./transformer-audit-form-modal";
-import { getLatestTransformerAuditRecord } from "./transformer-audit-utils";
+
+interface TransformerAuditPanelProps {
+  transformer: Transformer;
+  facilityId: string;
+  utilityAccountId: string;
+  auditStepLocked?: boolean;
+}
 
 type PendingUploadFile = {
   id: string;
@@ -60,21 +69,12 @@ function newPendingUploadId(): string {
   return `upload-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
 }
 
-type Props = {
-  facilityId: string;
-  utilityAccountId: string;
-  transformerId: string;
-  transformerTag: string;
-  auditStepLocked?: boolean;
-};
-
 export function TransformerAuditPanel({
+  transformer,
   facilityId,
   utilityAccountId,
-  transformerId,
-  transformerTag,
   auditStepLocked = false,
-}: Props) {
+}: TransformerAuditPanelProps) {
   const user = useAppSelector((state) => state.auth.user);
   const canDeleteRecords = canDeleteAuditRecords(user?.role);
   const canViewDocumentsFlag = canViewDocuments(
@@ -82,10 +82,10 @@ export function TransformerAuditPanel({
     (user?.permissions as UserPermission[]) || [],
   );
 
-  const { data, isLoading } = useGetTransformerAuditRecordsQuery({
+  const { data: auditData } = useGetTransformerAuditRecordsQuery({
     facility_id: facilityId,
     utility_account_id: utilityAccountId,
-    transformer_id: transformerId,
+    transformer_id: transformer._id,
   });
 
   const [deleteTransformerAuditRecord, { isLoading: isDeleting }] =
@@ -97,20 +97,21 @@ export function TransformerAuditPanel({
   const [uploadTransformerAuditRecordDocuments, { isLoading: isUploadingDocs }] =
     useUploadTransformerAuditRecordDocumentsMutation();
 
+  const auditRecords = useMemo(() => auditData?.data || [], [auditData]);
   const latestRecord = useMemo(
-    () => getLatestTransformerAuditRecord(data?.data ?? []),
-    [data],
+    () => getLatestTransformerAuditRecord(auditRecords),
+    [auditRecords],
   );
 
   const recordEditsLocked = isUtilityAuditRecordEditsLocked(
     auditStepLocked,
-    latestRecord,
+    latestRecord?.is_completed,
   );
 
-  const [auditModalOpen, setAuditModalOpen] = useState(false);
+  const [formModalOpen, setFormModalOpen] = useState(false);
   const [initialEditing, setInitialEditing] = useState(true);
-  const [uploadModalOpen, setUploadModalOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [uploadModalOpen, setUploadModalOpen] = useState(false);
   const [uploadFiles, setUploadFiles] = useState<PendingUploadFile[]>([]);
   const [previewDoc, setPreviewDoc] = useState<TransformerAuditDocument | null>(
     null,
@@ -119,37 +120,29 @@ export function TransformerAuditPanel({
   const [editCaptionValue, setEditCaptionValue] = useState("");
 
   useEffect(() => {
-    setAuditModalOpen(false);
-    setUploadModalOpen(false);
-    setUploadFiles([]);
-    setPreviewDoc(null);
-    setPreviewDocIndex(null);
-    setEditCaptionValue("");
-    setInitialEditing(true);
-  }, [transformerId]);
-
-  useEffect(() => {
-    if (recordEditsLocked && auditModalOpen) {
-      setAuditModalOpen(false);
+    if (recordEditsLocked) {
+      setFormModalOpen(false);
     }
-  }, [recordEditsLocked, auditModalOpen]);
+  }, [recordEditsLocked]);
 
-  const openCreateAuditModal = () => {
-    if (auditStepLocked) return;
-    setInitialEditing(true);
-    setAuditModalOpen(true);
-  };
-
-  const openEditAuditModal = () => {
+  const handleEdit = () => {
     if (recordEditsLocked) return;
     setInitialEditing(true);
-    setAuditModalOpen(true);
+    setFormModalOpen(true);
   };
 
-  const handleOpenUploadModal = () => {
-    if (recordEditsLocked) return;
-    setUploadFiles([]);
-    setUploadModalOpen(true);
+  const handleConfirmDelete = async () => {
+    if (!latestRecord?._id || !canDeleteRecords) return;
+    try {
+      await toastHandler({
+        action: () => deleteTransformerAuditRecord(latestRecord._id).unwrap(),
+        loading: "Deleting transformer audit...",
+        success: "Transformer audit deleted successfully",
+      });
+      setDeleteDialogOpen(false);
+    } catch (err) {
+      console.error("Failed to delete transformer audit:", err);
+    }
   };
 
   const handleUploadDocs = async () => {
@@ -159,16 +152,16 @@ export function TransformerAuditPanel({
         action: () =>
           uploadTransformerAuditRecordDocuments({
             id: latestRecord._id,
-            documents: uploadFiles.map((item) => item.file),
-            captions: uploadFiles.map((item) => item.caption.trim()),
+            documents: uploadFiles.map((f) => f.file),
+            captions: uploadFiles.map((f) => f.caption.trim()),
           }).unwrap(),
-        loading: "Uploading documents...",
-        success: "Documents uploaded successfully",
+        loading: "Uploading audit documents...",
+        success: "Audit documents uploaded successfully",
       });
       setUploadModalOpen(false);
       setUploadFiles([]);
     } catch (err) {
-      console.error("Failed to upload documents:", err);
+      console.error("Failed to upload audit documents:", err);
     }
   };
 
@@ -184,7 +177,7 @@ export function TransformerAuditPanel({
   };
 
   const handleSaveCaption = async () => {
-    if (!latestRecord || previewDocIndex === null || !previewDoc) return;
+    if (!latestRecord?._id || previewDocIndex === null || !previewDoc) return;
     if (recordEditsLocked) return;
 
     const existingDocuments = (latestRecord.documents ?? []).map((doc, i) =>
@@ -209,20 +202,6 @@ export function TransformerAuditPanel({
     }
   };
 
-  const handleConfirmDelete = async () => {
-    if (!latestRecord?._id || !canDeleteRecords || recordEditsLocked) return;
-    try {
-      await toastHandler({
-        action: () => deleteTransformerAuditRecord(latestRecord._id).unwrap(),
-        loading: "Deleting transformer audit record...",
-        success: "Transformer audit record deleted successfully",
-      });
-      setDeleteDialogOpen(false);
-    } catch (error) {
-      console.error("Failed to delete transformer audit record:", error);
-    }
-  };
-
   const saving = isDeleting || isUpdating || isUploadingDocs;
 
   const {
@@ -232,101 +211,95 @@ export function TransformerAuditPanel({
     confirmDelete: confirmDeleteDocument,
     close: closeDeleteDocument,
   } = useAuditDocumentDelete({
-    getDocuments: (recordId) => latestRecord?.documents,
-    persist: (recordId, remaining) => {
-      if (recordEditsLocked) {
-        return Promise.reject(new Error("Cannot modify a completed audit record"));
-      }
-      return updateTransformerAuditRecord({
+    getDocuments: () => latestRecord?.documents,
+    persist: (recordId, remaining) =>
+      updateTransformerAuditRecord({
         id: recordId,
         existing_documents: remaining,
-      }).unwrap();
-    },
+      }).unwrap(),
   });
 
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-2 text-sm font-medium text-foreground">
-        <ClipboardList className="h-4 w-4 text-primary" />
-        Transformer audit
-      </div>
+  const transformerTag = transformer.transformer_tag?.trim() || "";
 
-      {isLoading ? (
-        <div className="rounded-lg border border-dashed px-4 py-8 text-center text-sm text-muted-foreground">
-          Loading audit record…
-        </div>
-      ) : !latestRecord ? (
-        <div className="rounded-lg border border-dashed bg-background px-4 py-8 text-center">
-          <p className="text-sm text-muted-foreground">
-            No audit saved for{" "}
-            <span className="font-medium text-foreground">
-              Transformer {transformerTag || "—"}
-            </span>
-            .
-          </p>
-          <Button
-            className={cnHideUtilityAuditEdits(
-              auditStepLocked,
-              "mt-4 bg-warning text-warning-foreground hover:bg-warning/90",
-            )}
-            onClick={openCreateAuditModal}
-            disabled={auditStepLocked}
-          >
-            Audit this transformer
-          </Button>
-        </div>
-      ) : (
-        <TransformerAuditDisplayCard
-          record={latestRecord}
-          transformerTag={transformerTag}
-          auditStepLocked={auditStepLocked}
-          canDelete={canDeleteRecords}
-          canViewDocuments={canViewDocumentsFlag}
-          saving={saving}
-          onEdit={openEditAuditModal}
-          onDelete={() => {
-            if (recordEditsLocked) return;
-            setDeleteDialogOpen(true);
-          }}
-          onToggleCompleteness={() =>
-            void handleToggleCompleteness(latestRecord)
-          }
-          togglingCompleteness={completenessTargetId === latestRecord._id}
-          onUploadDocuments={handleOpenUploadModal}
-          onPreviewDocument={handleOpenPreview}
-                onDeleteDocument={(doc, recordId, index) =>
-            requestDeleteDocument(recordId, index, doc.fileName)
-          }
-        />
-      )}
+  return (
+    <Card className="border-dashed bg-muted/10">
+      <CardHeader className="flex flex-row items-center gap-2 py-3">
+        <ClipboardList className="h-5 w-5 text-primary" />
+        <CardTitle className="text-sm font-semibold">Transformer audit</CardTitle>
+      </CardHeader>
+      <CardContent className="pb-4 pt-0">
+        {latestRecord ? (
+          <TransformerAuditDisplayCard
+            record={latestRecord}
+            transformerTag={transformerTag}
+            auditStepLocked={auditStepLocked}
+            canDelete={canDeleteRecords}
+            canViewDocuments={canViewDocumentsFlag}
+            saving={saving}
+            onEdit={handleEdit}
+            onDelete={() => setDeleteDialogOpen(true)}
+            onToggleCompleteness={() =>
+              void handleToggleCompleteness(latestRecord)
+            }
+            togglingCompleteness={completenessTargetId === latestRecord._id}
+            onUploadDocuments={() => setUploadModalOpen(true)}
+            onPreviewDocument={handleOpenPreview}
+            onDeleteDocument={(doc, recordId, index) =>
+              requestDeleteDocument(recordId, index, doc.fileName)
+            }
+          />
+        ) : (
+          <div className="flex flex-col items-center justify-center rounded-lg border border-dashed py-8 text-center">
+            <ClipboardPlus className="mb-2 h-10 w-10 text-muted-foreground/40" />
+            <h4 className="mb-1 text-sm font-medium text-foreground">
+              No audit record found
+            </h4>
+            <p className="mb-4 max-w-sm text-xs text-muted-foreground">
+              This transformer has not been audited yet. Click the button below to
+              add performance and measurement values.
+            </p>
+            <Button
+              onClick={() => {
+                setInitialEditing(true);
+                setFormModalOpen(true);
+              }}
+              variant="outline"
+              size="sm"
+              className={cnHideUtilityAuditEdits(auditStepLocked)}
+            >
+              Audit this transformer
+            </Button>
+          </div>
+        )}
+      </CardContent>
 
       <TransformerAuditFormModal
-        open={auditModalOpen}
-        onOpenChange={setAuditModalOpen}
+        open={formModalOpen}
+        onOpenChange={setFormModalOpen}
         facilityId={facilityId}
         utilityAccountId={utilityAccountId}
-        transformerId={transformerId}
+        transformerId={transformer._id}
         auditStepLocked={auditStepLocked}
-        initialEditing={initialEditing && !recordEditsLocked}
+        initialEditing={initialEditing}
       />
 
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete transformer audit record?</AlertDialogTitle>
+            <AlertDialogTitle>Delete transformer audit?</AlertDialogTitle>
             <AlertDialogDescription>
-              This will permanently delete the audit record for Transformer{" "}
-              {transformerTag || "—"}. This action cannot be undone.
+              This will permanently delete the saved audit parameters for this
+              transformer. This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
             <AlertDialogAction
-              disabled={isDeleting}
               onClick={(e) => {
                 e.preventDefault();
                 void handleConfirmDelete();
               }}
+              disabled={isDeleting}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               {isDeleting ? "Deleting..." : "Delete"}
@@ -338,10 +311,8 @@ export function TransformerAuditPanel({
       <Dialog
         open={uploadModalOpen}
         onOpenChange={(open) => {
-          if (!open) {
-            setUploadModalOpen(false);
-            setUploadFiles([]);
-          }
+          setUploadModalOpen(open);
+          if (!open) setUploadFiles([]);
         }}
       >
         <DialogContent className="sm:max-w-[520px]">
@@ -479,7 +450,9 @@ export function TransformerAuditPanel({
               )}
               {!recordEditsLocked ? (
                 <div className="space-y-2">
-                  <Label htmlFor="transformer-audit-doc-preview-caption">Caption</Label>
+                  <Label htmlFor="transformer-audit-doc-preview-caption">
+                    Caption
+                  </Label>
                   <div className="flex gap-2">
                     <Input
                       id="transformer-audit-doc-preview-caption"
@@ -508,6 +481,6 @@ export function TransformerAuditPanel({
         }}
         onConfirm={() => void confirmDeleteDocument()}
       />
-    </div>
+    </Card>
   );
 }

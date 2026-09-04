@@ -5,12 +5,11 @@ type AuditCompletenessRecord = {
   is_completed?: boolean | string | null;
 };
 
-/** Normalize API/multipart values for audit record completion. */
-export function isAuditRecordMarkedCompleted(
-  record?: AuditCompletenessRecord | null,
+/** Normalize API / form values so `"false"` is not treated as completed. */
+export function isAuditRecordCompleted(
+  value?: boolean | string | null,
 ): boolean {
-  const value = record?.is_completed;
-  if (value === true || value === 1 || value === "1" || value === "true") {
+  if (value === true || value === "true" || value === 1 || value === "1") {
     return true;
   }
   return false;
@@ -19,13 +18,9 @@ export function isAuditRecordMarkedCompleted(
 /** Block edit/delete/upload on a single audit record when globally locked or completed. */
 export function isUtilityAuditRecordEditsLocked(
   auditStepLocked?: boolean,
-  recordCompleted?: boolean | AuditCompletenessRecord | null,
+  recordCompleted?: boolean | string | null,
 ): boolean {
-  const completed =
-    typeof recordCompleted === "boolean" || recordCompleted === undefined
-      ? Boolean(recordCompleted)
-      : isAuditRecordMarkedCompleted(recordCompleted);
-  return Boolean(auditStepLocked || completed);
+  return Boolean(auditStepLocked || isAuditRecordCompleted(recordCompleted));
 }
 
 /** Block sheet-level add/import when every record in the sheet is completed. */
@@ -35,7 +30,7 @@ export function isUtilityAuditSheetEditsLocked(
 ): boolean {
   if (auditStepLocked) return true;
   if (!records?.length) return false;
-  return records.every((record) => isAuditRecordMarkedCompleted(record));
+  return records.every((record) => isAuditRecordCompleted(record.is_completed));
 }
 
 /**

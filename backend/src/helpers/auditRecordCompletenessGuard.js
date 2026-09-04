@@ -6,7 +6,11 @@ export function canUncompleteAuditRecord(role) {
   return UNCOMPLETE_ROLES.has(role);
 }
 
-const COMPLETENESS_ONLY_KEYS = new Set(["is_completed"]);
+const COMPLETENESS_ONLY_KEYS = new Set([
+  "is_completed",
+  "id",
+  "_id",
+]);
 
 function hasNonCompletenessBodyChanges(body = {}) {
   return Object.keys(body).some((key) => {

@@ -37,7 +37,6 @@ function DisplayField({
 type Props = {
   transformer: Transformer;
   hasAudit: boolean;
-  entityEditsLocked?: boolean;
   facilityId: string;
   utilityAccountId: string;
   auditStepLocked?: boolean;
@@ -62,7 +61,6 @@ type Props = {
 export function TransformerDisplayCard({
   transformer,
   hasAudit,
-  entityEditsLocked = false,
   facilityId,
   utilityAccountId,
   auditStepLocked = false,
@@ -79,22 +77,22 @@ export function TransformerDisplayCard({
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-4">
+      <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-4">
         <Card
           className={`min-w-0 overflow-hidden border-l-4 lg:col-span-3 ${
             hasAudit ? "border-l-emerald-500" : "border-l-amber-500"
           }`}
         >
-          <CardHeader className="flex flex-col gap-2 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
-            <div className="flex min-w-0 items-center gap-3">
+          <CardHeader className="flex flex-col gap-2 py-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex flex-wrap items-center gap-2">
               <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
                 <Cpu className="h-5 w-5" />
               </div>
               <div className="min-w-0">
-                <CardTitle className="min-w-0 text-base text-balance">
+                <CardTitle className="text-lg font-bold">
                   {form.transformer_tag?.trim()
                     ? `Transformer ${form.transformer_tag.trim()}`
-                    : "Transformer"}
+                    : "Transformer details"}
                 </CardTitle>
                 <span
                   className={`mt-1 inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ${
@@ -103,18 +101,23 @@ export function TransformerDisplayCard({
                       : "bg-amber-100 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400"
                   }`}
                 >
-                  {hasAudit ? "Audit saved" : "Audit pending"}
+                  {hasAudit ? "Audit completed" : "Audit pending"}
                 </span>
               </div>
             </div>
             <div
               className={cnHideUtilityAuditEdits(
-                entityEditsLocked,
-                "flex min-w-0 flex-wrap items-center justify-end gap-2",
+                auditStepLocked,
+                "flex flex-wrap items-center gap-2",
               )}
             >
-              <Button onClick={onEdit} size="sm" disabled={saving}>
-                <Pencil className="mr-2 h-4 w-4" /> Edit transformer
+              <Button
+                onClick={onEdit}
+                size="sm"
+                variant="outline"
+                disabled={saving}
+              >
+                <Pencil className="mr-2 h-4 w-4" /> Edit
               </Button>
               {canDelete ? (
                 <Button
@@ -146,7 +149,7 @@ export function TransformerDisplayCard({
             <CardTitle className="truncate text-base font-semibold">
               Documents
             </CardTitle>
-            {!entityEditsLocked ? (
+            {!auditStepLocked ? (
               <Button
                 type="button"
                 variant="outline"
@@ -173,7 +176,7 @@ export function TransformerDisplayCard({
                 documents={transformer.documents ?? []}
                 onPreview={(doc, docIdx) => onPreviewDocument(doc, transformer._id, docIdx)}
                 onDelete={
-                  !entityEditsLocked && onDeleteDocument
+                  !auditStepLocked && onDeleteDocument
                     ? (doc, docIdx) => onDeleteDocument(doc, transformer._id, docIdx)
                     : undefined
                 }
@@ -184,10 +187,9 @@ export function TransformerDisplayCard({
       </div>
 
       <TransformerAuditPanel
+        transformer={transformer}
         facilityId={facilityId}
         utilityAccountId={utilityAccountId}
-        transformerId={transformer._id}
-        transformerTag={form.transformer_tag}
         auditStepLocked={auditStepLocked}
       />
     </div>

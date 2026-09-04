@@ -2,9 +2,8 @@ import type {
   CreateTransformerRequest,
   Transformer,
 } from "@/store/slices/electrical-audit/transformerApiSlice";
+import { isAuditRecordCompleted } from "@/components/portal/lib/electrical-audit/utility-audit-edits-visibility";
 import type { TransformerAuditRecord } from "@/store/slices/electrical-audit/transformerAuditRecordApiSlice";
-import { isAuditRecordMarkedCompleted } from "@/components/portal/lib/electrical-audit/utility-audit-edits-visibility";
-import { getLatestTransformerAuditRecord } from "./transformer-audit-utils";
 
 export type TransformerFormState = {
   id?: string;
@@ -143,22 +142,13 @@ export function transformerHasAudit(
   );
 }
 
-export function getTransformerAuditRecordForEntity(
-  transformerId: string,
-  transformerAuditRecords: TransformerAuditRecord[],
-): TransformerAuditRecord | null {
-  const matching = transformerAuditRecords.filter(
-    (record) =>
-      resolveTransformerIdFromAuditRecord(record.transformer_id) === transformerId,
-  );
-  return getLatestTransformerAuditRecord(matching);
-}
-
 export function transformerAuditIsCompleted(
   transformerId: string,
   transformerAuditRecords: TransformerAuditRecord[],
 ): boolean {
-  return isAuditRecordMarkedCompleted(
-    getTransformerAuditRecordForEntity(transformerId, transformerAuditRecords),
+  return transformerAuditRecords.some(
+    (record) =>
+      resolveTransformerIdFromAuditRecord(record.transformer_id) ===
+        transformerId && isAuditRecordCompleted(record.is_completed),
   );
 }

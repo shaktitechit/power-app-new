@@ -14,8 +14,8 @@ import { useGetTransformerAuditRecordsQuery } from "@/store/slices/electrical-au
 import { useGetPumpsQuery } from "@/store/slices/electrical-audit/pumpApiSlice";
 import { useGetPumpAuditRecordsQuery } from "@/store/slices/electrical-audit/pumpAuditRecordApiSlice";
 import { dgSetHasAudit } from "@/components/portal/shared/components/electrical-audit/connection/dg-sets/dg-set-utils";
-import { pumpHasAudit } from "@/components/portal/shared/components/electrical-audit/pumps/pump-utils";
-import { transformerHasAudit } from "@/components/portal/shared/components/electrical-audit/transformers/transformer-utils";
+import { pumpAuditCompleted } from "@/components/portal/shared/components/electrical-audit/pumps/pump-utils";
+import { transformerAuditIsCompleted } from "@/components/portal/shared/components/electrical-audit/transformers/transformer-utils";
 import {
   buildSolarGenerationForms,
   countAuditedPeriods,
@@ -217,13 +217,15 @@ export function useElectricalEnergyUtilityAccountWorkspace() {
   const isTransformerStepFullyAudited = useMemo(() => {
     if (transformerCount === 0) return false;
     return transformers.every((transformer) =>
-      transformerHasAudit(transformer._id, transformerAuditRecords),
+      transformerAuditIsCompleted(transformer._id, transformerAuditRecords),
     );
   }, [transformers, transformerCount, transformerAuditRecords]);
 
   const isPumpStepFullyAudited = useMemo(() => {
     if (pumpCount === 0) return false;
-    return pumps.every((pump) => pumpHasAudit(pump._id, pumpAuditRecords));
+    return pumps.every((pump) =>
+      pumpAuditCompleted(pump._id, pumpAuditRecords),
+    );
   }, [pumps, pumpCount, pumpAuditRecords]);
   const hvacCount = hvacData?.data?.length ?? 0;
   const acCount = acData?.data?.length ?? 0;

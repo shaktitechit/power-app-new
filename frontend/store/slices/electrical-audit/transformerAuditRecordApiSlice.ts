@@ -165,7 +165,13 @@ const buildFormData = (
   const formData = new FormData();
 
   Object.entries(data).forEach(([key, value]) => {
-    if (value !== undefined && key !== "documents" && key !== "existing_documents") {
+    if (
+      value !== undefined &&
+      key !== "id" &&
+      key !== "documents" &&
+      key !== "existing_documents" &&
+      key !== "is_completed"
+    ) {
       formData.append(key, String(value));
     }
   });
@@ -255,6 +261,8 @@ export const transformerAuditRecordApiSlice = apiSlice.injectEndpoints({
         "TransformerAuditRecord",
         { type: "TransformerAuditRecord", id },
         "Transformer",
+        "UtilityAccount",
+        "Facility",
       ],
     }),
 
