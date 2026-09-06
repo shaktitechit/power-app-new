@@ -9,6 +9,11 @@
             "date": 1788451384705,
             "name": "/Users/macbook/Desktop/power-app-main/backend/src/logs/application-2026-09-03.log",
             "hash": "872db85ec3f64431e07af9661b1d1519a92eaf13f3ca15f4768c4b41a5339250"
+        },
+        {
+            "date": 1788539698219,
+            "name": "/Users/macbook/Desktop/power-app-main/backend/src/logs/application-2026-09-04.log",
+            "hash": "3d5d740eb5a5cc5564a81f46f1c24a9a7775043a43c51c02f7bf82b30a09be28"
         }
     ],
     "hashType": "sha256"

@@ -14,7 +14,14 @@ import RecentActivity from "../models/recentActivity.js";
 import Report from "../models/report.js";
 import User from "../models/user.js";
 import UserSession from "../models/userSession.js";
+import Otp from "../models/otp.js";
 import UtilityAccount from "../models/utilityAccount.js";
+// Management Modules
+import WorkPlan from "../models/workPlan.js";
+import WorkTask from "../models/workTask.js";
+import Expense from "../models/expense.js";
+import ExpensePolicy from "../models/expensePolicy.js";
+import Team from "../models/team.js";
 
 // Electrical Audit Models
 import ACAuditRecord from "../models/electrical-audit/acAuditRecord.js";
@@ -75,8 +82,15 @@ export const modelsRegistry = {
   Report,
   User,
   UserSession,
+  Otp,
   UtilityAccount,
 
+  // Management Module Models
+  WorkPlan,
+  WorkTask,
+  Expense,
+  ExpensePolicy,
+  Team,
   // Electrical Audit Models
   ACAuditRecord,
   DGAuditRecord,

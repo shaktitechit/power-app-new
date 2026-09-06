@@ -20,6 +20,8 @@ import {
   MessageSquare,
   Receipt,
   Mail,
+  Calendar,
+  IndianRupee,
 } from "lucide-react";
 import Link from "next/link";
 import { useAppSelector } from "@/store/hooks";
@@ -31,6 +33,8 @@ import {
 import { useGetEnquiriesQuery } from "@/store/slices/enquiryApiSlice";
 import { useGetQuotationsQuery } from "@/store/slices/quotationApiSlice";
 import { useGetEoisQuery } from "@/store/slices/eoiApiSlice";
+import { useGetWorkPlansQuery } from "@/store/slices/workPlannerApiSlice";
+import { useGetExpensesQuery } from "@/store/slices/expenseManagerApiSlice";
 import { FacilityUtilityAuditProgress } from "@/components/portal/shared/facility/[auditType]/[facilityId]/_components/facility-utility-audit-progress";
 import { facilityPath } from "@/components/portal/lib/facilityRoutes";
 import { filterEnquiriesForUser } from "@/components/portal/lib/enquiryAccess";
@@ -40,8 +44,17 @@ import { DashboardEnquiryWidget } from "@/components/portal/shared/dashboard/das
 import { DashboardFollowUpsWidget } from "@/components/portal/shared/dashboard/dashboard-follow-ups-widget";
 import { DashboardQuotationWidget } from "@/components/portal/shared/dashboard/dashboard-quotation-widget";
 import { DashboardEoiWidget } from "@/components/portal/shared/dashboard/dashboard-eoi-widget";
+import { DashboardWorkPlannerWidget } from "@/components/portal/shared/dashboard/dashboard-work-planner-widget";
+import { DashboardExpensesWidget } from "@/components/portal/shared/dashboard/dashboard-expenses-widget";
 
-type DashboardTab = "facilities" | "enquiries" | "follow-ups" | "eois" | "quotations";
+type DashboardTab =
+  | "facilities"
+  | "enquiries"
+  | "follow-ups"
+  | "eois"
+  | "quotations"
+  | "work-planner"
+  | "expenses";
 
 function isFacilityAuditClosed(facility: {
   audit_closure?: { closed_at?: string };
@@ -74,6 +87,8 @@ export default function DashboardPage() {
   const { data: eoisResponse } = useGetEoisQuery(undefined, {
     skip: user?.role === "auditor",
   });
+  const { data: workPlansResponse } = useGetWorkPlansQuery({ limit: 1 });
+  const { data: expensesResponse } = useGetExpensesQuery({ limit: 1 });
 
   useEffect(() => {
     setMounted(true);
@@ -100,6 +115,8 @@ export default function DashboardPage() {
   );
   const quotationCount = quotationsResponse?.data?.length ?? 0;
   const eoiCount = eoisResponse?.data?.length ?? 0;
+  const workPlansCount = workPlansResponse?.total ?? 0;
+  const expensesCount = expensesResponse?.total ?? 0;
 
   if (!mounted) return null;
 
@@ -168,6 +185,26 @@ export default function DashboardPage() {
               </span>
             </TabsTrigger>
           ) : null}
+          <TabsTrigger
+            value="work-planner"
+            className="gap-1.5 px-3 py-2 text-xs sm:text-sm"
+          >
+            <Calendar className="h-3.5 w-3.5" />
+            Work Planner
+            <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-semibold tabular-nums">
+              {workPlansCount}
+            </span>
+          </TabsTrigger>
+          <TabsTrigger
+            value="expenses"
+            className="gap-1.5 px-3 py-2 text-xs sm:text-sm"
+          >
+            <IndianRupee className="h-3.5 w-3.5" />
+            Expenses
+            <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-semibold tabular-nums">
+              {expensesCount}
+            </span>
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="facilities" className="mt-0 space-y-4">
@@ -364,6 +401,14 @@ export default function DashboardPage() {
             <DashboardQuotationWidget />
           </TabsContent>
         ) : null}
+
+        <TabsContent value="work-planner" className="mt-0">
+          <DashboardWorkPlannerWidget />
+        </TabsContent>
+
+        <TabsContent value="expenses" className="mt-0">
+          <DashboardExpensesWidget />
+        </TabsContent>
       </Tabs>
     </DashboardLayout>
   );

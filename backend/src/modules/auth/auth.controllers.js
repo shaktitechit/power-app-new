@@ -16,6 +16,9 @@ import {
   removeUserAccount,
   getUserProfileService,
   updateUserProfileService,
+  initiateOtpLoginService,
+  verifyOtpLoginService,
+  resendOtpLoginService,
 } from "./auth.services.js";
 
 const extractIp = (req) => {
@@ -26,34 +29,81 @@ const extractIp = (req) => {
   return req.ip || null;
 };
 
-//@route POST /api/v1/users/login
-//@desc Authenticate user
+//@route POST /api/v1/users/login/initiate
+//@desc Validate email & password and send OTP email
 //@access Public
-const loginUser = asyncHandler(async (req, res) => {
+const initiateLogin = asyncHandler(async (req, res) => {
   const { email, password } = req.body;
+  const result = await initiateOtpLoginService(email, password);
+  res.json(result);
+});
 
-  const user = await authenticateUser(email, password);
-
+//@route POST /api/v1/users/login/verify-otp
+//@desc Verify 6-digit OTP code and create session
+//@access Public
+const verifyLoginOtp = asyncHandler(async (req, res) => {
+  const { tempToken, otp } = req.body;
   const ip = extractIp(req);
   const userAgent = req.get("user-agent") || null;
 
-  const { accessToken, refreshToken, role, accessFlags } =
-    await createSessionAndTokens(user._id, userAgent, ip);
+  const result = await verifyOtpLoginService({
+    tempToken,
+    otp,
+    userAgent,
+    ip,
+  });
 
   setAuthCookies(res, {
-    accessToken,
-    refreshToken,
-    role,
-    accessFlags,
+    accessToken: result.accessToken,
+    refreshToken: result.refreshToken,
+    role: result.role,
+    accessFlags: result.accessFlags,
   });
 
-  res.json({
-    _id: user._id,
-    name: user.name,
-    email: user.email,
-    role: user.role,
-    permissions: user.permissions || [],
-  });
+  res.json(result.user);
+});
+
+//@route POST /api/v1/users/login/resend-otp
+//@desc Resend OTP code
+//@access Public
+const resendLoginOtp = asyncHandler(async (req, res) => {
+  const { tempToken } = req.body;
+  const result = await resendOtpLoginService({ tempToken });
+  res.json(result);
+});
+
+//@route POST /api/v1/users/login
+//@desc Authenticate user (Initiates OTP verification step)
+//@access Public
+const loginUser = asyncHandler(async (req, res) => {
+  const { email, password, skipOtp } = req.body;
+
+  if (skipOtp) {
+    const user = await authenticateUser(email, password);
+    const ip = extractIp(req);
+    const userAgent = req.get("user-agent") || null;
+
+    const { accessToken, refreshToken, role, accessFlags } =
+      await createSessionAndTokens(user._id, userAgent, ip);
+
+    setAuthCookies(res, {
+      accessToken,
+      refreshToken,
+      role,
+      accessFlags,
+    });
+
+    return res.json({
+      _id: user._id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      permissions: user.permissions || [],
+    });
+  }
+
+  const result = await initiateOtpLoginService(email, password);
+  res.json(result);
 });
 
 //@route POST /api/v1/users/register
@@ -198,6 +248,9 @@ const deleteUser = asyncHandler(async (req, res) => {
 
 export {
   loginUser,
+  initiateLogin,
+  verifyLoginOtp,
+  resendLoginOtp,
   registerUser,
   getUserProfile,
   updateUserProfile,

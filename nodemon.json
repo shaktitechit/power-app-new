@@ -1,0 +1,13 @@
+{
+  "watch": ["backend/src"],
+  "ext": "js,json,html",
+  "ignore": [
+    "backend/logs/*",
+    "backend/src/logs/*",
+    "logs/*",
+    "*.log",
+    "frontend/*",
+    "node_modules/*"
+  ],
+  "legacyWatch": true
+}

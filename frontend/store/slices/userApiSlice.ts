@@ -82,11 +82,58 @@ interface UpdateUserResponse {
   };
 }
 
+// Request & Response types for OTP authentication
+export interface InitiateOtpResponse {
+  requiresOtp: boolean;
+  tempToken: string;
+  maskedEmail: string;
+  message: string;
+}
+
+export interface VerifyOtpRequest {
+  tempToken: string;
+  otp: string;
+}
+
+export interface ResendOtpRequest {
+  tempToken: string;
+}
+
+export interface ResendOtpResponse {
+  success: boolean;
+  message: string;
+  maskedEmail?: string;
+}
+
 export const userApiSlice = apiSlice.injectEndpoints({
   endpoints: (builder) => ({
     login: builder.mutation<AuthResponse, LoginRequest>({
       query: (data) => ({
         url: `/v1/users/login`,
+        method: "POST",
+        body: data,
+      }),
+    }),
+
+    initiateLogin: builder.mutation<InitiateOtpResponse, LoginRequest>({
+      query: (data) => ({
+        url: `/v1/users/login/initiate`,
+        method: "POST",
+        body: data,
+      }),
+    }),
+
+    verifyOtp: builder.mutation<AuthResponse, VerifyOtpRequest>({
+      query: (data) => ({
+        url: `/v1/users/login/verify-otp`,
+        method: "POST",
+        body: data,
+      }),
+    }),
+
+    resendOtp: builder.mutation<ResendOtpResponse, ResendOtpRequest>({
+      query: (data) => ({
+        url: `/v1/users/login/resend-otp`,
         method: "POST",
         body: data,
       }),
@@ -153,6 +200,9 @@ export const userApiSlice = apiSlice.injectEndpoints({
 
 export const {
   useLoginMutation,
+  useInitiateLoginMutation,
+  useVerifyOtpMutation,
+  useResendOtpMutation,
   useRegisterMutation,
   useLogoutMutation,
   useAuditorsQuery,

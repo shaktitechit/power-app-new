@@ -40,6 +40,8 @@ export function useParams() {
     parsed.eoiId = pathSegments[1];
   } else if (pathSegments[0] === "terms-conditions" && pathSegments.length >= 2) {
     parsed.termsConditionsId = pathSegments[1];
+  } else if (pathSegments[0] === "work-planner" && pathSegments.length >= 2) {
+    parsed.planId = pathSegments[1];
   }
 
   return parsed;

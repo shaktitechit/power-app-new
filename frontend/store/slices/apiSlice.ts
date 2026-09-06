@@ -160,6 +160,12 @@ export const apiSlice = createApi({
     "Quotation",
     "ExpressionOfInterest",
     "TermsConditions",
+    // Management modules
+    "WorkPlan",
+    "WorkTask",
+    "Expense",
+    "ExpensePolicy",
+    "TeamHierarchy",
   ],
   endpoints: () => ({}),
 });

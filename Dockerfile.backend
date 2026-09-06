@@ -14,7 +14,9 @@ RUN apk add --no-cache \
   giflib-dev \
   pixman-dev \
   freetype-dev \
-  fontconfig-dev
+  fontconfig-dev \
+  gcompat \
+  libc6-compat
 
 COPY package*.json ./
 RUN npm install

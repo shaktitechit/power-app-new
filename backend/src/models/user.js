@@ -84,6 +84,19 @@ const userSchema = new mongoose.Schema(
       default: null,
     },
 
+    // 🏢 Organizational Hierarchy & Static Team
+    reportsTo: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
+
+    team_id: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Team",
+      default: null,
+    },
+
   },
   {
     timestamps: {

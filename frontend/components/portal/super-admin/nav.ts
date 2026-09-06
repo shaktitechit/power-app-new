@@ -12,6 +12,9 @@ import {
   Activity,
   Receipt,
   Mail,
+  FolderTree,
+  Calendar,
+  Wallet,
 } from "lucide-react";
 import type { NavItem } from "../layout/nav-types";
 
@@ -29,6 +32,8 @@ export const navItems: NavItem[] = [
       { title: "Submitted enquiries", href: "/submited-enquiries", icon: CircleCheck },
     ],
   },
+  { title: "Work Planner", href: "/work-planner", icon: Calendar },
+  { title: "Expense Manager", href: "/expense-manager", icon: Wallet },
   { title: "Audit Lab", href: "/audits", icon: ClipboardList },
   { title: "Analytics", href: "/analytics", icon: BarChart3 },
   { title: "Reports", href: "/reports", icon: FileText },

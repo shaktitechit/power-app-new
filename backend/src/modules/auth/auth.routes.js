@@ -2,6 +2,9 @@ import express from "express";
 import { protect } from "./auth.middlewares.js";
 import {
   loginUser,
+  initiateLogin,
+  verifyLoginOtp,
+  resendLoginOtp,
   registerUser,
   getUserProfile,
   updateUserProfile,
@@ -22,6 +25,9 @@ const router = express.Router();
 // 🔐 Auth
 router.post("/register", authRateLimiter, registerUser);
 router.post("/login", authRateLimiter, loginUser);
+router.post("/login/initiate", authRateLimiter, initiateLogin);
+router.post("/login/verify-otp", authRateLimiter, verifyLoginOtp);
+router.post("/login/resend-otp", authRateLimiter, resendLoginOtp);
 router.post("/refresh", apiRateLimiter, refreshAccessToken);
 router.post("/logout", userLogout);
 router.post("/refresh-timer", protect, refreshSessionTimer);

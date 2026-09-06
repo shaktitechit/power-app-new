@@ -21,4 +21,14 @@ export const ACTIONS = {
 
   CLOSE_FACILITY_AUDIT: "close_facility_audit",
   REOPEN_FACILITY_AUDIT: "reopen_facility_audit",
+
+  // Work Planner & Expense Manager actions
+  SUBMIT: "submit",
+  APPROVE: "approve",
+  REJECT: "reject",
+  REIMBURSE: "reimburse",
+
+  // Team Manager actions
+  MOVE_USER: "move_user",
+  DEACTIVATE_USER: "deactivate_user",
 };

@@ -22,7 +22,7 @@ const { Facility, UtilityAccount, SolarPlant, DGSet, Transformer, Pump, ACAuditR
 
 
 
-import { isAdmin } from "../../services/authorization/index.js";
+import { isAdmin, isSuperAdmin } from "../../services/authorization/index.js";
 import { buildUtilityProgressMapForFacilities } from "./facility-utility-progress.js";
 
 const buildUtilityCompletedFilter = () => ({
@@ -190,7 +190,7 @@ const getRecentActivitiesData = async (user, facilityIds) => {
   const updatedField = getModelUpdatedField(RecentActivity) || "updatedAt";
   let query = {};
 
-  if (isAdmin(user)) {
+  if (isSuperAdmin(user)) {
     // super_admin: all activities org-wide
     query = {};
   } else {
@@ -244,7 +244,7 @@ const getRecentActivitiesData = async (user, facilityIds) => {
 };
 
 const getVisibleUsers = async (user, facilityIds) => {
-  if (isAdmin(user)) {
+  if (isSuperAdmin(user)) {
     // super_admin: see all users
     const createdField = getModelCreatedField(User) || "createdAt";
     return await User.find({}, "name email role")
@@ -318,9 +318,9 @@ const getUserAppearanceData = async (user, facilityIds) => {
 };
 
 const getDashboardStatQueries = (user, facilityIds, utilityIds) => {
-  const facilityQuery = isAdmin(user) ? {} : { _id: { $in: facilityIds } };
-  const utilityQuery = isAdmin(user) ? {} : { facility_id: { $in: facilityIds } };
-  const assetQuery = isAdmin(user) ? {} : { utility_account_id: { $in: utilityIds } };
+  const facilityQuery = isSuperAdmin(user) ? {} : { _id: { $in: facilityIds } };
+  const utilityQuery = isSuperAdmin(user) ? {} : { facility_id: { $in: facilityIds } };
+  const assetQuery = isSuperAdmin(user) ? {} : { utility_account_id: { $in: utilityIds } };
 
   return { facilityQuery, utilityQuery, assetQuery };
 };
@@ -361,8 +361,8 @@ const getCoreStats = async (user, facilityIds, utilityIds) => {
 const getAuditStats = async (user, facilityIds, utilityIds) => {
   const { assetQuery } = getDashboardStatQueries(user, facilityIds, utilityIds);
 
-  const facilityScopedQuery = isAdmin(user) ? {} : { facility_id: { $in: facilityIds } };
-  const utilityScopedQuery = isAdmin(user) ? {} : { utility_account_id: { $in: utilityIds } };
+  const facilityScopedQuery = isSuperAdmin(user) ? {} : { facility_id: { $in: facilityIds } };
+  const utilityScopedQuery = isSuperAdmin(user) ? {} : { utility_account_id: { $in: utilityIds } };
 
   const [
     acAudits,
@@ -465,8 +465,8 @@ export const getDashboardUserAppearanceService = async ({ user }) => {
 
 export const getDashboardSummaryService = async ({ user }) => {
   const facilityIds = await getAccessibleFacilityIds(user);
-  const facilityQuery = isAdmin(user) ? {} : { _id: { $in: facilityIds } };
-  const utilityQuery = isAdmin(user) ? {} : { facility_id: { $in: facilityIds } };
+  const facilityQuery = isSuperAdmin(user) ? {} : { _id: { $in: facilityIds } };
+  const utilityQuery = isSuperAdmin(user) ? {} : { facility_id: { $in: facilityIds } };
 
   const closedFacilityQuery = {
     ...facilityQuery,
@@ -502,7 +502,7 @@ export const getDashboardRecentFacilitiesService = async ({ user, limit = 6 }) =
   const parsedLimit = Math.min(Math.max(Number(limit) || 6, 1), 20);
   const facilityIds = await getAccessibleFacilityIds(user);
   const facilityQuery = {
-    ...(isAdmin(user) ? {} : { _id: { $in: facilityIds } }),
+    ...(isSuperAdmin(user) ? {} : { _id: { $in: facilityIds } }),
     $or: [
       { "audit_closure.closed_at": { $exists: false } },
       { "audit_closure.closed_at": null },

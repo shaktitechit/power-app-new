@@ -52,6 +52,10 @@ export function isAdmin(user) {
   return role === "super_admin" || role === "admin";
 }
 
+export function isSuperAdmin(user) {
+  return user?.role === "super_admin";
+}
+
 
 function hasWildcardAll(user) {
   const policies = getEffectivePolicies(user);

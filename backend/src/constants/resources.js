@@ -37,4 +37,16 @@ export const RESOURCES = {
   QUOTATION: "quotation",
   EXPRESSION_OF_INTEREST: "expression_of_interest",
   TERMS_CONDITIONS: "terms_conditions",
+
+  // Team Manager
+  TEAM: "team",
+
+  // Work Planner
+  WORK_PLAN: "work_plan",
+  WORK_TASK: "work_task",
+
+  // Expense Manager
+  EXPENSE: "expense",
+  EXPENSE_APPROVAL: "expense_approval",
+  EXPENSE_POLICY: "expense_policy",
 };

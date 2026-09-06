@@ -22,6 +22,8 @@ import {
   SelectValue,
 } from "@/components/portal/ui/select";
 import { Avatar, AvatarFallback } from "@/components/portal/ui/avatar";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/portal/ui/tabs";
+import { TeamManagerContent } from "@/components/portal/shared/team-manager";
 
 import {
   useAuditorsQuery,
@@ -40,7 +42,9 @@ import {
   UserCheck,
   ChevronLeft,
   ChevronRight,
-  BarChart3
+  BarChart3,
+  Network,
+  Users as UsersIcon,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -435,74 +439,91 @@ export default function UsersPage() {
   };
 
   return (
-    <DashboardLayout title="Users" subtitle="Manage system users and roles">
-      <div className="mb-6 flex min-w-0 flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="relative min-w-0 w-full flex-1 sm:max-w-md">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            placeholder="Search users..."
-            value={searchQuery}
-            onChange={(e) => {
-              setSearchQuery(e.target.value);
-              setCurrentPage(1);
-            }}
-            className="pl-9"
+    <DashboardLayout title="Users Hub" subtitle="Manage system users, roles, and team hierarchy">
+      <Tabs defaultValue="users">
+        <TabsList className="mb-4 flex-wrap">
+          <TabsTrigger value="users" className="gap-2">
+            <UsersIcon className="h-4 w-4" /> User Directory
+          </TabsTrigger>
+          <TabsTrigger value="team-manager" className="gap-2">
+            <Network className="h-4 w-4" /> Team Manager
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="users" className="space-y-4">
+          <div className="mb-6 flex min-w-0 flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="relative min-w-0 w-full flex-1 sm:max-w-md">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                placeholder="Search users..."
+                value={searchQuery}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
+                  setCurrentPage(1);
+                }}
+                className="pl-9"
+              />
+            </div>
+
+            <Button
+              onClick={() => setIsAddDialogOpen(true)}
+              className="w-full shrink-0 sm:w-auto"
+              disabled={!canManageUsers || assignableRoles.length === 0}
+            >
+              <Plus className="mr-2 h-4 w-4" />
+              Add User
+            </Button>
+          </div>
+
+          <DataTable
+            columns={columns}
+            data={paginatedUsers}
+            loading={isLoading}
+            emptyMessage="No users found"
           />
-        </div>
 
-        <Button
-          onClick={() => setIsAddDialogOpen(true)}
-          className="w-full shrink-0 sm:w-auto"
-          disabled={!canManageUsers || assignableRoles.length === 0}
-        >
-          <Plus className="mr-2 h-4 w-4" />
-          Add User
-        </Button>
-      </div>
+          {/* Pagination controls */}
+          <div className="mt-4 flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <span className="text-sm text-muted-foreground">
+              Showing {filteredUsers.length === 0 ? 0 : (currentPage - 1) * PAGE_SIZE + 1}–{Math.min(currentPage * PAGE_SIZE, filteredUsers.length)} of {filteredUsers.length} user{filteredUsers.length !== 1 ? "s" : ""}
+            </span>
 
-      <DataTable
-        columns={columns}
-        data={paginatedUsers}
-        loading={isLoading}
-        emptyMessage="No users found"
-      />
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-8 w-8 p-0"
+                disabled={currentPage <= 1}
+                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                aria-label="Previous page"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
 
-      {/* Pagination controls */}
-      <div className="mt-4 flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <span className="text-sm text-muted-foreground">
-          Showing {filteredUsers.length === 0 ? 0 : (currentPage - 1) * PAGE_SIZE + 1}–{Math.min(currentPage * PAGE_SIZE, filteredUsers.length)} of {filteredUsers.length} user{filteredUsers.length !== 1 ? "s" : ""}
-        </span>
+              <span className="min-w-[6rem] text-center text-sm text-muted-foreground">
+                Page {currentPage} of {totalPages}
+              </span>
 
-        <div className="flex items-center gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="h-8 w-8 p-0"
-            disabled={currentPage <= 1}
-            onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-            aria-label="Previous page"
-          >
-            <ChevronLeft className="h-4 w-4" />
-          </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-8 w-8 p-0"
+                disabled={currentPage >= totalPages}
+                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                aria-label="Next page"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+        </TabsContent>
 
-          <span className="min-w-[6rem] text-center text-sm text-muted-foreground">
-            Page {currentPage} of {totalPages}
-          </span>
-
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="h-8 w-8 p-0"
-            disabled={currentPage >= totalPages}
-            onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-            aria-label="Next page"
-          >
-            <ChevronRight className="h-4 w-4" />
-          </Button>
-        </div>
-      </div>
+        <TabsContent value="team-manager" className="mt-4">
+          <TeamManagerContent />
+        </TabsContent>
+      </Tabs>
 
       <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
         <DialogContent>

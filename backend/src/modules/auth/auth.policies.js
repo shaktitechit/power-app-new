@@ -147,6 +147,34 @@ export const rolePolicies = {
       actions: [A.CREATE, A.READ, A.UPDATE, A.DELETE],
       scope: "all",
     },
+    // Team Manager permissions
+    {
+      resource: R.TEAM,
+      actions: [A.CREATE, A.READ, A.UPDATE, A.ASSIGN, A.MOVE_USER, A.DEACTIVATE_USER],
+      scope: "all",
+    },
+    // Work Planner permissions
+    {
+      resource: R.WORK_PLAN,
+      actions: [A.CREATE, A.READ, A.UPDATE, A.DELETE, A.APPROVE, A.REJECT],
+      scope: "all",
+    },
+    {
+      resource: R.WORK_TASK,
+      actions: [A.CREATE, A.READ, A.UPDATE, A.DELETE, A.ASSIGN],
+      scope: "all",
+    },
+    // Expense Manager permissions
+    {
+      resource: R.EXPENSE,
+      actions: [A.CREATE, A.READ, A.UPDATE, A.DELETE, A.APPROVE, A.REJECT, A.REIMBURSE],
+      scope: "all",
+    },
+    {
+      resource: R.EXPENSE_POLICY,
+      actions: [A.CREATE, A.READ, A.UPDATE, A.DELETE],
+      scope: "all",
+    },
   ],
 
   manager: [
@@ -284,6 +312,26 @@ export const rolePolicies = {
       scope: "all",
     },
     { resource: R.TERMS_CONDITIONS, actions: [A.READ], scope: "all" },
+    // Team Manager — view only within assigned hierarchy
+    { resource: R.TEAM, actions: [A.READ], scope: "assigned" },
+    // Work Planner — create/manage for self and direct reports
+    {
+      resource: R.WORK_PLAN,
+      actions: [A.CREATE, A.READ, A.UPDATE, A.DELETE, A.APPROVE, A.REJECT],
+      scope: "assigned",
+    },
+    {
+      resource: R.WORK_TASK,
+      actions: [A.CREATE, A.READ, A.UPDATE, A.DELETE, A.ASSIGN],
+      scope: "assigned",
+    },
+    // Expense Manager — view/approve team expenses
+    {
+      resource: R.EXPENSE,
+      actions: [A.CREATE, A.READ, A.UPDATE, A.DELETE, A.APPROVE, A.REJECT, A.SUBMIT],
+      scope: "assigned",
+    },
+    { resource: R.EXPENSE_POLICY, actions: [A.READ], scope: "all" },
   ],
 
   auditor: [
@@ -416,5 +464,19 @@ export const rolePolicies = {
       actions: [A.CREATE, A.READ, A.UPDATE],
       scope: "all",
     },
+    // Work Planner — own work plans and tasks only
+    {
+      resource: R.WORK_PLAN,
+      actions: [A.CREATE, A.READ, A.UPDATE, A.DELETE, A.SUBMIT],
+      scope: "own",
+    },
+    { resource: R.WORK_TASK, actions: [A.READ, A.UPDATE], scope: "own" },
+    // Expense Manager — own expenses only
+    {
+      resource: R.EXPENSE,
+      actions: [A.CREATE, A.READ, A.UPDATE, A.DELETE, A.SUBMIT],
+      scope: "own",
+    },
+    { resource: R.EXPENSE_POLICY, actions: [A.READ], scope: "all" },
   ],
 };

@@ -63,6 +63,13 @@ import safetyAdditionalItemsAuditRoutes from "./modules/safety-audit/safety-addi
 
 import modeRoutes from "./modules/mode/mode.routes.js";
 
+// Management modules (Team, Work, Expense)
+import teamManagerRoutes from "./modules/team-manager/team-manager.routes.js";
+import workPlannerRoutes from "./modules/work-planner/work-planner.routes.js";
+import workTasksRoutes from "./modules/work-planner/work-tasks.routes.js";
+import expenseManagerRoutes from "./modules/expense-manager/expense-manager.routes.js";
+import expensePolicyRoutes from "./modules/expense-manager/expense-policy.routes.js";
+
 
 /**
  * Mounts `/api` rate limiter and all `/api/v1/...` routers.
@@ -140,4 +147,11 @@ export function registerV1ApiRoutes(app) {
 
   // --- Mode ---
   app.use("/api/v1/mode", modeRoutes);
+
+  // --- Management modules: Team, Work Planner, Expense ---
+  app.use("/api/v1/team", teamManagerRoutes);
+  app.use("/api/v1/work-plans", workPlannerRoutes);
+  app.use("/api/v1/work-tasks", workTasksRoutes);
+  app.use("/api/v1/expenses", expenseManagerRoutes);
+  app.use("/api/v1/expense-policies", expensePolicyRoutes);
 }

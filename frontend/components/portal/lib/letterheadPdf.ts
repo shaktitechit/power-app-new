@@ -1,6 +1,7 @@
 import type { Company, CompanyBranchOffice } from "@/store/slices/companyApiSlice";
 import {
   DEFAULT_COMPANY_NAME,
+  DEFAULT_COMPANY_LOGO,
 } from "@/components/portal/lib/companyBranding";
 
 export const LETTERHEAD_TAGLINE = "";
@@ -151,6 +152,22 @@ export function formatPdfDate(value?: string | null) {
   return `${dd}-${mm}-${yyyy}`;
 }
 
+export function formatPdfDateTime(value?: string | Date | null) {
+  if (!value) return formatPdfDate(new Date().toISOString());
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+  const dd = String(date.getDate()).padStart(2, "0");
+  const mm = String(date.getMonth() + 1).padStart(2, "0");
+  const yyyy = date.getFullYear();
+  let hours = date.getHours();
+  const minutes = String(date.getMinutes()).padStart(2, "0");
+  const ampm = hours >= 12 ? "PM" : "AM";
+  hours = hours % 12;
+  hours = hours ? hours : 12;
+  const strTime = `${String(hours).padStart(2, "0")}:${minutes} ${ampm}`;
+  return `${dd}-${mm}-${yyyy} ${strTime}`;
+}
+
 function officeAddress(office: Partial<CompanyBranchOffice>) {
   const cityState = joinParts(
     office.city,
@@ -257,37 +274,98 @@ export function buildCompanyLetterhead(
   };
 }
 
-export async function loadLogo(src?: string): Promise<LogoImage | null> {
-  if (!src) return null;
+async function loadSingleImageSource(url: string): Promise<LogoImage | null> {
+  if (!url || typeof url !== "string") return null;
   try {
-    const res = await fetch(src, { credentials: "include", cache: "no-store" });
-    if (!res.ok) return null;
-    const blob = await res.blob();
-    const objectUrl = URL.createObjectURL(blob);
-    try {
-      const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+    if (url.startsWith("data:image")) {
+      return new Promise<LogoImage | null>((resolve) => {
         const image = new Image();
-        image.onload = () => resolve(image);
-        image.onerror = () => reject(new Error("logo load failed"));
-        image.src = objectUrl;
+        image.onload = () => {
+          try {
+            const canvas = document.createElement("canvas");
+            canvas.width = Math.max(1, image.naturalWidth);
+            canvas.height = Math.max(1, image.naturalHeight);
+            const ctx = canvas.getContext("2d");
+            if (!ctx) return resolve(null);
+            ctx.drawImage(image, 0, 0);
+            const dataUrl = canvas.toDataURL("image/png");
+            resolve({ dataUrl, width: canvas.width, height: canvas.height });
+          } catch {
+            resolve(null);
+          }
+        };
+        image.onerror = () => resolve(null);
+        image.src = url;
       });
-      const canvas = document.createElement("canvas");
-      canvas.width = Math.max(1, img.naturalWidth);
-      canvas.height = Math.max(1, img.naturalHeight);
-      const ctx = canvas.getContext("2d");
-      if (!ctx) return null;
-      ctx.drawImage(img, 0, 0);
-      return {
-        dataUrl: canvas.toDataURL("image/png"),
-        width: canvas.width,
-        height: canvas.height,
-      };
-    } finally {
-      URL.revokeObjectURL(objectUrl);
     }
+
+    const cleanUrl = url.replace(/^http:\/\/localhost:5000/, "");
+
+    // 1. Try fetch first
+    const res = await fetch(cleanUrl, { credentials: "include", cache: "no-store" }).catch(() => null);
+    if (res && res.ok) {
+      const blob = await res.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      try {
+        const logoImg = await new Promise<LogoImage | null>((resolve) => {
+          const image = new Image();
+          image.onload = () => {
+            try {
+              const canvas = document.createElement("canvas");
+              canvas.width = Math.max(1, image.naturalWidth);
+              canvas.height = Math.max(1, image.naturalHeight);
+              const ctx = canvas.getContext("2d");
+              if (!ctx) return resolve(null);
+              ctx.drawImage(image, 0, 0);
+              const mime = blob.type && blob.type.startsWith("image/") ? blob.type : "image/png";
+              const dataUrl = canvas.toDataURL(mime);
+              resolve({ dataUrl, width: canvas.width, height: canvas.height });
+            } catch {
+              resolve(null);
+            }
+          };
+          image.onerror = () => resolve(null);
+          image.src = objectUrl;
+        });
+        if (logoImg) return logoImg;
+      } finally {
+        URL.revokeObjectURL(objectUrl);
+      }
+    }
+
+    // 2. Fallback: try loading directly via HTMLImageElement
+    return new Promise<LogoImage | null>((resolve) => {
+      const image = new Image();
+      image.crossOrigin = "anonymous";
+      image.onload = () => {
+        try {
+          const canvas = document.createElement("canvas");
+          canvas.width = Math.max(1, image.naturalWidth);
+          canvas.height = Math.max(1, image.naturalHeight);
+          const ctx = canvas.getContext("2d");
+          if (!ctx) return resolve(null);
+          ctx.drawImage(image, 0, 0);
+          const dataUrl = canvas.toDataURL("image/jpeg");
+          resolve({ dataUrl, width: canvas.width, height: canvas.height });
+        } catch {
+          resolve(null);
+        }
+      };
+      image.onerror = () => resolve(null);
+      image.src = cleanUrl;
+    });
   } catch {
     return null;
   }
+}
+
+export async function loadLogo(src?: string): Promise<LogoImage | null> {
+  const targetSrc = src && src.trim() ? src.trim() : DEFAULT_COMPANY_LOGO;
+  let logo = await loadSingleImageSource(targetSrc);
+  if (!logo && targetSrc !== DEFAULT_COMPANY_LOGO) {
+    logo = await loadSingleImageSource(DEFAULT_COMPANY_LOGO);
+  }
+  return logo;
 }
 
 function logoBox(logo: LogoImage | null, maxW: number, maxH: number) {
@@ -347,6 +425,7 @@ export function drawFooter(
   primary: Rgb,
   footerH: number,
   layout?: PdfPageLayout,
+  generatedByInfo?: string,
 ) {
   const L = resolveLayout(layout);
   const top = L.pageH - footerH;
@@ -374,6 +453,9 @@ export function drawFooter(
   doc.setFont("helvetica", "normal");
   doc.setFontSize(7);
   doc.setTextColor(...MUTED);
+  if (generatedByInfo) {
+    doc.text(generatedByInfo, L.marginX, L.pageH - 4.5, { align: "left" });
+  }
   doc.text(`Page ${page} of ${totalPages}`, L.pageW - L.marginX, L.pageH - 4.5, {
     align: "right",
   });

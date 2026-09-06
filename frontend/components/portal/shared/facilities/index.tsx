@@ -49,8 +49,7 @@ import {
 import { FacilityUtilityAuditProgress } from "@/components/portal/shared/facility/[auditType]/[facilityId]/_components/facility-utility-audit-progress";
 import { useAppSelector } from "@/store/hooks";
 import { facilityPath } from "@/components/portal/lib/facilityRoutes";
-import { AUDIT_TYPE_OPTIONS, facilityExpectedValue } from "@/components/portal/lib/facilityConstants";
-import { formatInr } from "@/components/portal/lib/quotationConstants";
+import { AUDIT_TYPE_OPTIONS } from "@/components/portal/lib/facilityConstants";
 
 const PAGE_SIZE = 12;
 
@@ -406,7 +405,6 @@ export default function FacilitiesPage() {
             const showProgress =
               supportsFacilityUtilityProgress(facility.audit_type);
             const utilityProgress = utilityProgressByFacilityId[facility._id];
-            const expectedValue = facilityExpectedValue(facility);
             return (
               <Card
                 key={facility._id}
@@ -438,11 +436,6 @@ export default function FacilitiesPage() {
                       <p className="truncate text-xs text-muted-foreground">
                         {facility.city || "Unknown city"}
                       </p>
-                      {expectedValue != null ? (
-                        <p className="text-xs font-medium text-foreground">
-                          Expected value: {formatInr(expectedValue)}
-                        </p>
-                      ) : null}
                       <div className="flex min-w-0 flex-wrap items-center gap-1.5">
                         <span
                           title={

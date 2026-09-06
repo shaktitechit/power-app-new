@@ -1,6 +1,7 @@
 "use client";
 
 import { useParams, notFound } from "next/navigation";
+import { useAppSelector } from "@/store/hooks";
 
 // Each portal owns its own routing logic — see components/portal/[role]/router.tsx
 import { render as renderSuperAdmin } from "@/components/portal/super-admin/router";
@@ -14,16 +15,21 @@ export default function Page() {
   const rest = params?.rest as string[] | undefined;
   const pathSegments = rest || [];
 
-  switch (portal) {
-    case "super-admin":
-      return renderSuperAdmin(pathSegments);
-    case "admin":
-      return renderAdmin(pathSegments);
-    case "manager":
-      return renderManager(pathSegments);
-    case "auditor":
-      return renderAuditor(pathSegments);
-    default:
-      notFound();
+  const user = useAppSelector((s) => s.auth.user);
+
+  if (portal === "super-admin") return renderSuperAdmin(pathSegments);
+  if (portal === "admin") return renderAdmin(pathSegments);
+  if (portal === "manager") return renderManager(pathSegments);
+  if (portal === "auditor") return renderAuditor(pathSegments);
+
+  // If URL is not prefixed with role (e.g. /work-planner/123), resolve via user's logged-in role
+  if (user?.role) {
+    const effectiveSegments = [portal, ...pathSegments];
+    if (user.role === "super_admin") return renderSuperAdmin(effectiveSegments);
+    if (user.role === "admin") return renderAdmin(effectiveSegments);
+    if (user.role === "manager") return renderManager(effectiveSegments);
+    if (user.role === "auditor") return renderAuditor(effectiveSegments);
   }
+
+  notFound();
 }

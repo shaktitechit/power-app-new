@@ -600,7 +600,7 @@ export const getFacilitiesUtilityProgressService = async (user, rawFacilityIds) 
   }
 
   const accessibleIds = await resolveAccessibleFacilityIds(user);
-  const scopedIds = isAdmin(user)
+  const scopedIds = user?.role === "super_admin"
     ? requestedIds
     : requestedIds.filter((id) => accessibleIds.includes(String(id)));
 
