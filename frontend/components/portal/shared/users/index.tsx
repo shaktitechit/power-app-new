@@ -22,6 +22,7 @@ import {
   SelectValue,
 } from "@/components/portal/ui/select";
 import { Avatar, AvatarFallback } from "@/components/portal/ui/avatar";
+import { Badge } from "@/components/portal/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/portal/ui/tabs";
 import { TeamManagerContent } from "@/components/portal/shared/team-manager";
 
@@ -71,6 +72,7 @@ type User = {
   phone?: string;
   status?: string;
   role?: AppUserRole;
+  otpRequired?: boolean;
   created_by?: {
     _id: string;
     name: string;
@@ -123,11 +125,13 @@ export default function UsersPage() {
     email: string;
     password: string;
     role: AppUserRole;
+    otpRequired: boolean;
   }>({
     name: "",
     email: "",
     password: "",
     role: "auditor",
+    otpRequired: true,
   });
 
   const [editUser, setEditUser] = useState<{
@@ -136,12 +140,14 @@ export default function UsersPage() {
     email: string;
     password: string;
     role: AppUserRole;
+    otpRequired: boolean;
   }>({
     _id: "",
     name: "",
     email: "",
     password: "",
     role: "auditor",
+    otpRequired: true,
   });
 
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
@@ -216,6 +222,7 @@ export default function UsersPage() {
       email: user.email,
       password: "",
       role: user.role || "auditor",
+      otpRequired: user.otpRequired !== false,
     });
     setIsEditDialogOpen(true);
   };
@@ -261,6 +268,22 @@ export default function UsersPage() {
           )}
           <span className="text-sm">{formatRoleLabel(row.role || "auditor")}</span>
         </div>
+      ),
+    },
+    {
+      key: "otpRequired",
+      header: "OTP Verification",
+      render: (row) => (
+        <Badge
+          variant={row.otpRequired === false ? "secondary" : "outline"}
+          className={
+            row.otpRequired === false
+              ? "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20"
+              : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20"
+          }
+        >
+          {row.otpRequired === false ? "Bypassed" : "Required"}
+        </Badge>
       ),
     },
     {
@@ -367,6 +390,7 @@ export default function UsersPage() {
             email: newUser.email,
             password: newUser.password,
             role: newUser.role,
+            otpRequired: newUser.otpRequired,
           }).unwrap();
         },
         loading: "Creating user...",
@@ -379,6 +403,7 @@ export default function UsersPage() {
         email: "",
         password: "",
         role: "auditor",
+        otpRequired: true,
       });
 
       refetch();
@@ -397,6 +422,7 @@ export default function UsersPage() {
             email: editUser.email,
             password: editUser.password || undefined,
             role: editUser.role,
+            otpRequired: editUser.otpRequired,
           }).unwrap();
         },
         loading: "Updating user...",
@@ -410,6 +436,7 @@ export default function UsersPage() {
         email: "",
         password: "",
         role: "auditor",
+        otpRequired: true,
       });
 
       refetch();
@@ -589,6 +616,27 @@ export default function UsersPage() {
               </Select>
             </div>
 
+            <div>
+              <Label>OTP Verification</Label>
+              <Select
+                value={newUser.otpRequired ? "true" : "false"}
+                onValueChange={(value) =>
+                  setNewUser((p) => ({
+                    ...p,
+                    otpRequired: value === "true",
+                  }))
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select OTP requirement" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="true">Required (Default)</SelectItem>
+                  <SelectItem value="false">Disabled / Not Required</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
             <p className="rounded-md border bg-muted/40 p-2 text-xs text-muted-foreground">
               Permissions are controlled by backend role policies.
             </p>
@@ -667,6 +715,27 @@ export default function UsersPage() {
                       {formatRoleLabel(r)}
                     </SelectItem>
                   ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <Label>OTP Verification</Label>
+              <Select
+                value={editUser.otpRequired ? "true" : "false"}
+                onValueChange={(value) =>
+                  setEditUser((p) => ({
+                    ...p,
+                    otpRequired: value === "true",
+                  }))
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select OTP requirement" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="true">Required (Default)</SelectItem>
+                  <SelectItem value="false">Disabled / Not Required</SelectItem>
                 </SelectContent>
               </Select>
             </div>

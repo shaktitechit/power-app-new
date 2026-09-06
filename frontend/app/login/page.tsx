@@ -63,18 +63,44 @@ export default function LoginPage() {
     }
 
     try {
+      let role = "";
+      let isOtpRequired = true;
+
       await toastHandler({
         action: async () => {
           const res = await initiateLogin({ email, password }).unwrap();
-          setTempToken(res.tempToken);
+          isOtpRequired = res.requiresOtp !== false;
+
+          if (!isOtpRequired) {
+            role = res.role || "auditor";
+            dispatch(
+              setCredentials({
+                _id: res._id,
+                name: res.name || "",
+                email: res.email || email,
+                role: res.role || "auditor",
+                permissions: res.permissions || [],
+              })
+            );
+            return;
+          }
+
+          setTempToken(res.tempToken || "");
           setMaskedEmail(res.maskedEmail || email);
           setStep("otp");
           setResendTimer(60);
           setOtp("");
         },
         loading: "Validating credentials...",
-        success: "Verification code sent to your email",
+        success: isOtpRequired
+          ? "Verification code sent to your email"
+          : "Login successful",
       });
+
+      if (!isOtpRequired) {
+        const slug = role === "super_admin" ? "super-admin" : role || "";
+        router.push(`/${slug}/dashboard`);
+      }
     } catch (error) {
       console.error("Login initiation failed", error);
     }

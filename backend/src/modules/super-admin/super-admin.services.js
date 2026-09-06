@@ -70,7 +70,7 @@ export const getAssignableUsersService = async ({ user }) => {
 };
 
 export const createUserService = async ({ user, req, body }) => {
-  const { name, email, password, role } = body;
+  const { name, email, password, role, otpRequired } = body;
   const requesterRole = getRequesterRole(req);
   const allowedRoles = getAllowedRolesForRequester(requesterRole);
   const targetRole = role || "auditor";
@@ -93,6 +93,7 @@ export const createUserService = async ({ user, req, body }) => {
     email,
     password,
     role: targetRole,
+    otpRequired: typeof otpRequired === "boolean" ? otpRequired : true,
     created_by: user._id,
   });
 
@@ -113,6 +114,7 @@ export const createUserService = async ({ user, req, body }) => {
     meta: {
       email: newUser.email,
       role: newUser.role,
+      otpRequired: newUser.otpRequired,
       permissions_count: Array.isArray(newUser.permissions)
         ? newUser.permissions.length
         : 0,
@@ -165,6 +167,11 @@ export const updateUserService = async ({ user, req, id, body }) => {
     }
     targetUser.role = body.role;
     updatedFields.push("role");
+  }
+
+  if (typeof body.otpRequired === "boolean" && body.otpRequired !== targetUser.otpRequired) {
+    targetUser.otpRequired = body.otpRequired;
+    updatedFields.push("otpRequired");
   }
 
   if (typeof body.password === "string" && body.password.trim()) {

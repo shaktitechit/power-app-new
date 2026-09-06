@@ -89,14 +89,19 @@ export const authenticateUser = async (email, password) => {
   return user;
 };
 
-export const registerNewUser = async (name, email, password) => {
+export const registerNewUser = async (name, email, password, otpRequired) => {
   let user = await User.findOne({ email });
 
   if (user) {
     throw new Error("User already exists.");
   }
 
-  user = new User({ name, email, password });
+  user = new User({
+    name,
+    email,
+    password,
+    otpRequired: typeof otpRequired === "boolean" ? otpRequired : true,
+  });
   await user.save();
   return user;
 };
@@ -217,7 +222,7 @@ export const revokeUserSession = async (userId, refreshToken) => {
 export const fetchAllAuditors = async () => {
   const auditors = await User.find(
     { role: "auditor", status: "active" },
-    "_id name email phone status role",
+    "_id name email phone status role otpRequired",
   )
     .sort({ createdAt: -1 })
     .lean();
@@ -269,7 +274,7 @@ export const fetchAllAuditors = async () => {
 };
 
 export const modifyUserAccount = async (id, data, actor) => {
-  const { name, email, role, password, status } = data;
+  const { name, email, role, password, status, otpRequired } = data;
 
   const user = await User.findById(id);
 
@@ -289,12 +294,16 @@ export const modifyUserAccount = async (id, data, actor) => {
   if (email !== undefined && email !== user.email) updatedFields.push("email");
   if (role !== undefined && role !== user.role) updatedFields.push("role");
   if (status !== undefined && status !== user.status) updatedFields.push("status");
+  if (typeof otpRequired === "boolean" && otpRequired !== user.otpRequired) updatedFields.push("otpRequired");
   if (password && password.trim() !== "") updatedFields.push("password");
 
   user.name = name ?? user.name;
   user.email = email ?? user.email;
   user.role = role ?? user.role;
   user.status = status ?? user.status;
+  if (typeof otpRequired === "boolean") {
+    user.otpRequired = otpRequired;
+  }
 
   if (password && password.trim() !== "") {
     user.password = password;
@@ -438,10 +447,30 @@ export const updateUserProfileService = async (userId, body, actor) => {
 // ─── OTP Login Services ────────────────────────────────────────────────────────
 
 /**
- * Validates primary credentials and sends a 6-digit verification code.
+ * Validates primary credentials and sends a 6-digit verification code if required.
+ * If user.otpRequired === false, bypasses OTP and returns direct session data.
  */
-export const initiateOtpLoginService = async (email, password) => {
+export const initiateOtpLoginService = async (email, password, userAgent, ip) => {
   const user = await authenticateUser(email, password);
+
+  // 🔓 Bypass OTP if user has otpRequired explicitly set to false
+  if (user.otpRequired === false) {
+    const sessionData = await createSessionAndTokens(user._id, userAgent, ip);
+    return {
+      requiresOtp: false,
+      accessToken: sessionData.accessToken,
+      refreshToken: sessionData.refreshToken,
+      role: sessionData.role,
+      accessFlags: sessionData.accessFlags,
+      user: {
+        _id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        permissions: user.permissions || [],
+      },
+    };
+  }
 
   const otpCode = generateOtpCode();
   const tempToken = crypto.randomBytes(32).toString("hex");

@@ -30,11 +30,28 @@ const extractIp = (req) => {
 };
 
 //@route POST /api/v1/users/login/initiate
-//@desc Validate email & password and send OTP email
+//@desc Validate email & password and send OTP email (bypasses if otpRequired is false)
 //@access Public
 const initiateLogin = asyncHandler(async (req, res) => {
   const { email, password } = req.body;
-  const result = await initiateOtpLoginService(email, password);
+  const ip = extractIp(req);
+  const userAgent = req.get("user-agent") || null;
+
+  const result = await initiateOtpLoginService(email, password, userAgent, ip);
+
+  if (result.requiresOtp === false) {
+    setAuthCookies(res, {
+      accessToken: result.accessToken,
+      refreshToken: result.refreshToken,
+      role: result.role,
+      accessFlags: result.accessFlags,
+    });
+    return res.json({
+      requiresOtp: false,
+      ...result.user,
+    });
+  }
+
   res.json(result);
 });
 
@@ -77,11 +94,11 @@ const resendLoginOtp = asyncHandler(async (req, res) => {
 //@access Public
 const loginUser = asyncHandler(async (req, res) => {
   const { email, password, skipOtp } = req.body;
+  const ip = extractIp(req);
+  const userAgent = req.get("user-agent") || null;
 
   if (skipOtp) {
     const user = await authenticateUser(email, password);
-    const ip = extractIp(req);
-    const userAgent = req.get("user-agent") || null;
 
     const { accessToken, refreshToken, role, accessFlags } =
       await createSessionAndTokens(user._id, userAgent, ip);
@@ -102,7 +119,21 @@ const loginUser = asyncHandler(async (req, res) => {
     });
   }
 
-  const result = await initiateOtpLoginService(email, password);
+  const result = await initiateOtpLoginService(email, password, userAgent, ip);
+
+  if (result.requiresOtp === false) {
+    setAuthCookies(res, {
+      accessToken: result.accessToken,
+      refreshToken: result.refreshToken,
+      role: result.role,
+      accessFlags: result.accessFlags,
+    });
+    return res.json({
+      requiresOtp: false,
+      ...result.user,
+    });
+  }
+
   res.json(result);
 });
 
@@ -110,9 +141,9 @@ const loginUser = asyncHandler(async (req, res) => {
 //@desc Register a new user
 //@access Public
 const registerUser = asyncHandler(async (req, res) => {
-  const { name, email, password } = req.body;
+  const { name, email, password, otpRequired } = req.body;
 
-  const user = await registerNewUser(name, email, password);
+  const user = await registerNewUser(name, email, password, otpRequired);
 
   res.status(201).json({
     user: {
@@ -120,6 +151,7 @@ const registerUser = asyncHandler(async (req, res) => {
       name: user.name,
       email: user.email,
       role: user.role,
+      otpRequired: user.otpRequired,
     },
   });
 });

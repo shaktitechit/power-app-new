@@ -12,6 +12,7 @@ interface RegisterRequest {
   email: string;
   password: string;
   role?: AppUserRole;
+  otpRequired?: boolean;
 }
 
 // Auth response type (matches POST /users/login body)
@@ -23,6 +24,7 @@ interface AuthResponse {
   role: AppUserRole;
   permissions?: UserPermission[];
   status?: string;
+  otpRequired?: boolean;
 }
 
 // Presence / appearance types
@@ -39,6 +41,7 @@ interface Auditor {
   phone?: string;
   status?: string;
   role: AppUserRole;
+  otpRequired?: boolean;
   permissions?: UserPermission[];
   appearance?: AuditorAppearance;
 }
@@ -64,6 +67,7 @@ interface UpdateUserRequest {
   role?: AppUserRole;
   password?: string;
   status?: string;
+  otpRequired?: boolean;
 }
 
 interface DeleteUserResponse {
@@ -79,15 +83,22 @@ interface UpdateUserResponse {
     email: string;
     role?: AppUserRole;
     status?: string;
+    otpRequired?: boolean;
   };
 }
 
 // Request & Response types for OTP authentication
 export interface InitiateOtpResponse {
   requiresOtp: boolean;
-  tempToken: string;
-  maskedEmail: string;
-  message: string;
+  tempToken?: string;
+  maskedEmail?: string;
+  message?: string;
+  _id?: string;
+  name?: string;
+  email?: string;
+  role?: AppUserRole;
+  permissions?: UserPermission[];
+  status?: string;
 }
 
 export interface VerifyOtpRequest {

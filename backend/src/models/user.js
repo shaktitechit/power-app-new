@@ -55,6 +55,11 @@ const userSchema = new mongoose.Schema(
       default: "active",
     },
 
+    otpRequired: {
+      type: Boolean,
+      default: true,
+    },
+
     created_by: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
