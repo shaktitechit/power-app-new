@@ -40,19 +40,13 @@ import {
   Filter,
   X,
   Maximize2,
-  Send,
-  ThumbsUp,
-  ThumbsDown,
 } from "lucide-react";
 import {
   useGetWorkPlansQuery,
-  useApproveWorkPlanMutation,
-  useSubmitWorkPlanMutation,
   type WorkPlan,
 } from "@/store/slices/workPlannerApiSlice";
 import { useGetTeamUsersQuery } from "@/store/slices/teamManagerApiSlice";
 import { useAppSelector } from "@/store/hooks";
-import { toast } from "sonner";
 import { renderPlanStatusBadge, renderPlanTypeBadge, formatPlanDate, PLAN_TYPE_CONFIG } from "../workPlanUtils";
 import { CreatePlanModal } from "./CreatePlanModal";
 
@@ -155,34 +149,6 @@ export function WorkPlannerCalendarModal({ open, onClose }: WorkPlannerCalendarM
   );
 
   const plans = plansData?.plans || [];
-
-  // Mutations
-  const [approvePlan] = useApproveWorkPlanMutation();
-  const [submitPlan] = useSubmitWorkPlanMutation();
-
-  const handleApprove = async (id: string) => {
-    try {
-      await approvePlan({ id }).unwrap();
-      toast.success("Plan approved.");
-      if (selectedPlan?._id === id) {
-        setSelectedPlan((prev) => prev ? { ...prev, status: "approved" } : null);
-      }
-    } catch (e: any) {
-      toast.error(e?.data?.message || "Failed to approve.");
-    }
-  };
-
-  const handleSubmit = async (id: string) => {
-    try {
-      await submitPlan(id).unwrap();
-      toast.success("Plan submitted.");
-      if (selectedPlan?._id === id) {
-        setSelectedPlan((prev) => prev ? { ...prev, status: currentUser?.role === "super_admin" ? "approved" : "submitted" } : null);
-      }
-    } catch (e: any) {
-      toast.error(e?.data?.message || "Failed to submit.");
-    }
-  };
 
   // Map plans by YYYY-MM-DD key for fast lookup
   const plansByDate = useMemo(() => {
@@ -433,11 +399,7 @@ export function WorkPlannerCalendarModal({ open, onClose }: WorkPlannerCalendarM
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Statuses</SelectItem>
-              <SelectItem value="approved">Approved</SelectItem>
-              <SelectItem value="submitted">Submitted</SelectItem>
-              <SelectItem value="draft">Draft</SelectItem>
-              <SelectItem value="rejected">Rejected</SelectItem>
-              <SelectItem value="active">Active</SelectItem>
+              <SelectItem value="planned">Planned</SelectItem>
               <SelectItem value="completed">Completed</SelectItem>
               <SelectItem value="cancelled">Cancelled</SelectItem>
             </SelectContent>
@@ -686,14 +648,6 @@ export function WorkPlannerCalendarModal({ open, onClose }: WorkPlannerCalendarM
                   <span className="text-muted-foreground">Date:</span>
                   <p className="font-semibold">{formatPlanDate(selectedPlan.date || selectedPlan.period?.startDate)}</p>
                 </div>
-                {selectedPlan.approval?.approvedBy?.name && (
-                  <div>
-                    <span className="text-muted-foreground">Approved By:</span>
-                    <p className="font-semibold text-emerald-600 dark:text-emerald-400">
-                      {selectedPlan.approval.approvedBy.name}
-                    </p>
-                  </div>
-                )}
               </div>
 
               {selectedPlan.description && (
@@ -749,27 +703,9 @@ export function WorkPlannerCalendarModal({ open, onClose }: WorkPlannerCalendarM
                   </div>
                 </div>
               )}
-
-              {selectedPlan.approval?.rejectionReason && (
-                <div className="p-3 rounded-xl bg-destructive/10 border border-destructive/20 text-xs text-destructive">
-                  <strong>Rejection Reason:</strong> {selectedPlan.approval.rejectionReason}
-                </div>
-              )}
             </div>
 
             <div className="flex items-center justify-end gap-2 pt-3 border-t">
-              {["draft", "rejected"].includes(selectedPlan.status) && String(selectedPlan.owner?._id) === String(currentUser?._id) && (
-                <Button size="sm" className="gap-1 text-xs" onClick={() => handleSubmit(selectedPlan._id)}>
-                  <Send className="h-3.5 w-3.5" /> Submit for Approval
-                </Button>
-              )}
-
-              {selectedPlan.status === "submitted" && isSeniorOrManager && String(selectedPlan.owner?._id) !== String(currentUser?._id) && (
-                <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white gap-1 text-xs" onClick={() => handleApprove(selectedPlan._id)}>
-                  <ThumbsUp className="h-3.5 w-3.5" /> Approve Plan
-                </Button>
-              )}
-
               <Button variant="outline" size="sm" onClick={() => setSelectedPlan(null)}>
                 Close
               </Button>

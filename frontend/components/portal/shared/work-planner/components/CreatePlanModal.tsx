@@ -47,6 +47,7 @@ import { useGetTeamUsersQuery } from "@/store/slices/teamManagerApiSlice";
 import { useAppSelector } from "@/store/hooks";
 import { formatRoleLabel } from "@/components/portal/lib/authRoles";
 import { toast } from "sonner";
+import { getMinAllowedWorkPlanDate, isWorkPlanDateTooFarInPast } from "../workPlanUtils";
 
 export interface CreatePlanModalProps {
   open: boolean;
@@ -85,6 +86,8 @@ export function CreatePlanModal({ open, onClose, initialDate }: CreatePlanModalP
   const rawEnquiries = ((enquiriesData as any)?.data || (enquiriesData as any)?.enquiries || (Array.isArray(enquiriesData) ? enquiriesData : [])) as Enquiry[];
 
   const canAssignOtherUser = currentUser?.role === "super_admin" || currentUser?.role === "admin" || currentUser?.role === "manager";
+  const isSuperAdmin = currentUser?.role === "super_admin";
+  const minAllowedDate = isSuperAdmin ? undefined : getMinAllowedWorkPlanDate();
   const { data: teamData } = useGetTeamUsersQuery({ limit: 100 }, { skip: !canAssignOtherUser });
   const teamUsers = teamData?.users || [];
 
@@ -92,10 +95,21 @@ export function CreatePlanModal({ open, onClose, initialDate }: CreatePlanModalP
   const [date, setDate] = useState<string>(initialDate || new Date().toISOString().split("T")[0]);
 
   useEffect(() => {
-    if (initialDate) {
-      setDate(initialDate);
+    if (!open) return;
+    const today = new Date().toISOString().split("T")[0];
+    const nextDate = initialDate || today;
+    if (
+      !isSuperAdmin &&
+      isWorkPlanDateTooFarInPast(nextDate, { bypass: false })
+    ) {
+      setDate(today);
+      if (initialDate) {
+        toast.error("Work plans cannot be created for dates more than 3 days in the past.");
+      }
+      return;
     }
-  }, [initialDate]);
+    setDate(nextDate);
+  }, [initialDate, open, isSuperAdmin]);
 
   const [planType, setPlanType] = useState<"visits" | "work_from_office" | "work_from_home" | "leave">("work_from_office");
   const [title, setTitle] = useState<string>("");
@@ -277,6 +291,10 @@ export function CreatePlanModal({ open, onClose, initialDate }: CreatePlanModalP
       toast.error("Plan date is required.");
       return;
     }
+    if (isWorkPlanDateTooFarInPast(date, { bypass: isSuperAdmin })) {
+      toast.error("Only Super Admin can create work plans more than 3 days in the past.");
+      return;
+    }
 
     // Auto-include active entry if queued array is empty
     let finalVisits = [...visits];
@@ -408,8 +426,12 @@ export function CreatePlanModal({ open, onClose, initialDate }: CreatePlanModalP
                     type="date"
                     className="h-10 text-sm bg-white border-slate-300"
                     value={date}
+                    min={minAllowedDate}
                     onChange={(e) => setDate(e.target.value)}
                   />
+                  {!isSuperAdmin && (
+                    <p className="text-[10px] text-muted-foreground">Dates older than 3 days are not allowed.</p>
+                  )}
                 </div>
                 <div className="space-y-1.5">
                   <Label className="text-xs font-semibold text-slate-700">Plan Type *</Label>

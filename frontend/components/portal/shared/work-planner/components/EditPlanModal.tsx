@@ -22,7 +22,9 @@ import {
 } from "@/components/portal/ui/select";
 import { Edit3 } from "lucide-react";
 import { useUpdateWorkPlanMutation, WorkPlan } from "@/store/slices/workPlannerApiSlice";
+import { useAppSelector } from "@/store/hooks";
 import { toast } from "sonner";
+import { getMinAllowedWorkPlanDate, isWorkPlanDateTooFarInPast } from "../workPlanUtils";
 
 export interface EditPlanModalProps {
   open: boolean;
@@ -31,6 +33,9 @@ export interface EditPlanModalProps {
 }
 
 export function EditPlanModal({ open, onClose, plan }: EditPlanModalProps) {
+  const user = useAppSelector((s) => s.auth.user);
+  const isSuperAdmin = user?.role === "super_admin";
+  const minAllowedDate = isSuperAdmin ? undefined : getMinAllowedWorkPlanDate();
   const [updateWorkPlan, { isLoading }] = useUpdateWorkPlanMutation();
 
   const [title, setTitle] = useState("");
@@ -52,6 +57,11 @@ export function EditPlanModal({ open, onClose, plan }: EditPlanModalProps) {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!plan) return;
+
+    if (isWorkPlanDateTooFarInPast(date, { bypass: isSuperAdmin })) {
+      toast.error("Only Super Admin can set a work plan date more than 3 days in the past.");
+      return;
+    }
 
     try {
       await updateWorkPlan({
@@ -80,7 +90,7 @@ export function EditPlanModal({ open, onClose, plan }: EditPlanModalProps) {
             <Edit3 className="h-5 w-5 text-primary" /> Edit Work Plan
           </DialogTitle>
           <DialogDescription>
-            Update the core details of this work plan. Changes can be saved while the plan is awaiting approval.
+            Update the core details of this work plan.
           </DialogDescription>
         </DialogHeader>
 
@@ -121,9 +131,13 @@ export function EditPlanModal({ open, onClose, plan }: EditPlanModalProps) {
                 id="plan-date"
                 type="date"
                 value={date}
+                min={minAllowedDate}
                 onChange={(e) => setDate(e.target.value)}
                 required
               />
+              {!isSuperAdmin && (
+                <p className="text-[10px] text-muted-foreground">Dates older than 3 days are not allowed.</p>
+              )}
             </div>
           </div>
 

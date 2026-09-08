@@ -11,10 +11,8 @@ const { Notification, RecentActivity } = modelsRegistry;
 import WorkPlan from "../../models/workPlan.js";
 import WorkTask from "../../models/workTask.js";
 import Expense from "../../models/expense.js";
-import { modelsRegistry as mr } from "../../data/modelRegistry.js";
-const User = mr.User;
 import mongoose from "mongoose";
-import { canManageUser, getAncestors } from "../../services/hierarchy/hierarchyService.js";
+import { canManageUser } from "../../services/hierarchy/hierarchyService.js";
 import { getScopeForRole, resolveUserIds } from "../../services/hierarchy/scopeResolver.js";
 
 // ---------------------------------------------------------------------------
@@ -68,17 +66,6 @@ async function sendNotification({ recipientId, senderId, title, message, referen
   } catch { /* Non-fatal */ }
 }
 
-/**
- * Find the appropriate approver for a work plan.
- * Walks up the hierarchy from the owner's reportsTo chain.
- */
-async function findApprover(ownerId) {
-  if (!ownerId || !mongoose.Types.ObjectId.isValid(ownerId)) return null;
-  const owner = await User.findById(ownerId).select("reportsTo role").lean();
-  if (!owner || !owner.reportsTo) return null;
-  return owner.reportsTo;
-}
-
 // ---------------------------------------------------------------------------
 // Work Plans
 // ---------------------------------------------------------------------------
@@ -110,11 +97,6 @@ export async function getWorkPlansService({ user, query }) {
     filter.owner = {
       $in: accessibleIds.filter((id) => String(id) !== String(user._id)),
     };
-  } else if (tab === "approvals") {
-    filter.status = "submitted";
-    filter.owner = {
-      $in: accessibleIds.filter((id) => String(id) !== String(user._id)),
-    };
   } else if (tab === "today") {
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
@@ -128,9 +110,7 @@ export async function getWorkPlansService({ user, query }) {
     filter.owner = { $in: accessibleIds };
   }
 
-  if (tab === "approvals" && !filter.status) {
-    filter.status = "submitted";
-  } else if (status && status !== "all") {
+  if (status && status !== "all") {
     filter.status = status;
   }
 
@@ -218,6 +198,18 @@ function sanitizeFacilityId(fac) {
   return s;
 }
 
+function isPlanDateTooFarInPast(planDateRaw, { bypass = false } = {}) {
+  if (bypass) return false;
+  if (!planDateRaw) return false;
+  const planDayStart = new Date(planDateRaw);
+  if (isNaN(planDayStart.getTime())) return false;
+  planDayStart.setHours(0, 0, 0, 0);
+  const minAllowed = new Date();
+  minAllowed.setHours(0, 0, 0, 0);
+  minAllowed.setDate(minAllowed.getDate() - 3);
+  return planDayStart.getTime() < minAllowed.getTime();
+}
+
 export async function createWorkPlanService({ user, body }) {
   const { ownerId, title, description, planType, date, leaveReason, visits, works, period } = body;
 
@@ -240,6 +232,10 @@ export async function createWorkPlanService({ user, body }) {
   const startDate = parseDate(period?.startDate) || planDate;
   const endDate = parseDate(period?.endDate) || planDate;
 
+  if (isPlanDateTooFarInPast(planDate, { bypass: user.role === "super_admin" })) {
+    throw badRequest("Only Super Admin can create work plans more than 3 days in the past.");
+  }
+
   // Duplicate Check: Prevent multiple active work plans for the same user on the same date
   const startOfDay = new Date(planDate);
   startOfDay.setHours(0, 0, 0, 0);
@@ -260,8 +256,6 @@ export async function createWorkPlanService({ user, body }) {
     const formattedDate = planDate.toISOString().split("T")[0];
     throw badRequest(`A work plan already exists for date ${formattedDate}. Only 1 work plan per day is allowed.`);
   }
-
-  const approverUserId = await findApprover(owner);
 
   const sanitizedVisits = Array.isArray(visits)
     ? visits.map((v) => ({
@@ -310,8 +304,8 @@ export async function createWorkPlanService({ user, body }) {
       startDate,
       endDate,
     },
-    status: "draft",
-    approval: { requiredFrom: approverUserId },
+    status: "planned",
+    approval: {},
   });
 
   await logActivity({
@@ -325,6 +319,43 @@ export async function createWorkPlanService({ user, body }) {
   });
 
   return plan;
+}
+
+function visitStructureSnapshot(v = {}) {
+  return JSON.stringify({
+    facility: String(v.facility?._id || v.facility || ""),
+    facilityName: v.facilityName || "",
+    location: v.location || "",
+    clientName: v.clientName || "",
+    clientContactNumber: v.clientContactNumber || "",
+    clientEmail: v.clientEmail || "",
+    purpose: v.purpose || "",
+    expectedOutcome: v.expectedOutcome || "",
+  });
+}
+
+function workStructureSnapshot(w = {}) {
+  return JSON.stringify({
+    title: w.title || "",
+    description: w.description || "",
+    category: w.category || "",
+    estimatedHours: Number(w.estimatedHours) || 0,
+  });
+}
+
+function isStructureWindowExpired(planDateRaw, { bypass = false } = {}) {
+  if (bypass) return false;
+  if (!planDateRaw) return false;
+  const planDayStart = new Date(planDateRaw);
+  if (isNaN(planDayStart.getTime())) return false;
+  planDayStart.setHours(0, 0, 0, 0);
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+  if (planDayStart.getTime() >= todayStart.getTime()) return false;
+  const maxDate = new Date(planDayStart);
+  maxDate.setDate(maxDate.getDate() + 3);
+  maxDate.setHours(23, 59, 59, 999);
+  return new Date() > maxDate;
 }
 
 export async function updateWorkPlanService({ user, planId, body }) {
@@ -342,17 +373,42 @@ export async function updateWorkPlanService({ user, planId, body }) {
   const ok = ownerIdStr === userIdStr || createdByStr === userIdStr || isSenior;
   if (!ok) throw forbidden("You are not authorized to update this work plan.");
 
-  // If approved or active, standard owner cannot add or delete visits/tasks
-  const isApproved = ["approved", "active"].includes(plan.status);
-  if (isApproved && !isSenior) {
+  const planDateRaw = plan.date || plan.plan_date || plan.period?.startDate;
+  const structureExpired = isStructureWindowExpired(planDateRaw, { bypass: user.role === "super_admin" });
+
+  if (structureExpired) {
+    const metadataTouched =
+      body.title !== undefined ||
+      body.description !== undefined ||
+      body.planType !== undefined ||
+      body.date !== undefined ||
+      body.leaveReason !== undefined ||
+      body.period !== undefined;
+    if (metadataTouched) {
+      throw badRequest("Plan details can only be edited within 3 days after the work plan date.");
+    }
+
     if (body.visits !== undefined && Array.isArray(body.visits)) {
-      if (body.visits.length !== plan.visits.length) {
-        throw forbidden("Only senior authority can add or remove visits after plan approval.");
+      const current = plan.visits || [];
+      if (body.visits.length !== current.length) {
+        throw badRequest("Visits can only be added or removed within 3 days after the work plan date.");
+      }
+      for (let i = 0; i < current.length; i++) {
+        if (visitStructureSnapshot(current[i]) !== visitStructureSnapshot(body.visits[i])) {
+          throw badRequest("Visits can only be edited within 3 days after the work plan date.");
+        }
       }
     }
+
     if (body.works !== undefined && Array.isArray(body.works)) {
-      if (body.works.length !== plan.works.length) {
-        throw forbidden("Only senior authority can add or remove work tasks after plan approval.");
+      const current = plan.works || [];
+      if (body.works.length !== current.length) {
+        throw badRequest("Work items can only be added or removed within 3 days after the work plan date.");
+      }
+      for (let i = 0; i < current.length; i++) {
+        if (workStructureSnapshot(current[i]) !== workStructureSnapshot(body.works[i])) {
+          throw badRequest("Work items can only be edited within 3 days after the work plan date.");
+        }
       }
     }
   }
@@ -364,6 +420,9 @@ export async function updateWorkPlanService({ user, planId, body }) {
   if (date !== undefined) {
     const updatedDate = new Date(date);
     if (!isNaN(updatedDate.getTime())) {
+      if (isPlanDateTooFarInPast(updatedDate, { bypass: user.role === "super_admin" })) {
+        throw badRequest("Only Super Admin can set a work plan date more than 3 days in the past.");
+      }
       plan.date = updatedDate;
       plan.plan_date = updatedDate;
     }
@@ -389,7 +448,14 @@ export async function updateWorkPlanService({ user, planId, body }) {
 export async function deleteWorkPlanService({ user, planId }) {
   const plan = await WorkPlan.findById(planId);
   if (!plan) throw notFound("Work plan not found.");
-  if (plan.status !== "draft") throw badRequest("Only draft work plans can be deleted.");
+  if (["completed", "cancelled"].includes(plan.status)) {
+    throw badRequest("Completed or cancelled work plans cannot be deleted.");
+  }
+
+  const planDateRaw = plan.date || plan.plan_date || plan.period?.startDate;
+  if (isStructureWindowExpired(planDateRaw, { bypass: user.role === "super_admin" })) {
+    throw badRequest("Work plans can only be deleted within 3 days after the work plan date.");
+  }
 
   const ownerIdStr = String(plan.owner?._id || plan.owner);
   const createdByStr = String(plan.created_by?._id || plan.created_by);
@@ -404,81 +470,11 @@ export async function deleteWorkPlanService({ user, planId }) {
   await plan.softDelete();
 }
 
-export async function submitWorkPlanService({ user, planId }) {
-  const plan = await WorkPlan.findById(planId);
-  if (!plan) throw notFound("Work plan not found.");
-  if (!["draft", "rejected"].includes(plan.status)) {
-    throw badRequest("Only draft or rejected plans can be submitted.");
-  }
-
-  const ownerIdStr = String(plan.owner?._id || plan.owner);
-  const createdByStr = String(plan.created_by?._id || plan.created_by);
-  const userIdStr = String(user._id);
-
-  const ok =
-    ownerIdStr === userIdStr ||
-    createdByStr === userIdStr ||
-    (await canManageUser(user, ownerIdStr));
-  if (!ok) throw forbidden("You can only submit work plans for yourself or your team members.");
-
-  // Super Admin does not need submission approval from higher authority
-  if (!plan.approval) plan.approval = {};
-  if (user.role === "super_admin") {
-    plan.status = "approved";
-    plan.approval.approvedBy = user._id;
-    plan.approval.approvedAt = new Date();
-  } else {
-    plan.status = "submitted";
-  }
-
-  await plan.save();
-
-  // Notify reporting authority and super admins if submitted
-  if (plan.status === "submitted") {
-    const recipientIds = new Set();
-    if (plan.approval?.requiredFrom) {
-      recipientIds.add(String(plan.approval.requiredFrom));
-    }
-    try {
-      const superAdmins = await User.find({ role: "super_admin", deleted_at: null }).select("_id").lean();
-      for (const sa of superAdmins) {
-        if (String(sa._id) !== String(user._id)) {
-          recipientIds.add(String(sa._id));
-        }
-      }
-    } catch { /* Non-fatal */ }
-
-    for (const recipientId of recipientIds) {
-      await sendNotification({
-        recipientId,
-        senderId: user._id,
-        title: "Work Plan Submitted for Approval",
-        message: `${user.name} submitted a work plan for approval.`,
-        referenceId: plan._id,
-      });
-    }
-  }
-
-  await logActivity({
-    actor: user,
-    action: plan.status === "approved" ? "auto_approved" : "submitted",
-    entityType: "work_plan",
-    entityId: plan._id,
-    entityName: plan.title,
-    message: plan.status === "approved"
-      ? `${user.name} (Super Admin) submitted and auto-approved work plan.`
-      : `${user.name} submitted work plan for approval.`,
-  });
-
-  return plan;
-}
-
 export async function completeWorkPlanService({ user, planId }) {
   const plan = await WorkPlan.findById(planId);
   if (!plan) throw notFound("Work plan not found.");
   if (plan.status === "completed") throw badRequest("Work plan is already completed.");
   if (plan.status === "cancelled") throw badRequest("Cancelled work plans cannot be completed.");
-  if (plan.status === "submitted") throw badRequest("Submitted work plans must be approved before completion.");
 
   const ownerIdStr = String(plan.owner?._id || plan.owner);
   const createdByStr = String(plan.created_by?._id || plan.created_by);
@@ -531,6 +527,11 @@ export async function cancelWorkPlanService({ user, planId }) {
   if (!plan) throw notFound("Work plan not found.");
   if (plan.status === "completed") throw badRequest("Completed work plans cannot be cancelled.");
 
+  const planDateRaw = plan.date || plan.plan_date || plan.period?.startDate;
+  if (isStructureWindowExpired(planDateRaw, { bypass: user.role === "super_admin" })) {
+    throw badRequest("Work plans can only be cancelled within 3 days after the work plan date.");
+  }
+
   const ownerIdStr = String(plan.owner?._id || plan.owner);
   const createdByStr = String(plan.created_by?._id || plan.created_by);
   const userIdStr = String(user._id);
@@ -551,91 +552,6 @@ export async function cancelWorkPlanService({ user, planId }) {
     entityId: plan._id,
     entityName: plan.title,
     message: `${user.name} cancelled work plan.`,
-  });
-
-  return plan;
-}
-
-export async function approveWorkPlanService({ user, planId, remarks }) {
-  const plan = await WorkPlan.findById(planId);
-  if (!plan) throw notFound("Work plan not found.");
-  if (plan.status !== "submitted") throw badRequest("Only submitted plans can be approved.");
-
-  const ownerIdStr = String(plan.owner?._id || plan.owner);
-  const userIdStr = String(user._id);
-
-  if (ownerIdStr === userIdStr && user.role !== "super_admin") {
-    throw forbidden("You cannot approve your own work plan.");
-  }
-
-  const ok = await canManageUser(user, ownerIdStr);
-  if (!ok) throw forbidden("You are not authorized to approve this work plan.");
-
-  if (!plan.approval) plan.approval = {};
-  plan.status = "approved";
-  plan.approval.approvedBy = user._id;
-  plan.approval.approvedAt = new Date();
-  await plan.save();
-
-  await sendNotification({
-    recipientId: ownerIdStr,
-    senderId: user._id,
-    title: "Work Plan Approved",
-    message: `Your work plan was approved by ${user.name}.`,
-    referenceId: plan._id,
-  });
-
-  await logActivity({
-    actor: user,
-    action: "approved",
-    entityType: "work_plan",
-    entityId: plan._id,
-    entityName: plan.title,
-    message: `${user.name} approved the work plan.`,
-    meta: { remarks },
-  });
-
-  return plan;
-}
-
-export async function rejectWorkPlanService({ user, planId, reason }) {
-  const plan = await WorkPlan.findById(planId);
-  if (!plan) throw notFound("Work plan not found.");
-  if (plan.status !== "submitted") throw badRequest("Only submitted plans can be rejected.");
-
-  const ownerIdStr = String(plan.owner?._id || plan.owner);
-  const userIdStr = String(user._id);
-
-  if (ownerIdStr === userIdStr && user.role !== "super_admin") {
-    throw forbidden("You cannot reject your own work plan.");
-  }
-
-  const ok = await canManageUser(user, ownerIdStr);
-  if (!ok) throw forbidden("You are not authorized to reject this work plan.");
-
-  if (!plan.approval) plan.approval = {};
-  plan.status = "rejected";
-  plan.approval.rejectedBy = user._id;
-  plan.approval.rejectedAt = new Date();
-  plan.approval.rejectionReason = reason || "";
-  await plan.save();
-
-  await sendNotification({
-    recipientId: ownerIdStr,
-    senderId: user._id,
-    title: "Work Plan Rejected",
-    message: `Your work plan was rejected by ${user.name}. Reason: ${reason || "No reason provided."}`,
-    referenceId: plan._id,
-  });
-
-  await logActivity({
-    actor: user,
-    action: "rejected",
-    entityType: "work_plan",
-    entityId: plan._id,
-    entityName: plan.title,
-    message: `${user.name} rejected the work plan.`,
-    meta: { reason },
   });
 
   return plan;

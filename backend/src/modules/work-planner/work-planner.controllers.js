@@ -5,9 +5,6 @@ import {
   createWorkPlanService,
   updateWorkPlanService,
   deleteWorkPlanService,
-  submitWorkPlanService,
-  approveWorkPlanService,
-  rejectWorkPlanService,
   completeWorkPlanService,
   cancelWorkPlanService,
   getWorkTasksService,
@@ -41,21 +38,6 @@ export const updateWorkPlan = asyncHandler(async (req, res) => {
 export const deleteWorkPlan = asyncHandler(async (req, res) => {
   await deleteWorkPlanService({ user: req.user, planId: req.params.id });
   res.json({ message: "Work plan deleted." });
-});
-
-export const submitWorkPlan = asyncHandler(async (req, res) => {
-  const plan = await submitWorkPlanService({ user: req.user, planId: req.params.id });
-  res.json({ message: "Work plan submitted for approval.", plan });
-});
-
-export const approveWorkPlan = asyncHandler(async (req, res) => {
-  const plan = await approveWorkPlanService({ user: req.user, planId: req.params.id, remarks: req.body.remarks });
-  res.json({ message: "Work plan approved.", plan });
-});
-
-export const rejectWorkPlan = asyncHandler(async (req, res) => {
-  const plan = await rejectWorkPlanService({ user: req.user, planId: req.params.id, reason: req.body.reason });
-  res.json({ message: "Work plan rejected.", plan });
 });
 
 export const completeWorkPlan = asyncHandler(async (req, res) => {

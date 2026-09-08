@@ -2,13 +2,15 @@ import mongoose from "mongoose";
 import { softDeletePlugin } from "./plugins/softDelete.js";
 
 const WORK_PLAN_STATUS = [
+  "planned",
+  "completed",
+  "cancelled",
+  // Legacy statuses kept for existing documents
   "draft",
   "submitted",
   "approved",
   "rejected",
   "active",
-  "completed",
-  "cancelled",
 ];
 
 const PERIOD_TYPES = ["daily", "weekly", "monthly", "quarterly", "custom"];
@@ -140,7 +142,7 @@ const workPlanSchema = new mongoose.Schema(
     status: {
       type: String,
       enum: WORK_PLAN_STATUS,
-      default: "draft",
+      default: "planned",
       index: true,
     },
 

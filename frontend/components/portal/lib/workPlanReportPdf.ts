@@ -108,16 +108,11 @@ export async function buildWorkPlanReportPdfBlob(
   y += 6.5;
 
   // Render Table of Work Plans
-  const head = [["Plan Title & Type", "Owner & Role", "Date", "Approved By", "Status", "Site Visits & Tasks Details"]];
+  const head = [["Plan Title & Type", "Owner & Role", "Date", "Status", "Site Visits & Tasks Details"]];
 
   const body = input.plans.map((p) => {
     const ownerInfo = `${p.owner?.name || "Employee"}\n(${p.owner?.role?.replace("_", " ") || "Member"})`;
     const planDate = formatPdfDate(p.date || p.period?.startDate);
-    const approvedBy = p.approval?.approvedBy?.name
-      ? `Approved by ${p.approval.approvedBy.name}`
-      : p.status === "rejected"
-      ? `Rejected: ${p.approval?.rejectionReason || "-"}`
-      : "Pending";
 
     const visitsText = (p.visits || [])
       .map(
@@ -143,7 +138,6 @@ export async function buildWorkPlanReportPdfBlob(
       `${p.title || "Work Plan"}\nType: ${typeStr}`,
       ownerInfo,
       planDate,
-      approvedBy,
       statusStr,
       detailsText,
     ];
@@ -173,12 +167,11 @@ export async function buildWorkPlanReportPdfBlob(
       valign: "middle",
     },
     columnStyles: {
-      0: { cellWidth: 38 },
-      1: { cellWidth: 32 },
-      2: { cellWidth: 22 },
-      3: { cellWidth: 30 },
-      4: { cellWidth: 22 },
-      5: { cellWidth: "auto" },
+      0: { cellWidth: 42 },
+      1: { cellWidth: 34 },
+      2: { cellWidth: 24 },
+      3: { cellWidth: 24 },
+      4: { cellWidth: "auto" },
     },
     alternateRowStyles: { fillColor: [248, 250, 252] },
     willDrawPage: (data) => {

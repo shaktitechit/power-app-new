@@ -54,7 +54,7 @@ export interface WorkPlan {
   works?: WorkItem[];
   expenses?: any[];
   period: WorkPlanPeriod;
-  status: "draft" | "submitted" | "approved" | "rejected" | "active" | "completed" | "cancelled";
+  status: "planned" | "completed" | "cancelled" | "draft" | "submitted" | "approved" | "rejected" | "active";
   approval: WorkPlanApproval;
   created_at: string;
   updated_at: string;
@@ -128,21 +128,6 @@ export const workPlannerApiSlice = apiSlice.injectEndpoints({
       invalidatesTags: ["WorkPlan"],
     }),
 
-    submitWorkPlan: builder.mutation<{ message: string; plan: WorkPlan }, string>({
-      query: (id) => ({ url: `/v1/work-plans/${id}/submit`, method: "POST" }),
-      invalidatesTags: (r, e, id) => [{ type: "WorkPlan", id }, "WorkPlan"],
-    }),
-
-    approveWorkPlan: builder.mutation<{ message: string; plan: WorkPlan }, { id: string; remarks?: string }>({
-      query: ({ id, ...body }) => ({ url: `/v1/work-plans/${id}/approve`, method: "POST", body }),
-      invalidatesTags: (r, e, { id }) => [{ type: "WorkPlan", id }, "WorkPlan"],
-    }),
-
-    rejectWorkPlan: builder.mutation<{ message: string; plan: WorkPlan }, { id: string; reason?: string }>({
-      query: ({ id, ...body }) => ({ url: `/v1/work-plans/${id}/reject`, method: "POST", body }),
-      invalidatesTags: (r, e, { id }) => [{ type: "WorkPlan", id }, "WorkPlan"],
-    }),
-
     completeWorkPlan: builder.mutation<{ message: string; plan: WorkPlan }, string>({
       query: (id) => ({ url: `/v1/work-plans/${id}/complete`, method: "POST" }),
       invalidatesTags: (r, e, id) => [{ type: "WorkPlan", id }, "WorkPlan"],
@@ -195,9 +180,6 @@ export const {
   useCreateWorkPlanMutation,
   useUpdateWorkPlanMutation,
   useDeleteWorkPlanMutation,
-  useSubmitWorkPlanMutation,
-  useApproveWorkPlanMutation,
-  useRejectWorkPlanMutation,
   useCompleteWorkPlanMutation,
   useCancelWorkPlanMutation,
   useGetWorkTasksQuery,

@@ -6,7 +6,6 @@ import {
   Calendar,
   CalendarCheck,
   CheckCircle2,
-  Clock,
   ListChecks,
   Briefcase,
   User,
@@ -24,12 +23,14 @@ import {
 import { useAppSelector } from "@/store/hooks";
 
 const STATUS_COLORS: Record<string, string> = {
+  planned: "bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-500/10 dark:text-blue-400",
   draft: "bg-muted text-muted-foreground border-muted-foreground/20",
   submitted: "bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-500/10 dark:text-blue-400",
   approved: "bg-green-100 text-green-700 border-green-200 dark:bg-green-500/10 dark:text-green-400",
   rejected: "bg-red-100 text-red-700 border-red-200 dark:bg-red-500/10 dark:text-red-400",
   completed: "bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400",
   cancelled: "bg-gray-100 text-gray-600 border-gray-200 dark:bg-gray-500/10 dark:text-gray-400",
+  active: "bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400",
 };
 
 const PLAN_TYPE_LABELS: Record<string, string> = {
@@ -57,8 +58,13 @@ export function DashboardWorkPlannerWidget() {
   const summary = dashboardStats?.plans || {};
   const totalPlans = dashboardStats?.totalPlans ?? recentPlansData?.total ?? 0;
   const todayCount = todayPlansData?.total ?? 0;
-  const approvedCount = summary.approved ?? 0;
-  const pendingCount = (summary.submitted ?? 0) + (summary.draft ?? 0);
+  const plannedCount =
+    (summary.planned ?? 0) +
+    (summary.approved ?? 0) +
+    (summary.active ?? 0) +
+    (summary.draft ?? 0) +
+    (summary.submitted ?? 0);
+  const completedCount = summary.completed ?? 0;
 
   const displayPlans = filterView === "today" ? todayPlans : recentPlans;
   const isDisplayLoading = filterView === "today" ? todayLoading : recentLoading;
@@ -94,16 +100,16 @@ export function DashboardWorkPlannerWidget() {
               description="Created across org"
             />
             <StatsCard
-              title="Approved Plans"
-              value={approvedCount}
+              title="Planned"
+              value={plannedCount}
               icon={CheckCircle2}
-              description="Approved & active"
+              description="Open work plans"
             />
             <StatsCard
-              title="Pending / Draft"
-              value={pendingCount}
-              icon={Clock}
-              description="Awaiting action"
+              title="Completed Plans"
+              value={completedCount}
+              icon={ListChecks}
+              description="Finished work plans"
             />
           </>
         )}

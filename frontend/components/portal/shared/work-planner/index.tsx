@@ -5,10 +5,8 @@ import { useRouter } from "next/navigation";
 import { DashboardLayout } from "@/components/portal/layout/dashboard-layout";
 import { Card, CardContent } from "@/components/portal/ui/card";
 import { Button } from "@/components/portal/ui/button";
-import { Input } from "@/components/portal/ui/input";
 import { Badge } from "@/components/portal/ui/badge";
 import { Skeleton } from "@/components/portal/ui/skeleton";
-import { Label } from "@/components/portal/ui/label";
 import {
   Dialog,
   DialogContent,
@@ -28,15 +26,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/portal/ui
 import {
   ClipboardList,
   Plus,
-  Clock,
-  Send,
-  ThumbsUp,
-  ThumbsDown,
   Trash2,
   Users,
   ListChecks,
   Eye,
-  Download,
   FileText,
   Receipt,
   Calendar as CalendarIcon,
@@ -48,10 +41,6 @@ import { TeamManagerContent } from "@/components/portal/shared/team-manager";
 import {
   useGetWorkPlansQuery,
   useGetWorkTasksQuery,
-  useCreateWorkPlanMutation,
-  useSubmitWorkPlanMutation,
-  useApproveWorkPlanMutation,
-  useRejectWorkPlanMutation,
   useDeleteWorkPlanMutation,
   type WorkPlan,
   type WorkTask,
@@ -59,10 +48,8 @@ import {
 import { useAppSelector } from "@/store/hooks";
 import { toast } from "sonner";
 
-import { renderPlanStatusBadge, renderPlanTypeBadge, formatPlanDate, STATUS_COLORS } from "./workPlanUtils";
+import { renderPlanStatusBadge, renderPlanTypeBadge, formatPlanDate, isWorkPlanStructureWindowExpired } from "./workPlanUtils";
 import {
-  WorkPlannerStatsWidgets,
-  RejectWorkPlanModal,
   DownloadWorkPlansModal,
   DownloadExpensesModal,
   CreatePlanModal,
@@ -73,7 +60,7 @@ import {
 // ------------------------------------------------------------------
 // Work Plans Tab
 // ------------------------------------------------------------------
-function WorkPlansTab({ tabMode = "my" }: { tabMode?: "my" | "today" | "all" | "team" | "approvals" }) {
+function WorkPlansTab({ tabMode = "my" }: { tabMode?: "my" | "today" | "all" | "team" }) {
   const router = useRouter();
   const user = useAppSelector((s) => s.auth.user);
   const rolePrefix = user?.role ? `/${user.role.replace("_", "-")}` : "";
@@ -82,7 +69,6 @@ function WorkPlansTab({ tabMode = "my" }: { tabMode?: "my" | "today" | "all" | "
   const [planTypeFilter, setPlanTypeFilter] = useState("all");
   const [page, setPage] = useState(1);
   const [showCreate, setShowCreate] = useState(false);
-  const [rejectTarget, setRejectTarget] = useState<string | null>(null);
   const [editPlanTarget, setEditPlanTarget] = useState<WorkPlan | null>(null);
   const [confirmModal, setConfirmModal] = useState<{
     title: string;
@@ -99,58 +85,15 @@ function WorkPlansTab({ tabMode = "my" }: { tabMode?: "my" | "today" | "all" | "
     limit: 15,
   });
 
-  const [submitPlan] = useSubmitWorkPlanMutation();
-  const [approvePlan] = useApproveWorkPlanMutation();
-  const [rejectPlan] = useRejectWorkPlanMutation();
   const [deletePlan] = useDeleteWorkPlanMutation();
 
-  const canApprove = user?.role === "admin" || user?.role === "super_admin" || user?.role === "manager";
-
-  const handleSubmit = (id: string) => {
-    setConfirmModal({
-      title: "Submit Work Plan",
-      description: "Are you sure you want to submit this work plan for approval?",
-      variant: "default",
-      action: async () => {
-        try {
-          await submitPlan(id).unwrap();
-          if (user?.role === "super_admin") {
-            toast.success("Work plan approved directly (Super Admin).");
-          } else {
-            toast.success("Plan submitted for approval.");
-          }
-        } catch (e: any) {
-          toast.error(e?.data?.message || "Failed to submit.");
-        }
-      },
+  const canEditPlan = (plan: WorkPlan) => {
+    const isOwner = String(plan.owner?._id) === String(user?._id);
+    const isSenior = user?.role === "admin" || user?.role === "super_admin" || user?.role === "manager";
+    if (["completed", "cancelled"].includes(plan.status) || !(isOwner || isSenior)) return false;
+    return !isWorkPlanStructureWindowExpired(plan.date || plan.period?.startDate, {
+      bypass: user?.role === "super_admin",
     });
-  };
-
-  const handleApprove = (id: string) => {
-    setConfirmModal({
-      title: "Approve Work Plan",
-      description: "Are you sure you want to approve this work plan?",
-      variant: "emerald",
-      action: async () => {
-        try {
-          await approvePlan({ id }).unwrap();
-          toast.success("Plan approved.");
-        } catch (e: any) {
-          toast.error(e?.data?.message || "Failed to approve.");
-        }
-      },
-    });
-  };
-
-  const handleRejectConfirm = async (reason: string) => {
-    if (!rejectTarget) return;
-    try {
-      await rejectPlan({ id: rejectTarget, reason }).unwrap();
-      toast.success("Plan rejected.");
-      setRejectTarget(null);
-    } catch (e: any) {
-      toast.error(e?.data?.message || "Failed to reject.");
-    }
   };
 
   const handleDelete = (id: string) => {
@@ -173,19 +116,17 @@ function WorkPlansTab({ tabMode = "my" }: { tabMode?: "my" | "today" | "all" | "
     <div className="space-y-3">
       <div className="flex flex-col sm:flex-row gap-2.5 justify-between">
         <div className="flex gap-2 flex-wrap">
-          {tabMode !== "approvals" && (
-            <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setPage(1); }}>
-              <SelectTrigger className="w-36 h-8 text-xs">
-                <SelectValue placeholder="Status" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Statuses</SelectItem>
-                {["draft", "submitted", "approved", "rejected", "active", "completed", "cancelled"].map((s) => (
-                  <SelectItem key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
+          <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setPage(1); }}>
+            <SelectTrigger className="w-36 h-8 text-xs">
+              <SelectValue placeholder="Status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Statuses</SelectItem>
+              {["planned", "completed", "cancelled"].map((s) => (
+                <SelectItem key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
 
           <Select value={planTypeFilter} onValueChange={(v) => { setPlanTypeFilter(v); setPage(1); }}>
             <SelectTrigger className="w-36 h-8 text-xs">
@@ -238,9 +179,6 @@ function WorkPlansTab({ tabMode = "my" }: { tabMode?: "my" | "today" | "all" | "
                         {plan.title || `Work Plan (${plan.planType})`}
                       </span>
                     </div>
-                    {plan.approval?.rejectionReason && (
-                      <p className="text-[10px] text-destructive mt-0.5">Reason: {plan.approval.rejectionReason}</p>
-                    )}
                   </td>
                   <td className="px-3 py-2 hidden sm:table-cell font-medium">
                     {plan.owner?.name}
@@ -256,14 +194,7 @@ function WorkPlansTab({ tabMode = "my" }: { tabMode?: "my" | "today" | "all" | "
                     )}
                   </td>
                   <td className="px-3 py-2">
-                    <div className="flex items-center gap-1 flex-wrap">
-                      {renderPlanStatusBadge(plan.status)}
-                      {plan.approval?.approvedBy?.name && (
-                        <Badge variant="outline" className="border-emerald-600/30 text-emerald-700 bg-emerald-50/60 dark:bg-emerald-950/40 text-[10px] px-1.5 py-0 font-normal">
-                          Approved by: {plan.approval.approvedBy.name}
-                        </Badge>
-                      )}
-                    </div>
+                    {renderPlanStatusBadge(plan.status)}
                   </td>
                   <td className="px-3 py-2 text-right">
                     <div className="flex items-center justify-end gap-1 flex-wrap">
@@ -276,7 +207,7 @@ function WorkPlansTab({ tabMode = "my" }: { tabMode?: "my" | "today" | "all" | "
                         <Eye className="h-3 w-3" /> Details
                       </Button>
 
-                      {["draft", "submitted", "rejected"].includes(plan.status) && (String(plan.owner?._id) === String(user?._id) || canApprove) && (
+                      {canEditPlan(plan) && (
                         <Button
                           variant="outline"
                           size="sm"
@@ -287,39 +218,7 @@ function WorkPlansTab({ tabMode = "my" }: { tabMode?: "my" | "today" | "all" | "
                         </Button>
                       )}
 
-                      {["draft", "rejected"].includes(plan.status) && String(plan.owner?._id) === String(user?._id) && (
-                        <Button
-                          variant="default"
-                          size="sm"
-                          className="gap-1 text-[11px] h-6 px-1.5"
-                          onClick={() => handleSubmit(plan._id)}
-                        >
-                          <Send className="h-3 w-3" /> {user?.role === "super_admin" ? "Approve" : "Submit"}
-                        </Button>
-                      )}
-
-                      {(tabMode === "approvals" || (plan.status === "submitted" && canApprove && String(plan.owner?._id) !== String(user?._id))) && (
-                        <>
-                          <Button
-                            size="sm"
-                            variant="default"
-                            className="bg-emerald-600 hover:bg-emerald-700 text-white gap-1 text-[11px] h-6 px-1.5"
-                            onClick={() => handleApprove(plan._id)}
-                          >
-                            <ThumbsUp className="h-3 w-3" /> Approve
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="destructive"
-                            className="gap-1 text-[11px] h-6 px-1.5"
-                            onClick={() => setRejectTarget(plan._id)}
-                          >
-                            <ThumbsDown className="h-3 w-3" /> Reject
-                          </Button>
-                        </>
-                      )}
-
-                      {plan.status === "draft" && String(plan.owner?._id) === String(user?._id) && (
+                      {canEditPlan(plan) && String(plan.owner?._id) === String(user?._id) && (
                         <Button
                           size="sm"
                           variant="destructive"
@@ -346,7 +245,6 @@ function WorkPlansTab({ tabMode = "my" }: { tabMode?: "my" | "today" | "all" | "
         </div>
       )}
 
-      {/* Confirmation Modal */}
       {confirmModal && (
         <Dialog open={!!confirmModal} onOpenChange={(open) => !open && setConfirmModal(null)}>
           <DialogContent className="max-w-md rounded-xl p-5">
@@ -375,7 +273,6 @@ function WorkPlansTab({ tabMode = "my" }: { tabMode?: "my" | "today" | "all" | "
         </Dialog>
       )}
 
-      {/* Pagination */}
       {data && data.total > 0 && (
         <div className="flex items-center justify-between text-xs pt-1">
           <p className="text-muted-foreground">
@@ -398,12 +295,6 @@ function WorkPlansTab({ tabMode = "my" }: { tabMode?: "my" | "today" | "all" | "
       )}
 
       <CreatePlanModal open={showCreate} onClose={() => setShowCreate(false)} />
-
-      <RejectWorkPlanModal
-        open={!!rejectTarget}
-        onClose={() => setRejectTarget(null)}
-        onConfirm={handleRejectConfirm}
-      />
 
       <EditPlanModal
         open={!!editPlanTarget}
@@ -485,7 +376,7 @@ function TasksTab() {
 // ------------------------------------------------------------------
 export default function WorkPlannerPage() {
   const user = useAppSelector((s) => s.auth.user);
-  const canSeeTeamAndApprovals = user?.role === "super_admin" || user?.role === "admin" || user?.role === "manager";
+  const canSeeTeam = user?.role === "super_admin" || user?.role === "admin" || user?.role === "manager";
 
   const [showCalendar, setShowCalendar] = useState(false);
   const [showDownloadPlans, setShowDownloadPlans] = useState(false);
@@ -534,15 +425,10 @@ export default function WorkPlannerPage() {
             <TabsTrigger value="all" className="gap-2">
               <Layers className="h-4 w-4 text-blue-600" /> All Work Plans
             </TabsTrigger>
-            {canSeeTeamAndApprovals && (
-              <>
-                <TabsTrigger value="team" className="gap-2">
-                  <Users className="h-4 w-4 text-purple-600" /> Team Work Plans
-                </TabsTrigger>
-                <TabsTrigger value="approvals" className="gap-2">
-                  <Clock className="h-4 w-4 text-amber-600" /> Pending Approvals
-                </TabsTrigger>
-              </>
+            {canSeeTeam && (
+              <TabsTrigger value="team" className="gap-2">
+                <Users className="h-4 w-4 text-purple-600" /> Team Work Plans
+              </TabsTrigger>
             )}
             {user?.role === "super_admin" && (
               <TabsTrigger value="team-manager" className="gap-2">
@@ -560,15 +446,10 @@ export default function WorkPlannerPage() {
           <TabsContent value="all" className="mt-4">
             <WorkPlansTab tabMode="all" />
           </TabsContent>
-          {canSeeTeamAndApprovals && (
-            <>
-              <TabsContent value="team" className="mt-4">
-                <WorkPlansTab tabMode="team" />
-              </TabsContent>
-              <TabsContent value="approvals" className="mt-4">
-                <WorkPlansTab tabMode="approvals" />
-              </TabsContent>
-            </>
+          {canSeeTeam && (
+            <TabsContent value="team" className="mt-4">
+              <WorkPlansTab tabMode="team" />
+            </TabsContent>
           )}
           {user?.role === "super_admin" && (
             <TabsContent value="team-manager" className="mt-4">

@@ -39,9 +39,6 @@ import {
 import {
   useGetWorkPlanQuery,
   useUpdateWorkPlanMutation,
-  useSubmitWorkPlanMutation,
-  useApproveWorkPlanMutation,
-  useRejectWorkPlanMutation,
   useCompleteWorkPlanMutation,
   useCancelWorkPlanMutation,
   type VisitItem,
@@ -66,13 +63,13 @@ import {
   formatTime,
   PLAN_TYPE_CONFIG,
   STATUS_COLORS,
+  isWorkPlanStructureWindowExpired,
 } from "../workPlanUtils";
 import {
   VisitFormModal,
   WorkFormModal,
   CompleteVisitModal,
   CompleteWorkModal,
-  RejectWorkPlanModal,
   NextVisitPlanModal,
   EditPlanModal,
 } from "../components";
@@ -90,9 +87,6 @@ export default function WorkPlanDetailsPage({ planIdProp }: { planIdProp?: strin
   const { data: plan, isLoading, error } = useGetWorkPlanQuery(planId, { skip: !planId });
 
   const [updatePlan] = useUpdateWorkPlanMutation();
-  const [submitPlan] = useSubmitWorkPlanMutation();
-  const [approvePlan] = useApproveWorkPlanMutation();
-  const [rejectPlan] = useRejectWorkPlanMutation();
   const [completePlan] = useCompleteWorkPlanMutation();
   const [cancelPlan] = useCancelWorkPlanMutation();
 
@@ -114,8 +108,6 @@ export default function WorkPlanDetailsPage({ planIdProp }: { planIdProp?: strin
   const [completeVisitTarget, setCompleteVisitTarget] = useState<{ index: number; item: VisitItem } | null>(null);
   const [completeWorkTarget, setCompleteWorkTarget] = useState<{ index: number; item: WorkItem } | null>(null);
   const [nextVisitTarget, setNextVisitTarget] = useState<VisitItem | null>(null);
-
-  const [showRejectModal, setShowRejectModal] = useState(false);
 
   const [showAddExpense, setShowAddExpense] = useState(false);
   const [rejectExpenseTarget, setRejectExpenseTarget] = useState<string | null>(null);
@@ -186,18 +178,15 @@ export default function WorkPlanDetailsPage({ planIdProp }: { planIdProp?: strin
   const isExpenseWindowActive = !isExpenseWindowExpired && !isExpenseWindowTooEarly;
 
   const isSeniorAuthority = user?.role === "super_admin" || user?.role === "admin" || (user?.role === "manager" && !isOwner);
-  const canApprove = (user?.role === "admin" || user?.role === "super_admin" || user?.role === "manager") && (!isOwner || user?.role === "super_admin");
   const canApproveExpense = (user?.role === "super_admin" || user?.role === "admin" || user?.role === "manager") && (!isOwner || user?.role === "super_admin");
 
-  const isApproved = ["approved", "active"].includes(plan.status);
-  const isSubmitted = plan.status === "submitted";
-  const isDraftOrRejected = ["draft", "rejected"].includes(plan.status);
-  const isUnapproved = ["draft", "submitted", "rejected"].includes(plan.status);
   const isPlanLocked = ["completed", "cancelled"].includes(plan.status);
-
-  // Can Add / Edit / Delete Visits & Works & Plan Details
-  const canModifyStructure = !isPlanLocked && (isUnapproved ? (isOwner || isSeniorAuthority) : (isApproved && isSeniorAuthority));
-  const canUpdateWorkflow = !isPlanLocked && isApproved && (isOwner || isSeniorAuthority);
+  const isStructureWindowExpired = isWorkPlanStructureWindowExpired(plan.date || plan.period?.startDate, {
+    bypass: isSuperAdmin,
+    now: currentTime,
+  });
+  const canModifyStructure = !isPlanLocked && (isOwner || isSeniorAuthority) && !isStructureWindowExpired;
+  const canUpdateWorkflow = !isPlanLocked && (isOwner || isSeniorAuthority);
 
   // Completion Eligibility Check
   const hasVisits = Array.isArray(plan.visits) && plan.visits.length > 0;
@@ -214,52 +203,6 @@ export default function WorkPlanDetailsPage({ planIdProp }: { planIdProp?: strin
   } else if (plan.planType === "leave") {
     isPlanEligibleForCompletion = true;
   }
-
-  // Workflow Handlers
-  const handleSubmit = () => {
-    setConfirmModalConfig({
-      title: "Submit Work Plan",
-      description: "Are you sure you want to submit this work plan for approval?",
-      variant: "default",
-      action: async () => {
-        try {
-          await submitPlan(plan._id).unwrap();
-          if (user?.role === "super_admin") {
-            toast.success("Work plan approved directly (Super Admin).");
-          } else {
-            toast.success("Plan submitted for approval.");
-          }
-        } catch (e: any) {
-          toast.error(e?.data?.message || "Failed to submit plan.");
-        }
-      },
-    });
-  };
-
-  const handleApprove = () => {
-    setConfirmModalConfig({
-      title: "Approve Work Plan",
-      description: "Are you sure you want to approve this work plan?",
-      variant: "emerald",
-      action: async () => {
-        try {
-          await approvePlan({ id: plan._id }).unwrap();
-          toast.success("Plan approved.");
-        } catch (e: any) {
-          toast.error(e?.data?.message || "Failed to approve plan.");
-        }
-      },
-    });
-  };
-
-  const handleRejectConfirm = async (reason: string) => {
-    try {
-      await rejectPlan({ id: plan._id, reason }).unwrap();
-      toast.success("Plan rejected.");
-    } catch (e: any) {
-      toast.error(e?.data?.message || "Failed to reject plan.");
-    }
-  };
 
   const handleCompletePlan = () => {
     if (!isPlanEligibleForCompletion) {
@@ -282,6 +225,14 @@ export default function WorkPlanDetailsPage({ planIdProp }: { planIdProp?: strin
   };
 
   const handleCancelPlan = () => {
+    if (!canModifyStructure) {
+      toast.error(
+        isStructureWindowExpired
+          ? "Work plans can only be cancelled within 3 days after the work plan date."
+          : "You are not authorized to cancel this work plan."
+      );
+      return;
+    }
     setConfirmModalConfig({
       title: "Cancel Work Plan",
       description: "Are you sure you want to cancel this work plan? This action cannot be undone.",
@@ -300,7 +251,11 @@ export default function WorkPlanDetailsPage({ planIdProp }: { planIdProp?: strin
   // Visit Item Handlers
   const handleSaveVisit = async (visitPayload: VisitItem) => {
     if (!canModifyStructure) {
-      toast.error("Only senior authority can modify plan structure after approval.");
+      toast.error(
+        isStructureWindowExpired
+          ? "Visits can only be added or edited within 3 days after the work plan date."
+          : "You are not authorized to modify this plan."
+      );
       return;
     }
 
@@ -323,7 +278,11 @@ export default function WorkPlanDetailsPage({ planIdProp }: { planIdProp?: strin
 
   const handleDeleteVisit = (index: number) => {
     if (!canModifyStructure) {
-      toast.error("Only senior authority can remove visits after plan approval.");
+      toast.error(
+        isStructureWindowExpired
+          ? "Visits can only be removed within 3 days after the work plan date."
+          : "You are not authorized to remove visits from this plan."
+      );
       return;
     }
     setConfirmModalConfig({
@@ -344,7 +303,7 @@ export default function WorkPlanDetailsPage({ planIdProp }: { planIdProp?: strin
 
   const handleCheckInVisit = async (index: number) => {
     if (!canUpdateWorkflow) {
-      toast.error("Plan must be approved before updating visit workflow.");
+      toast.error("You are not authorized to update visit workflow.");
       return;
     }
     const updatedVisits = (plan.visits || []).map((v, i) => {
@@ -388,7 +347,11 @@ export default function WorkPlanDetailsPage({ planIdProp }: { planIdProp?: strin
   // Work Item Handlers
   const handleSaveWork = async (workPayload: WorkItem) => {
     if (!canModifyStructure) {
-      toast.error("Only senior authority can modify plan structure after approval.");
+      toast.error(
+        isStructureWindowExpired
+          ? "Work items can only be added or edited within 3 days after the work plan date."
+          : "You are not authorized to modify this plan."
+      );
       return;
     }
 
@@ -411,7 +374,11 @@ export default function WorkPlanDetailsPage({ planIdProp }: { planIdProp?: strin
 
   const handleDeleteWork = (index: number) => {
     if (!canModifyStructure) {
-      toast.error("Only senior authority can remove work items after plan approval.");
+      toast.error(
+        isStructureWindowExpired
+          ? "Work items can only be removed within 3 days after the work plan date."
+          : "You are not authorized to remove work items from this plan."
+      );
       return;
     }
     setConfirmModalConfig({
@@ -615,17 +582,6 @@ export default function WorkPlanDetailsPage({ planIdProp }: { planIdProp?: strin
                 <User className="h-3.5 w-3.5" />
                 Owner: {plan.owner?.name} ({formatRoleLabel(plan.owner?.role)})
               </span>
-              {plan.approval?.approvedBy?.name && (
-                <span className="flex items-center gap-1 text-emerald-700 dark:text-emerald-400 font-medium bg-emerald-50 dark:bg-emerald-950/50 px-2 py-0.5 rounded border border-emerald-200 dark:border-emerald-800">
-                  <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
-                  Approved by: <strong>{plan.approval.approvedBy.name}</strong>
-                  {plan.approval.approvedAt && (
-                    <span className="text-muted-foreground font-normal ml-1">
-                      ({new Date(plan.approval.approvedAt).toLocaleDateString("en-IN", { day: "numeric", month: "short" })})
-                    </span>
-                  )}
-                </span>
-              )}
             </div>
           </div>
 
@@ -636,22 +592,7 @@ export default function WorkPlanDetailsPage({ planIdProp }: { planIdProp?: strin
                 <Pencil className="h-4 w-4" /> Edit Plan
               </Button>
             )}
-            {isDraftOrRejected && (isOwner || String(plan.created_by?._id) === String(user?._id)) && (
-              <Button onClick={handleSubmit} className="gap-2 font-bold">
-                <Send className="h-4 w-4" /> {user?.role === "super_admin" ? "Submit & Approve" : "Submit Plan"}
-              </Button>
-            )}
-            {isSubmitted && canApprove && (
-              <>
-                <Button onClick={handleApprove} variant="default" className="bg-emerald-600 hover:bg-emerald-700 text-white gap-1.5 font-bold">
-                  <ThumbsUp className="h-4 w-4" /> Approve Plan
-                </Button>
-                <Button onClick={() => setShowRejectModal(true)} variant="destructive" className="gap-1.5 font-bold">
-                  <ThumbsDown className="h-4 w-4" /> Reject
-                </Button>
-              </>
-            )}
-            {isApproved && (isOwner || isSeniorAuthority) && (
+            {(isOwner || isSeniorAuthority) && !isPlanLocked && (
               <div className="flex items-center gap-2">
                 <Button
                   onClick={handleCompletePlan}
@@ -667,7 +608,7 @@ export default function WorkPlanDetailsPage({ planIdProp }: { planIdProp?: strin
                 </Button>
               </div>
             )}
-            {!isPlanLocked && (isOwner || isSeniorAuthority) && (
+            {canModifyStructure && (
               <Button onClick={handleCancelPlan} variant="outline" className="text-destructive hover:bg-red-50 gap-1.5 font-medium">
                 <XCircle className="h-4 w-4" /> Cancel Plan
               </Button>
@@ -675,23 +616,8 @@ export default function WorkPlanDetailsPage({ planIdProp }: { planIdProp?: strin
           </div>
         </div>
 
-        {/* Submission Pending Notice Banner */}
-        {isSubmitted && (
-          <Card className="border-amber-200 bg-amber-50/60">
-            <CardContent className="p-4 flex items-start gap-3 text-amber-900 text-sm">
-              <Clock className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
-              <div className="space-y-0.5">
-                <p className="font-bold">Plan Submitted & Awaiting Approval</p>
-                <p className="text-amber-800 text-xs">
-                  This work plan is waiting for approval from your reporting authority. Visit check-ins and task status updates will activate once approved.
-                </p>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
         {/* Completion Ineligible Hint Banner */}
-        {isApproved && !isPlanEligibleForCompletion && (
+        {!isPlanLocked && (isOwner || isSeniorAuthority) && !isPlanEligibleForCompletion && (
           <Card className="border-purple-200 bg-purple-50/50">
             <CardContent className="p-3 flex items-center justify-between gap-3 text-purple-950 text-xs font-medium">
               <div className="flex items-center gap-2">
@@ -702,15 +628,13 @@ export default function WorkPlanDetailsPage({ planIdProp }: { planIdProp?: strin
           </Card>
         )}
 
-        {/* Rejection Notice */}
-        {plan.status === "rejected" && plan.approval?.rejectionReason && (
-          <Card className="border-red-200 bg-red-50/50">
-            <CardContent className="p-4 flex items-start gap-3 text-red-800 text-sm">
-              <AlertCircle className="h-5 w-5 text-red-600 shrink-0 mt-0.5" />
-              <div>
-                <p className="font-semibold">Plan Rejected</p>
-                <p className="text-red-700 mt-0.5">{plan.approval.rejectionReason}</p>
-              </div>
+        {isStructureWindowExpired && !isPlanLocked && (isOwner || isSeniorAuthority) && (
+          <Card className="border-amber-200 bg-amber-50/60">
+            <CardContent className="p-3 flex items-center gap-2 text-amber-950 text-xs font-medium">
+              <AlertCircle className="h-4 w-4 text-amber-700 shrink-0" />
+              <span>
+                The work plan date has passed by more than 3 days. Adding, editing, deleting, or cancelling this plan is no longer allowed.
+              </span>
             </CardContent>
           </Card>
         )}
@@ -1238,12 +1162,6 @@ export default function WorkPlanDetailsPage({ planIdProp }: { planIdProp?: strin
           work={completeWorkTarget?.item}
           onClose={() => setCompleteWorkTarget(null)}
           onConfirm={handleCompleteWorkConfirm}
-        />
-
-        <RejectWorkPlanModal
-          open={showRejectModal}
-          onClose={() => setShowRejectModal(false)}
-          onConfirm={handleRejectConfirm}
         />
 
         <NextVisitPlanModal

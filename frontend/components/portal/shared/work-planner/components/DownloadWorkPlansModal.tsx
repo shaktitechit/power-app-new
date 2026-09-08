@@ -25,7 +25,6 @@ import {
   Download,
   FileText,
   CheckCircle2,
-  Clock,
   Search,
   Layers,
   MapPin,
@@ -35,7 +34,6 @@ import {
   User,
   CheckSquare,
   Building2,
-  XCircle,
   Eye,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -232,14 +230,14 @@ export function DownloadWorkPlansModal({ open, onClose }: DownloadWorkPlansModal
 
   const summary = useMemo(() => {
     let visits = 0;
-    let approved = 0;
-    let pending = 0;
+    let planned = 0;
+    let completed = 0;
     filteredPlans.forEach((p: WorkPlan) => {
       visits += p.visits?.length || 0;
-      if (p.status === "approved") approved++;
-      if (["submitted", "under_review"].includes(p.status)) pending++;
+      if (["planned", "approved", "active", "draft", "submitted"].includes(p.status)) planned++;
+      if (p.status === "completed") completed++;
     });
-    return { total: filteredPlans.length, visits, approved, pending };
+    return { total: filteredPlans.length, visits, planned, completed };
   }, [filteredPlans]);
 
   const toggleExpandRow = (id: string) => {
@@ -318,18 +316,11 @@ export function DownloadWorkPlansModal({ open, onClose }: DownloadWorkPlansModal
         "Date",
         "Plan Type",
         "Status",
-        "Approved By",
-        "Approved At / Reason",
         "Site Visits Summary (Details, Status & Remarks)",
         "Work Tasks Summary (Details, Status & Remarks)",
       ];
 
       const rows = filteredPlans.map((p: WorkPlan) => {
-        const approvedBy = p.approval?.approvedBy?.name || (p.status === "rejected" ? "Rejected" : "Pending");
-        const approvedAtOrReason = p.approval?.approvedAt
-          ? formatPlanDate(p.approval.approvedAt)
-          : p.approval?.rejectionReason || "";
-
         const visitsSummary = (p.visits || [])
           .map(
             (v: VisitItem) =>
@@ -350,8 +341,6 @@ export function DownloadWorkPlansModal({ open, onClose }: DownloadWorkPlansModal
           `"${formatPlanDate(p.date || p.period?.startDate)}"`,
           `"${p.planType}"`,
           `"${p.status}"`,
-          `"${approvedBy.replace(/"/g, '""')}"`,
-          `"${approvedAtOrReason.replace(/"/g, '""')}"`,
           `"${visitsSummary.replace(/"/g, '""')}"`,
           `"${tasksSummary.replace(/"/g, '""')}"`,
         ];
@@ -407,7 +396,7 @@ export function DownloadWorkPlansModal({ open, onClose }: DownloadWorkPlansModal
               <FileText className="h-5 w-5 text-primary" /> Work Plan Report
             </DialogTitle>
             <DialogDescription className="text-xs">
-              Comprehensive report of daily work plans, team scope, individual members, site visits, tasks, and approval history.
+              Comprehensive report of daily work plans, team scope, individual members, site visits, and tasks.
             </DialogDescription>
           </div>
           <div className="flex items-center gap-2 shrink-0">
@@ -477,10 +466,7 @@ export function DownloadWorkPlansModal({ open, onClose }: DownloadWorkPlansModal
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Statuses</SelectItem>
-                <SelectItem value="draft">Draft</SelectItem>
-                <SelectItem value="submitted">Submitted / Pending</SelectItem>
-                <SelectItem value="approved">Approved</SelectItem>
-                <SelectItem value="rejected">Rejected</SelectItem>
+                <SelectItem value="planned">Planned</SelectItem>
                 <SelectItem value="completed">Completed</SelectItem>
                 <SelectItem value="cancelled">Cancelled</SelectItem>
               </SelectContent>
@@ -549,22 +535,22 @@ export function DownloadWorkPlansModal({ open, onClose }: DownloadWorkPlansModal
           <Card className="border shadow-2xs">
             <CardContent className="p-2.5 flex items-center justify-between">
               <div>
-                <p className="text-[11px] font-medium text-muted-foreground">Approved</p>
-                <p className="text-lg font-bold text-green-600 leading-tight mt-0.5">{summary.approved}</p>
+                <p className="text-[11px] font-medium text-muted-foreground">Planned</p>
+                <p className="text-lg font-bold text-blue-600 leading-tight mt-0.5">{summary.planned}</p>
               </div>
-              <div className="p-1.5 rounded-lg bg-green-50 shrink-0">
-                <CheckCircle2 className="h-4 w-4 text-green-600" />
+              <div className="p-1.5 rounded-lg bg-blue-50 shrink-0">
+                <CheckCircle2 className="h-4 w-4 text-blue-600" />
               </div>
             </CardContent>
           </Card>
           <Card className="border shadow-2xs">
             <CardContent className="p-2.5 flex items-center justify-between">
               <div>
-                <p className="text-[11px] font-medium text-muted-foreground">Pending Approval</p>
-                <p className="text-lg font-bold text-amber-600 leading-tight mt-0.5">{summary.pending}</p>
+                <p className="text-[11px] font-medium text-muted-foreground">Completed</p>
+                <p className="text-lg font-bold text-indigo-600 leading-tight mt-0.5">{summary.completed}</p>
               </div>
-              <div className="p-1.5 rounded-lg bg-amber-50 shrink-0">
-                <Clock className="h-4 w-4 text-amber-600" />
+              <div className="p-1.5 rounded-lg bg-indigo-50 shrink-0">
+                <Layers className="h-4 w-4 text-indigo-600" />
               </div>
             </CardContent>
           </Card>
@@ -587,7 +573,6 @@ export function DownloadWorkPlansModal({ open, onClose }: DownloadWorkPlansModal
                   <th className="text-left px-3 py-2.5 font-semibold text-muted-foreground">Owner</th>
                   <th className="text-left px-3 py-2.5 font-semibold text-muted-foreground">Date</th>
                   <th className="text-left px-3 py-2.5 font-semibold text-muted-foreground">Visits / Items</th>
-                  <th className="text-left px-3 py-2.5 font-semibold text-muted-foreground">Approved By</th>
                   <th className="text-left px-3 py-2.5 font-semibold text-muted-foreground">Status</th>
                 </tr>
               </thead>
@@ -631,33 +616,6 @@ export function DownloadWorkPlansModal({ open, onClose }: DownloadWorkPlansModal
                           <span className="font-semibold">{plan.works?.length || 0}</span> tasks
                         </td>
                         <td className="px-3 py-2">
-                          {plan.approval?.approvedBy?.name ? (
-                            <div>
-                              <span className="font-medium text-emerald-700 flex items-center gap-1">
-                                <CheckCircle2 className="h-3 w-3" /> {plan.approval.approvedBy.name}
-                              </span>
-                              {plan.approval.approvedAt && (
-                                <span className="text-[10px] text-muted-foreground block">
-                                  {formatPlanDate(plan.approval.approvedAt)}
-                                </span>
-                              )}
-                            </div>
-                          ) : plan.status === "rejected" ? (
-                            <div>
-                              <span className="font-medium text-destructive flex items-center gap-1">
-                                <XCircle className="h-3 w-3" /> Rejected
-                              </span>
-                              {plan.approval?.rejectionReason && (
-                                <span className="text-[10px] text-destructive/80 block truncate max-w-[150px]" title={plan.approval.rejectionReason}>
-                                  {plan.approval.rejectionReason}
-                                </span>
-                              )}
-                            </div>
-                          ) : (
-                            <span className="text-muted-foreground italic text-[11px]">Pending / N/A</span>
-                          )}
-                        </td>
-                        <td className="px-3 py-2">
                           {renderPlanStatusBadge(plan.status)}
                         </td>
                       </tr>
@@ -665,7 +623,7 @@ export function DownloadWorkPlansModal({ open, onClose }: DownloadWorkPlansModal
                       {/* Expandable Visits and Tasks Breakdown in Nested Tabular Format */}
                       {isExpanded && (
                         <tr className="bg-muted/15 border-b">
-                          <td colSpan={7} className="px-6 py-3">
+                          <td colSpan={6} className="px-6 py-3">
                             <div className="space-y-4">
                               {/* Site Visits Sub-Table */}
                               {plan.visits && plan.visits.length > 0 && (
@@ -768,7 +726,7 @@ export function DownloadWorkPlansModal({ open, onClose }: DownloadWorkPlansModal
                 })}
                 {filteredPlans.length === 0 && (
                   <tr>
-                    <td colSpan={7} className="py-12 text-center text-muted-foreground text-xs">
+                    <td colSpan={6} className="py-12 text-center text-muted-foreground text-xs">
                       <FileText className="h-8 w-8 mx-auto mb-2 opacity-40" />
                       No work plans match the selected filters.
                     </td>

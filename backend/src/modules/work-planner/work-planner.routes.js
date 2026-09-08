@@ -6,9 +6,6 @@ import {
   createWorkPlan,
   updateWorkPlan,
   deleteWorkPlan,
-  submitWorkPlan,
-  approveWorkPlan,
-  rejectWorkPlan,
   completeWorkPlan,
   cancelWorkPlan,
   getWorkTasks,
@@ -31,9 +28,6 @@ router.post("/", createWorkPlan);
 router.get("/:id", getWorkPlan);
 router.put("/:id", updateWorkPlan);
 router.delete("/:id", deleteWorkPlan);
-router.post("/:id/submit", submitWorkPlan);
-router.post("/:id/approve", approveWorkPlan);
-router.post("/:id/reject", rejectWorkPlan);
 router.post("/:id/complete", completeWorkPlan);
 router.post("/:id/cancel", cancelWorkPlan);
 
