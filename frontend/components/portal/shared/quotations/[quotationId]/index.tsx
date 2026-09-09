@@ -75,11 +75,9 @@ import { SignatoryApproveButton } from "@/components/portal/shared/components/si
 import {
   CANCELLED_PDF_LOCKED_MESSAGE,
   SIGNATORY_APPROVAL_LOCKED_MESSAGE,
-  SIGNATORY_EDIT_LOCKED_MESSAGE,
   isCancelledDocument,
   isSignatoryApproved,
   isSignatoryApprovalPending,
-  isSignatoryContentLocked,
   signatoryDisplayNameFromDoc,
 } from "@/components/portal/lib/signatoryApproval";
 
@@ -327,10 +325,6 @@ export default function QuotationDetailsPage() {
             <p className="mt-2 max-w-xl text-sm text-amber-800 dark:text-amber-200">
               {SIGNATORY_APPROVAL_LOCKED_MESSAGE} The assigned signatory (
               {signatoryDisplayNameFromDoc(quotation)}) can preview the PDF before approving.
-            </p>
-          ) : isSignatoryContentLocked(quotation) ? (
-            <p className="mt-2 max-w-xl text-sm text-muted-foreground">
-              {SIGNATORY_EDIT_LOCKED_MESSAGE}
             </p>
           ) : null}
         </div>

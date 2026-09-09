@@ -26,9 +26,7 @@ import {
   applyCreatorOrSignatoryListFilter,
   assertCurrentUserIsSignatory,
   assertSignatoryApproved,
-  assertSignatoryContentEditable,
   bodyResetsSignatoryApproval,
-  hasNonStatusUpdates,
   isCreatorOrAssignedSignatory,
   isSignatoryApproved,
   pendingSignatoryApproval,
@@ -739,10 +737,6 @@ export async function updateQuotationService({ user, quotationId, body = {} }) {
 
   if (LOCKED_STATUSES.has(quotation.status)) {
     throwError(`${quotation.status} quotations cannot be edited`);
-  }
-
-  if (hasNonStatusUpdates(body)) {
-    assertSignatoryContentEditable(quotation);
   }
 
   if (body.items) {
