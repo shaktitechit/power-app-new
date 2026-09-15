@@ -16,6 +16,9 @@ export type EnquiryExportColumnKey =
   | "audit_types"
   | "next_followup"
   | "created_at"
+  | "client_rep_name"
+  | "client_rep_email"
+  | "client_rep_contact"
   | "notes";
 
 export type EnquiryExportColumnDef = {
@@ -37,6 +40,9 @@ export const ENQUIRY_EXPORT_COLUMNS: EnquiryExportColumnDef[] = [
   { key: "audit_types", label: "Audit Types", defaultSelected: true },
   { key: "next_followup", label: "Next Follow Up", defaultSelected: true },
   { key: "created_at", label: "Created At", defaultSelected: true },
+  { key: "client_rep_name", label: "Client Rep Name", defaultSelected: true },
+  { key: "client_rep_email", label: "Client Rep Email", defaultSelected: true },
+  { key: "client_rep_contact", label: "Client Rep Contact", defaultSelected: true },
   { key: "notes", label: "Notes", defaultSelected: false },
 ];
 
@@ -82,6 +88,18 @@ export function enquiryExportCellValue(
       return formatDisplayDate(row.next_followup_date);
     case "created_at":
       return formatDisplayDate(row.created_at);
+    case "client_rep_name": {
+      const repName = row.client_representatives?.[0]?.name || row.client_representative;
+      return repName?.trim() || "—";
+    }
+    case "client_rep_email": {
+      const repEmail = row.client_representatives?.[0]?.email || row.client_email;
+      return repEmail?.trim() || "—";
+    }
+    case "client_rep_contact": {
+      const repContact = row.client_representatives?.[0]?.contact_number || row.client_contact_number;
+      return repContact?.trim() || "—";
+    }
     case "notes":
       return row.notes?.trim() || "—";
     default:
