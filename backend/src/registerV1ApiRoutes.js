@@ -70,6 +70,9 @@ import workTasksRoutes from "./modules/work-planner/work-tasks.routes.js";
 import expenseManagerRoutes from "./modules/expense-manager/expense-manager.routes.js";
 import expensePolicyRoutes from "./modules/expense-manager/expense-policy.routes.js";
 
+// External third-party integrations & API keys
+import externalRoutes from "./modules/external/external.routes.js";
+import apiKeyRoutes from "./modules/api-keys/api-key.routes.js";
 
 /**
  * Mounts `/api` rate limiter and all `/api/v1/...` routers.
@@ -144,6 +147,10 @@ export function registerV1ApiRoutes(app) {
 
   // --- Admin ---
   app.use("/api/v1/admin/users", adminRoutes);
+  app.use("/api/v1/admin/api-keys", apiKeyRoutes);
+
+  // --- External Third-Party Integration ---
+  app.use("/api/v1/external", externalRoutes);
 
   // --- Mode ---
   app.use("/api/v1/mode", modeRoutes);

@@ -1,3 +1,4 @@
+import ApiKey from "../models/apiKey.js";
 import Company from "../models/company.js";
 import Enquiry from "../models/enquiry.js";
 import Facility from "../models/facility.js";
@@ -66,6 +67,7 @@ import {
 
 export const modelsRegistry = {
   // Core Models
+  ApiKey,
   Company,
   Enquiry,
   Facility,

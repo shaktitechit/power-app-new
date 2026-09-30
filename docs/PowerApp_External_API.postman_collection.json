@@ -1,0 +1,176 @@
+{
+  "info": {
+    "_postman_id": "c71a3998-251f-4bb2-b5e0-3949826a6b51",
+    "name": "Power App - External API",
+    "description": "Third-Party Integration API for Power App (Enquiries & Facilities)",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:5000",
+      "type": "string"
+    },
+    {
+      "key": "apiKey",
+      "value": "spl_live_7a5e286b6e27eaad0316dd3bdcc8d6b48e81b6ef8b7ad743",
+      "type": "string"
+    }
+  ],
+  "auth": {
+    "type": "apikey",
+    "apikey": [
+      {
+        "key": "key",
+        "value": "x-api-key",
+        "type": "string"
+      },
+      {
+        "key": "value",
+        "value": "{{apiKey}}",
+        "type": "string"
+      },
+      {
+        "key": "in",
+        "value": "header",
+        "type": "string"
+      }
+    ]
+  },
+  "item": [
+    {
+      "name": "Enquiries",
+      "item": [
+        {
+          "name": "Get All Enquiries",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/external/enquiries?page=1&limit=20&status=&search=&city=",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "external", "enquiries"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                },
+                {
+                  "key": "status",
+                  "value": "",
+                  "description": "e.g. won, new, assigned, follow_up"
+                },
+                {
+                  "key": "search",
+                  "value": "",
+                  "description": "Searches name, enquiry_number, client email, phone, city"
+                },
+                {
+                  "key": "city",
+                  "value": "",
+                  "description": "City name filter"
+                },
+                {
+                  "key": "audit_type",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "is_converted",
+                  "value": "",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "List enquiries with pagination and filters"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Enquiry By ID or Number",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/external/enquiries/ENQ-SPL/20260622/001",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "external", "enquiries", "ENQ-SPL:20260622:001"]
+            },
+            "description": "Get single enquiry details using MongoDB ID or enquiry_number"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Facilities",
+      "item": [
+        {
+          "name": "Get All Facilities",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/external/facilities?page=1&limit=20&status=active&search=&city=",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "external", "facilities"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                },
+                {
+                  "key": "status",
+                  "value": "active"
+                },
+                {
+                  "key": "search",
+                  "value": "",
+                  "description": "Searches facility name, audit_number, enquiry_number, city"
+                },
+                {
+                  "key": "city",
+                  "value": ""
+                },
+                {
+                  "key": "audit_type",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "facility_type",
+                  "value": "",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "List audit facilities with assigned auditors"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Facility By ID or Number",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/external/facilities/SPL/20260903/003",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "external", "facilities", "SPL:20260903:003"]
+            },
+            "description": "Get single facility details by MongoDB ID or audit_number"
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}
