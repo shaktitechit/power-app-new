@@ -28,9 +28,6 @@ import Users from "@/components/portal/shared/users";
 import UserDetails from "@/components/portal/shared/users/[user_id]";
 import Company from "@/components/portal/shared/company";
 import TeamManager from "@/components/portal/shared/team-manager";
-import WorkPlanner from "@/components/portal/shared/work-planner";
-import WorkPlanDetails from "@/components/portal/shared/work-planner/[planId]";
-import ExpenseManager from "@/components/portal/shared/expense-manager";
 
 /**
  * Resolves URL path segments to the correct page component for the Super Admin portal.
@@ -46,12 +43,6 @@ export function render(segments: string[]) {
   if (segments[0] === "facilities") return <Facilities />;
   if (segments[0] === "reports") return <Reports />;
   if (segments[0] === "team-manager") return <TeamManager />;
-  if (segments[0] === "expense-manager") return <ExpenseManager />;
-
-  if (segments[0] === "work-planner") {
-    if (segments.length === 1) return <WorkPlanner />;
-    if (segments.length === 2) return <WorkPlanDetails planIdProp={segments[1]} />;
-  }
 
   if (segments[0] === "enquiries") {
     if (segments.length === 1) return <Enquiries />;

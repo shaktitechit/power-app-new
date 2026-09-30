@@ -22,7 +22,7 @@ export default function Page() {
   if (portal === "manager") return renderManager(pathSegments);
   if (portal === "auditor") return renderAuditor(pathSegments);
 
-  // If URL is not prefixed with role (e.g. /work-planner/123), resolve via user's logged-in role
+  // If URL is not prefixed with role (e.g. /facilities/123), resolve via user's logged-in role
   if (user?.role) {
     const effectiveSegments = [portal, ...pathSegments];
     if (user.role === "super_admin") return renderSuperAdmin(effectiveSegments);

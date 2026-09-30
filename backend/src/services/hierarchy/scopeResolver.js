@@ -2,8 +2,7 @@
  * Scope Resolver
  *
  * Resolves a hierarchy-based scope to concrete user IDs.
- * Used by work-planner, expense-manager, and team-manager
- * to filter records to authorized users only.
+ * Used by team-manager to filter records to authorized users only.
  */
 
 import { modelsRegistry } from "../../data/modelRegistry.js";
